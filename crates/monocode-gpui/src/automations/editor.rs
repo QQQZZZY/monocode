@@ -6,9 +6,9 @@ pub(super) fn toggle(id: impl Into<gpui::ElementId>, on: bool) -> gpui::Stateful
         .id(id)
         .role(Role::Switch)
         .aria_label(if on {
-            "Pause automation"
+            crate::i18n::text("automations-pause-automation")
         } else {
-            "Enable automation"
+            crate::i18n::text("automations-enable-automation")
         })
         .w(px(28.))
         .h(px(16.))
@@ -24,44 +24,115 @@ pub(super) fn toggle(id: impl Into<gpui::ElementId>, on: bool) -> gpui::Stateful
 fn options(values: &[(&str, &str)]) -> Vec<(String, String)> {
     values
         .iter()
-        .map(|(v, l)| (v.to_string(), l.to_string()))
+        .map(|(v, l)| (v.to_string(), crate::i18n::text(l)))
         .collect()
 }
 pub(super) fn events(kind: &str) -> Vec<(String, String)> {
     options(match kind {
         "time" => &[
-            ("hourly", "Hourly"),
-            ("daily", "Daily"),
-            ("weekdays", "Weekdays"),
-            ("weekly", "Weekly"),
+            ("hourly", "automations-hourly"),
+            ("daily", "automations-daily"),
+            ("weekdays", "automations-weekdays"),
+            ("weekly", "automations-weekly"),
         ],
         "github" => &[
-            ("draft_opened", "Draft opened"),
-            ("pull_request_opened", "Pull request opened"),
-            ("issue_opened", "Issue opened"),
+            ("draft_opened", "automations-draft-opened"),
+            ("pull_request_opened", "automations-pull-request-opened"),
+            ("issue_opened", "automations-issue-opened"),
         ],
         "gitlab" => &[
-            ("merge_request_opened", "Merge request opened"),
-            ("issue_opened", "Issue opened"),
+            ("merge_request_opened", "automations-merge-request-opened"),
+            ("issue_opened", "automations-issue-opened"),
         ],
-        "linear" => &[("issue_created", "Issue created")],
-        "jira" => &[("issue_created", "Issue appeared")],
+        "linear" => &[("issue_created", "automations-issue-created")],
+        "jira" => &[("issue_created", "automations-issue-appeared")],
         "azuredevops" => &[
-            ("pull_request_appeared", "Pull request appeared"),
-            ("work_item_appeared", "Work item appeared"),
+            ("pull_request_appeared", "automations-pull-request-appeared"),
+            ("work_item_appeared", "automations-work-item-appeared"),
         ],
         _ => &[],
     })
 }
-fn section(label: &'static str) -> gpui::Div {
+fn event_label(kind: &str, event: &str) -> String {
+    let key = match (kind, event) {
+        ("jira", "issue_created") => "automations-issue-appeared",
+        (_, "draft_opened") => "automations-draft-opened",
+        (_, "pull_request_opened") => "automations-pull-request-opened",
+        (_, "issue_opened") => "automations-issue-opened",
+        (_, "merge_request_opened") => "automations-merge-request-opened",
+        (_, "issue_created") => "automations-issue-created",
+        (_, "pull_request_appeared") => "automations-pull-request-appeared",
+        (_, "work_item_appeared") => "automations-work-item-appeared",
+        (_, "pull_request_merged") => "automations-pull-request-merged",
+        (_, "pull_request_review_requested") => "automations-review-requested",
+        (_, "issue_assigned") => "automations-issue-assigned",
+        (_, "check_failed") => "automations-check-failed",
+        _ => return event.to_owned(),
+    };
+    crate::i18n::text(key)
+}
+pub(super) fn trigger_label(trigger: &AutomationTrigger) -> String {
+    if trigger.kind != "time" {
+        return event_label(&trigger.kind, &trigger.event);
+    }
+    let time = crate::system_format::wall_time(&trigger.time);
+    match trigger.schedule_kind.as_str() {
+        "hourly" => crate::i18n::format(
+            "automations-hourly-at",
+            &[(
+                "minute",
+                u64::try_from(trigger.minute)
+                    .map(|minute| crate::system_format::padded_unsigned(minute, 2))
+                    .unwrap_or_else(|_| format!("{:02}", trigger.minute)),
+            )],
+        ),
+        "daily" => crate::i18n::format("automations-daily-at", &[("time", time)]),
+        "weekly" => crate::i18n::format(
+            "automations-weekday-at",
+            &[
+                (
+                    "day",
+                    if (0..7).contains(&trigger.day_of_week) {
+                        crate::system_format::weekday(trigger.day_of_week as usize)
+                    } else {
+                        crate::i18n::text("automations-weekly")
+                    },
+                ),
+                ("time", time),
+            ],
+        ),
+        _ => crate::i18n::format("automations-weekdays-at", &[("time", time)]),
+    }
+}
+
+pub(super) fn summary_label(automation: &Automation) -> String {
+    let triggers = automation.triggers();
+    match triggers.len() {
+        0 => crate::i18n::text("automations-manual-only"),
+        1 => trigger_label(&triggers[0]),
+        count => crate::i18n::format(
+            "automations-triggers-more",
+            &[
+                ("first", trigger_label(&triggers[0])),
+                ("count", crate::system_format::unsigned((count - 1) as u64)),
+            ],
+        ),
+    }
+}
+
+fn section(label: impl Into<gpui::SharedString>) -> gpui::Div {
     div()
         .px(px(4.))
         .text_size(px(12.))
         .font_weight(gpui::FontWeight::MEDIUM)
         .text_color(content(0.5))
-        .child(label)
+        .child(label.into())
 }
-fn settings_row(label: &'static str, hint: &'static str, control: impl IntoElement) -> gpui::Div {
+fn settings_row(
+    label: impl Into<gpui::SharedString>,
+    hint: impl Into<gpui::SharedString>,
+    control: impl IntoElement,
+) -> gpui::Div {
     div()
         .min_h(px(54.))
         .px(px(16.))
@@ -83,17 +154,32 @@ fn settings_row(label: &'static str, hint: &'static str, control: impl IntoEleme
                     div()
                         .text_size(px(12.))
                         .text_color(content(0.75))
-                        .child(label),
+                        .child(label.into()),
                 )
                 .child(
                     div()
                         .text_size(px(11.))
                         .text_color(content(0.4))
-                        .child(hint),
+                        .child(hint.into()),
                 ),
         )
         .child(control)
 }
+fn time_options(time: &str) -> Vec<(String, String)> {
+    let mut times = (0..24)
+        .flat_map(|hour| {
+            [0, 30].map(move |minute| {
+                let value = format!("{hour:02}:{minute:02}");
+                (value.clone(), crate::system_format::wall_time(&value))
+            })
+        })
+        .collect::<Vec<_>>();
+    if !times.iter().any(|(value, _)| value == time) {
+        times.insert(0, (time.to_owned(), crate::system_format::wall_time(time)));
+    }
+    times
+}
+
 impl Automations {
     fn select_control(
         &self,
@@ -101,6 +187,16 @@ impl Automations {
         label: String,
         field: Choice,
         values: Vec<(String, String)>,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        self.select_control_lazy(id, label, field, move || values.clone(), cx)
+    }
+    fn select_control_lazy(
+        &self,
+        id: impl Into<gpui::ElementId>,
+        label: String,
+        field: Choice,
+        values: impl Fn() -> Vec<(String, String)> + 'static,
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         let anchor = AnchorSlot::default();
@@ -150,7 +246,7 @@ impl Automations {
                 }
                 this.choice = Some(ChoiceMenu {
                     field: field.clone(),
-                    options: values.clone(),
+                    options: values(),
                     anchor: captured.clone(),
                 });
                 this.trigger_menu = None;
@@ -305,10 +401,10 @@ impl Automations {
             .text_color(content(0.7));
         if trigger.kind == "time" {
             let prefix = match trigger.schedule_kind.as_str() {
-                "hourly" => "Every hour at",
-                "daily" => "Every day at",
-                "weekly" => "Every week on",
-                _ => "Every weekday at",
+                "hourly" => crate::i18n::text("automations-every-hour-at"),
+                "daily" => crate::i18n::text("automations-every-day-at"),
+                "weekly" => crate::i18n::text("automations-every-week-on"),
+                _ => crate::i18n::text("automations-every-weekday-at"),
             };
             let frequency_anchor = AnchorSlot::default();
             let captured = frequency_anchor.clone();
@@ -320,7 +416,10 @@ impl Automations {
                     .id(("trigger-frequency", index))
                     .relative()
                     .role(Role::Button)
-                    .aria_label(format!("Schedule: {prefix}"))
+                    .aria_label(crate::i18n::format(
+                        "automations-schedule",
+                        &[("prefix", prefix.to_string())],
+                    ))
                     .rounded(px(3.))
                     .hover(|s| s.bg(content(0.05)))
                     .child(frequency_anchor.probe())
@@ -339,20 +438,21 @@ impl Automations {
                     .child(
                         self.select_control(
                             ("trigger-day", index),
-                            automations::WEEKDAYS
-                                .get(trigger.day_of_week as usize)
-                                .unwrap_or(&"Monday")
-                                .to_string(),
+                            crate::system_format::weekday(
+                                if (0..7).contains(&trigger.day_of_week) {
+                                    trigger.day_of_week as usize
+                                } else {
+                                    1
+                                },
+                            ),
                             Choice::Weekday(id.clone()),
-                            automations::WEEKDAYS
-                                .iter()
-                                .enumerate()
-                                .map(|(i, s)| (i.to_string(), s.to_string()))
+                            (0..7)
+                                .map(|i| (i.to_string(), crate::system_format::weekday(i)))
                                 .collect(),
                             cx,
                         ),
                     )
-                    .child("at");
+                    .child(crate::i18n::text("automations-at"));
             }
             let mut preview_trigger = trigger.clone();
             if let Some(fields) = fields {
@@ -362,32 +462,40 @@ impl Automations {
                 sentence = sentence.child(
                     self.select_control(
                         ("trigger-minute", index),
-                        format!(":{:02}", trigger.minute),
+                        crate::i18n::format(
+                            "automations-minute",
+                            &[(
+                                "minute",
+                                u64::try_from(trigger.minute)
+                                    .map(|m| crate::system_format::padded_unsigned(m, 2))
+                                    .unwrap_or_else(|_| format!("{:02}", trigger.minute)),
+                            )],
+                        ),
                         Choice::Minute(id.clone()),
                         (0..60)
-                            .map(|m| (m.to_string(), format!(":{m:02}")))
+                            .map(|m| {
+                                (
+                                    m.to_string(),
+                                    crate::i18n::format(
+                                        "automations-minute",
+                                        &[(
+                                            "minute",
+                                            crate::system_format::padded_unsigned(m as u64, 2),
+                                        )],
+                                    ),
+                                )
+                            })
                             .collect(),
                         cx,
                     ),
                 );
             } else {
                 let time = preview_trigger.time.clone();
-                let mut times = (0..24)
-                    .flat_map(|hour| {
-                        [0, 30].map(move |minute| {
-                            let value = format!("{hour:02}:{minute:02}");
-                            (value.clone(), value)
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                if !times.iter().any(|(value, _)| value == &time) {
-                    times.insert(0, (time.clone(), time.clone()));
-                }
-                sentence = sentence.child(self.select_control(
+                sentence = sentence.child(self.select_control_lazy(
                     ("trigger-time", index),
-                    time,
+                    crate::system_format::wall_time(&time),
                     Choice::Time(id.clone()),
-                    times,
+                    move || time_options(&time),
                     cx,
                 ));
             }
@@ -405,12 +513,12 @@ impl Automations {
             sentence = sentence
                 .child(self.select_control(
                     ("trigger-event", index),
-                    automations::event_label(&trigger.kind, &trigger.event),
+                    event_label(&trigger.kind, &trigger.event),
                     Choice::TriggerEvent(id.clone()),
                     events(&trigger.kind),
                     cx,
                 ))
-                .child("by");
+                .child(crate::i18n::text("automations-by"));
             if let Some(fields) = fields {
                 sentence = sentence.child(
                     div()
@@ -438,7 +546,7 @@ impl Automations {
                 div()
                     .id(SharedString::from(format!("remove-trigger-{id}")))
                     .role(Role::Button)
-                    .aria_label("Remove trigger")
+                    .aria_label(crate::i18n::text("automations-remove-trigger"))
                     .size(px(28.))
                     .flex_shrink_0()
                     .rounded(px(6.))
@@ -476,7 +584,7 @@ impl Automations {
                     .gap(px(8.))
                     .text_size(px(11.))
                     .text_color(content(0.4))
-                    .child("Repositories")
+                    .child(crate::i18n::text("automations-repositories"))
                     .child(div().flex_1().max_w(px(340.)).child(fields.repos.clone())),
             );
         }
@@ -494,9 +602,9 @@ impl Automations {
                 button(
                     "automation-reset",
                     if editor.saved && editor.dirty {
-                        "Reset"
+                        crate::i18n::text("automations-reset")
                     } else {
-                        "Cancel"
+                        crate::i18n::text("automations-prompt-cancel")
                     },
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
@@ -513,9 +621,9 @@ impl Automations {
                 button(
                     "automation-run",
                     if self.running {
-                        "Starting…"
+                        crate::i18n::text("automations-starting")
                     } else {
-                        "Run now"
+                        crate::i18n::text("automations-run-now")
                     },
                 )
                 .child(icon("queue-play", 13.))
@@ -527,11 +635,11 @@ impl Automations {
             button(
                 "automation-save",
                 if self.saving {
-                    "Saving…"
+                    crate::i18n::text("automations-saving")
                 } else if editor.saved {
-                    "Save"
+                    crate::i18n::text("automations-save")
                 } else {
-                    "Create"
+                    crate::i18n::text("automations-create")
                 },
             )
             .h(px(26.))
@@ -599,7 +707,11 @@ impl Automations {
                                     cx.notify();
                                 }),
                             ))
-                            .child(if draft.enabled { "Active" } else { "Inactive" })
+                            .child(if draft.enabled {
+                                crate::i18n::text("automations-active")
+                            } else {
+                                crate::i18n::text("automations-inactive")
+                            })
                             .child(div().ml(px(8.)).h(px(12.)).w(px(1.)).bg(content(0.15)))
                             .child(
                                 div()
@@ -607,7 +719,9 @@ impl Automations {
                                     .relative()
                                     .min_w_0()
                                     .role(Role::Button)
-                                    .aria_label("Choose automation project")
+                                    .aria_label(crate::i18n::text(
+                                        "automations-choose-automation-project",
+                                    ))
                                     .px(px(8.))
                                     .h(px(26.))
                                     .rounded(px(6.))
@@ -622,7 +736,7 @@ impl Automations {
                                     .child(self.project_mark(&draft.cwd, 14.))
                                     .child(div().min_w_0().truncate().child(
                                         if draft.cwd.is_empty() {
-                                            "Choose project".into()
+                                            crate::i18n::text("automations-choose-project")
                                         } else {
                                             self.project_label(&draft.cwd)
                                         },
@@ -636,7 +750,7 @@ impl Automations {
                                 d.child(
                                     icon_button(
                                         "automation-delete-menu",
-                                        "Delete automation",
+                                        crate::i18n::text("automations-delete-automation"),
                                         "trash",
                                     )
                                     .on_click(cx.listener(
@@ -647,7 +761,11 @@ impl Automations {
                     )
                     .child(if editor.saved {
                         div().h(px(36.)).flex().gap(px(16.)).children(
-                            [("Settings", false), ("Run history", true)].map(|(label, history)| {
+                            [
+                                (crate::i18n::text("automations-settings"), false),
+                                (crate::i18n::text("automations-run-history"), true),
+                            ]
+                            .map(|(label, history)| {
                                 div()
                                     .id(if history {
                                         "automation-history-tab"
@@ -655,7 +773,7 @@ impl Automations {
                                         "automation-settings-tab"
                                     })
                                     .role(Role::Tab)
-                                    .aria_label(label)
+                                    .aria_label(&label)
                                     .h_full()
                                     .flex()
                                     .items_center()
@@ -701,53 +819,55 @@ impl Automations {
         let editor = self.editor.as_ref().expect("editor");
         let draft = &editor.draft;
         let triggers = draft.triggers.clone().unwrap_or_default();
-        let triggers_section = div().child(section("Triggers")).child(
-            div()
-                .mt(px(12.))
-                .rounded(px(6.))
-                .border_1()
-                .border_color(content(0.1))
-                .when(!triggers.is_empty(), |d| {
-                    d.child(
-                        div().px(px(12.)).py(px(6.)).children(
-                            triggers
-                                .iter()
-                                .enumerate()
-                                .map(|(i, t)| self.render_trigger(t, i, cx)),
-                        ),
-                    )
-                    .child(div().h(px(1.)).bg(content(0.08)))
-                })
-                .child(
-                    div()
-                        .id("automation-add-trigger")
-                        .relative()
-                        .role(Role::Button)
-                        .aria_label("Add Trigger")
-                        .h(px(48.))
-                        .px(px(12.))
-                        .flex()
-                        .items_center()
-                        .gap(px(8.))
-                        .text_size(px(13.))
-                        .text_color(content(0.55))
-                        .hover(|s| s.bg(content(0.04)).text_color(content(1.)))
-                        .child(self.trigger_anchor.probe())
-                        .child(icon("plus", 14.))
-                        .child("Add Trigger")
-                        .when(triggers.len() >= 20, |d| d.opacity(0.4))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_trigger_menu(window, cx);
-                        })),
-                ),
-        );
+        let triggers_section = div()
+            .child(section(crate::i18n::text("automations-triggers")))
+            .child(
+                div()
+                    .mt(px(12.))
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(content(0.1))
+                    .when(!triggers.is_empty(), |d| {
+                        d.child(
+                            div().px(px(12.)).py(px(6.)).children(
+                                triggers
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, t)| self.render_trigger(t, i, cx)),
+                            ),
+                        )
+                        .child(div().h(px(1.)).bg(content(0.08)))
+                    })
+                    .child(
+                        div()
+                            .id("automation-add-trigger")
+                            .relative()
+                            .role(Role::Button)
+                            .aria_label(crate::i18n::text("automations-add-trigger"))
+                            .h(px(48.))
+                            .px(px(12.))
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .text_size(px(13.))
+                            .text_color(content(0.55))
+                            .hover(|s| s.bg(content(0.04)).text_color(content(1.)))
+                            .child(self.trigger_anchor.probe())
+                            .child(icon("plus", 14.))
+                            .child(crate::i18n::text("automations-add-trigger"))
+                            .when(triggers.len() >= 20, |d| d.opacity(0.4))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_trigger_menu(window, cx);
+                            })),
+                    ),
+            );
         let kind = Kind::from_id(&draft.harness);
         let model = monocode_core::store::native_model(&draft.model, &draft.harness);
         let access = match draft.runtime_mode.as_str() {
-            "supervised" => "Supervised",
-            "auto-accept-edits" => "Auto-accept edits",
-            "full-access" => "Full access",
-            _ => "Auto",
+            "supervised" => crate::i18n::text("automations-supervised"),
+            "auto-accept-edits" => crate::i18n::text("automations-auto-accept-edits"),
+            "full-access" => crate::i18n::text("automations-full-access"),
+            _ => crate::i18n::text("automations-auto"),
         };
         let beside = cx
             .try_global::<crate::settings::Preferences>()
@@ -777,7 +897,7 @@ impl Automations {
                     .id("automation-model")
                     .relative()
                     .role(Role::Button)
-                    .aria_label("Choose automation model")
+                    .aria_label(crate::i18n::text("automations-choose-automation-model"))
                     .px(px(6.))
                     .h(px(26.))
                     .rounded(px(6.))
@@ -815,13 +935,13 @@ impl Automations {
             controls = controls.child(
                 self.select_control(
                     "automation-access",
-                    access.into(),
+                    access,
                     Choice::Access,
                     options(&[
-                        ("supervised", "Supervised"),
-                        ("auto-accept-edits", "Auto-accept edits"),
-                        ("auto", "Auto"),
-                        ("full-access", "Full access"),
+                        ("supervised", "automations-supervised"),
+                        ("auto-accept-edits", "automations-auto-accept-edits"),
+                        ("auto", "automations-auto"),
+                        ("full-access", "automations-full-access"),
                     ]),
                     cx,
                 )
@@ -831,7 +951,7 @@ impl Automations {
             );
         }
         let instructions = div()
-            .child(section("Instructions"))
+            .child(section(crate::i18n::text("automations-instructions")))
             .child(
                 div()
                     .relative()
@@ -855,9 +975,11 @@ impl Automations {
                     .px(px(4.))
                     .text_size(px(11.))
                     .text_color(content(0.35))
-                    .child("Skills, @file references, and built-in commands work here."),
+                    .child(crate::i18n::text(
+                        "automations-skills-file-references-and-built-in",
+                    )),
             );
-        let mut folder_options = vec![(String::new(), "No folder".into())];
+        let mut folder_options = vec![(String::new(), crate::i18n::text("automations-no-folder"))];
         folder_options.extend(self.folders.iter().map(|f| (f.id.clone(), f.name.clone())));
         if !draft.session_folder_id.is_empty()
             && !folder_options
@@ -873,83 +995,97 @@ impl Automations {
             .iter()
             .find(|(id, _)| id == &draft.session_folder_id)
             .map(|(_, label)| label.clone())
-            .unwrap_or_else(|| "No folder".into());
+            .unwrap_or_else(|| crate::i18n::text("automations-no-folder"));
         let workspace = self.select_control(
             "automation-workspace",
             if draft.workspace_mode == "worktree" {
-                "Fresh worktree"
+                crate::i18n::text("automations-fresh-worktree")
             } else if draft.workspace_mode == "existing" {
-                "Existing worktree"
+                crate::i18n::text("automations-existing-worktree")
             } else {
-                "Current"
-            }
-            .into(),
+                crate::i18n::text("automations-current")
+            },
             Choice::Workspace,
-            options(&[("current", "Current"), ("worktree", "Fresh worktree")]),
+            options(&[
+                ("current", "automations-current"),
+                ("worktree", "automations-fresh-worktree"),
+            ]),
             cx,
         );
         let conversation = self
             .select_control(
                 "automation-conversation",
                 if draft.reuse_session {
-                    "Continue last"
+                    crate::i18n::text("automations-continue-last")
                 } else {
-                    "Start fresh"
-                }
-                .into(),
+                    crate::i18n::text("automations-start-fresh")
+                },
                 Choice::Conversation,
                 if draft.workspace_mode == "worktree" {
-                    vec![("fresh".into(), "Start fresh".into())]
+                    vec![("fresh".into(), crate::i18n::text("automations-start-fresh"))]
                 } else {
-                    options(&[("fresh", "Start fresh"), ("reuse", "Continue last")])
+                    options(&[
+                        ("fresh", "automations-start-fresh"),
+                        ("reuse", "automations-continue-last"),
+                    ])
                 },
                 cx,
             )
             .when(draft.workspace_mode == "worktree", |d| d.opacity(0.5));
-        let session = div().child(section("Session")).child(
-            div()
-                .mt(px(12.))
-                .rounded(px(6.))
-                .overflow_hidden()
-                .border_1()
-                .border_color(content(0.1))
-                .child(settings_row(
-                    "Working copy",
-                    "This repo, or a fresh worktree",
-                    workspace,
-                ))
-                .child(settings_row(
-                    "Conversation",
-                    "New chat, or continue the last run",
-                    conversation,
-                ))
-                .child(
-                    settings_row(
-                        "Session folder",
-                        "Where runs appear in the sidebar",
-                        self.select_control(
-                            "automation-folder",
-                            folder_label,
-                            Choice::Folder,
-                            folder_options,
-                            cx,
-                        ),
-                    )
-                    .border_b_0(),
-                ),
-        );
+        let session = div()
+            .child(section(crate::i18n::text("automations-session")))
+            .child(
+                div()
+                    .mt(px(12.))
+                    .rounded(px(6.))
+                    .overflow_hidden()
+                    .border_1()
+                    .border_color(content(0.1))
+                    .child(settings_row(
+                        crate::i18n::text("automations-working-copy"),
+                        crate::i18n::text("automations-this-repo-or-a-fresh-worktree"),
+                        workspace,
+                    ))
+                    .child(settings_row(
+                        crate::i18n::text("automations-conversation"),
+                        crate::i18n::text("automations-new-chat-or-continue-the-last-run"),
+                        conversation,
+                    ))
+                    .child(
+                        settings_row(
+                            crate::i18n::text("automations-session-folder"),
+                            crate::i18n::text("automations-where-runs-appear-in-the-sidebar"),
+                            self.select_control(
+                                "automation-folder",
+                                folder_label,
+                                Choice::Folder,
+                                folder_options,
+                                cx,
+                            ),
+                        )
+                        .border_b_0(),
+                    ),
+            );
         let grace_options = options(&[
-            ("0", "Do not catch up"),
-            ("30", "30 minutes"),
-            ("120", "2 hours"),
-            ("720", "12 hours"),
-            ("1440", "24 hours"),
+            ("0", "automations-do-not-catch-up"),
+            ("30", "automations-30-minutes"),
+            ("120", "automations-2-hours"),
+            ("720", "automations-12-hours"),
+            ("1440", "automations-24-hours"),
         ]);
         let grace = grace_options
             .iter()
             .find(|(id, _)| *id == draft.missed_run_grace_minutes.to_string())
             .map(|(_, label)| label.clone())
-            .unwrap_or_else(|| format!("{} minutes", draft.missed_run_grace_minutes));
+            .unwrap_or_else(|| {
+                crate::i18n::format(
+                    "automations-minutes",
+                    &[(
+                        "value",
+                        crate::system_format::integer(draft.missed_run_grace_minutes),
+                    )],
+                )
+            });
         let advanced = div()
             .rounded(px(6.))
             .border_1()
@@ -958,7 +1094,7 @@ impl Automations {
                 div()
                     .id("automation-advanced")
                     .role(Role::Button)
-                    .aria_label("Advanced")
+                    .aria_label(crate::i18n::text("automations-advanced"))
                     .min_h(px(56.))
                     .px(px(16.))
                     .flex()
@@ -974,14 +1110,11 @@ impl Automations {
                                 div()
                                     .text_size(px(13.))
                                     .text_color(content(0.75))
-                                    .child("Advanced"),
+                                    .child(crate::i18n::text("automations-advanced")),
                             )
-                            .child(
-                                div()
-                                    .text_size(px(11.))
-                                    .text_color(content(0.4))
-                                    .child("Catch-up window for missed runs"),
-                            ),
+                            .child(div().text_size(px(11.)).text_color(content(0.4)).child(
+                                crate::i18n::text("automations-catch-up-window-for-missed-runs"),
+                            )),
                     )
                     .child(icon(
                         if self.advanced {
@@ -998,8 +1131,8 @@ impl Automations {
             )
             .when(self.advanced, |d| {
                 d.child(settings_row(
-                    "Missed-run grace",
-                    "Catch up if a scheduled run was missed",
+                    crate::i18n::text("automations-missed-run-grace"),
+                    crate::i18n::text("automations-catch-up-if-a-scheduled-run-was-missed"),
                     self.select_control(
                         "automation-grace",
                         grace,
@@ -1047,7 +1180,9 @@ impl Automations {
                     .text_center()
                     .text_size(px(12.))
                     .text_color(content(0.4))
-                    .child("This automation has not run yet."),
+                    .child(crate::i18n::text(
+                        "automations-this-automation-has-not-run-yet",
+                    )),
             );
         } else {
             table = table.child(
@@ -1059,17 +1194,34 @@ impl Automations {
                     .gap(px(16.))
                     .text_size(px(11.))
                     .text_color(content(0.4))
-                    .child(div().flex_1().child("Trigger"))
-                    .child(div().w(px(152.)).child("Triggered"))
-                    .child(div().w(px(108.)).child("Status"))
-                    .child(div().w(px(56.)).text_right().child("Duration")),
+                    .child(
+                        div()
+                            .flex_1()
+                            .child(crate::i18n::text("automations-trigger")),
+                    )
+                    .child(
+                        div()
+                            .w(px(152.))
+                            .child(crate::i18n::text("automations-triggered")),
+                    )
+                    .child(
+                        div()
+                            .w(px(108.))
+                            .child(crate::i18n::text("automations-status")),
+                    )
+                    .child(
+                        div()
+                            .w(px(56.))
+                            .text_right()
+                            .child(crate::i18n::text("automations-duration")),
+                    ),
             );
             for (index, run) in self.runs.iter().take(100).enumerate() {
                 let session = run.session_id.clone();
                 let trigger = if run.trigger == "manual" {
-                    "Test run".into()
+                    crate::i18n::text("automations-test-run")
                 } else if run.trigger == "event" {
-                    automations::event_label(
+                    event_label(
                         run.event_kind.as_deref().unwrap_or(""),
                         run.event.as_deref().unwrap_or(""),
                     )
@@ -1078,43 +1230,58 @@ impl Automations {
                         .as_ref()
                         .and_then(|e| e.draft.triggers.as_ref())
                         .and_then(|ts| ts.iter().find(|t| t.kind == "time"))
-                        .map(|t| format!("Scheduled · {}", t.label()))
-                        .unwrap_or_else(|| "Scheduled".into())
+                        .map(|t| {
+                            crate::i18n::format(
+                                "automations-scheduled",
+                                &[("name", trigger_label(t))],
+                            )
+                        })
+                        .unwrap_or_else(|| crate::i18n::text("automations-scheduled-2"))
                 };
-                let (label, color, fill): (&str, gpui::Hsla, gpui::Hsla) = match run.status.as_str()
-                {
-                    "succeeded" => (
-                        "Succeeded",
-                        rgb(0x34d399).into(),
-                        rgb(0x10b981).alpha(0.12).into(),
-                    ),
-                    "failed" => (
-                        "Failed",
-                        rgb(0xfb7185).into(),
-                        rgb(0xf43f5e).alpha(0.12).into(),
-                    ),
-                    "skipped" => (
-                        "Skipped",
-                        rgb(0xfbbf24).into(),
-                        rgb(0xf59e0b).alpha(0.12).into(),
-                    ),
-                    "cancelled" => ("Cancelled", content(0.5), content(0.08)),
-                    "running" => (
-                        "Running",
-                        rgb(0x60a5fa).into(),
-                        rgb(0x3b82f6).alpha(0.12).into(),
-                    ),
-                    _ => (
-                        "Pending",
-                        rgb(0x60a5fa).into(),
-                        rgb(0x3b82f6).alpha(0.12).into(),
-                    ),
-                };
+                let (label, color, fill): (String, gpui::Hsla, gpui::Hsla) =
+                    match run.status.as_str() {
+                        "succeeded" => (
+                            crate::i18n::text("automations-succeeded"),
+                            rgb(0x34d399).into(),
+                            rgb(0x10b981).alpha(0.12).into(),
+                        ),
+                        "failed" => (
+                            crate::i18n::text("automations-failed"),
+                            rgb(0xfb7185).into(),
+                            rgb(0xf43f5e).alpha(0.12).into(),
+                        ),
+                        "skipped" => (
+                            crate::i18n::text("automations-skipped"),
+                            rgb(0xfbbf24).into(),
+                            rgb(0xf59e0b).alpha(0.12).into(),
+                        ),
+                        "cancelled" => (
+                            crate::i18n::text("automations-cancelled"),
+                            content(0.5),
+                            content(0.08),
+                        ),
+                        "running" => (
+                            crate::i18n::text("automations-running"),
+                            rgb(0x60a5fa).into(),
+                            rgb(0x3b82f6).alpha(0.12).into(),
+                        ),
+                        _ => (
+                            crate::i18n::text("automations-pending"),
+                            rgb(0x60a5fa).into(),
+                            rgb(0x3b82f6).alpha(0.12).into(),
+                        ),
+                    };
                 table = table.child(
                     div()
                         .id(("automation-run", index))
                         .role(Role::Button)
-                        .aria_label(format!("{trigger}, {label}"))
+                        .aria_label(crate::i18n::format(
+                            "automations-trigger-label",
+                            &[
+                                ("trigger", trigger.to_string()),
+                                ("label", label.to_string()),
+                            ],
+                        ))
                         .h(px(44.))
                         .px(px(16.))
                         .border_t_1()
@@ -1206,7 +1373,7 @@ impl Automations {
                     .px(px(32.))
                     .pt(px(20.))
                     .pb(px(40.))
-                    .child(section("Run history"))
+                    .child(section(crate::i18n::text("automations-run-history")))
                     .child(table),
             )
             .into_any_element()
@@ -1224,12 +1391,12 @@ fn control_label(
         .map(|(_, l)| l)
         .unwrap_or(value);
     match label.as_str() {
-        "low" => "Low".into(),
-        "medium" => "Medium".into(),
-        "high" => "High".into(),
-        "xhigh" => "Extra high".into(),
-        "minimal" => "Minimal".into(),
-        "none" => "None".into(),
+        "low" => crate::i18n::text("automations-low"),
+        "medium" => crate::i18n::text("automations-medium"),
+        "high" => crate::i18n::text("automations-high"),
+        "xhigh" => crate::i18n::text("automations-extra-high"),
+        "minimal" => crate::i18n::text("automations-minimal"),
+        "none" => crate::i18n::text("automations-none"),
         _ => label.clone(),
     }
 }
@@ -1280,7 +1447,7 @@ fn next_run_preview(timestamp: i64) -> String {
         .single()
         .filter(|_| timestamp > 0)
     else {
-        return "Next run —".into();
+        return crate::i18n::text("automations-next-run-2");
     };
     let mut zone = gmt_offset();
     #[cfg(unix)]
@@ -1299,7 +1466,21 @@ fn next_run_preview(timestamp: i64) -> String {
             }
         }
     }
-    format!("Next run {} {zone}", date.format("%a %-d %b, %H:%M"))
+    crate::i18n::format(
+        "automations-next-run",
+        &[
+            (
+                "value",
+                (crate::system_format::date(
+                    date.timestamp_millis(),
+                    "MMMEdjm",
+                    "%a %-d %b, %H:%M",
+                ))
+                .to_string(),
+            ),
+            ("zone", (zone).to_string()),
+        ],
+    )
 }
 fn at(timestamp: i64) -> String {
     if timestamp <= 0 {
@@ -1308,7 +1489,7 @@ fn at(timestamp: i64) -> String {
     Local
         .timestamp_millis_opt(timestamp)
         .single()
-        .map(|d| d.format("%-d %b, %H:%M").to_string())
+        .map(|d| crate::system_format::date(d.timestamp_millis(), "MMMdjm", "%-d %b, %H:%M"))
         .unwrap_or_else(|| "—".into())
 }
 fn duration(run: &AutomationRun) -> String {
@@ -1327,12 +1508,104 @@ fn duration(run: &AutomationRun) -> String {
     }
     let minutes = end.saturating_sub(start) / 60_000;
     if minutes < 1 {
-        "< 1m".into()
+        crate::i18n::text("automations-less-than-minute")
     } else if minutes < 60 {
-        format!("{minutes}m")
+        crate::i18n::format(
+            "automations-m",
+            &[("minutes", crate::system_format::unsigned(minutes as u64))],
+        )
     } else if minutes % 60 == 0 {
-        format!("{}h", minutes / 60)
+        crate::i18n::format(
+            "automations-h",
+            &[("value", crate::system_format::integer(minutes / 60))],
+        )
     } else {
-        format!("{}h {}m", minutes / 60, minutes % 60)
+        crate::i18n::format(
+            "duration-hours-minutes",
+            &[
+                (
+                    "whole",
+                    crate::system_format::unsigned((minutes / 60) as u64),
+                ),
+                (
+                    "rest",
+                    crate::system_format::unsigned((minutes % 60) as u64),
+                ),
+            ],
+        )
     }
+}
+
+#[cfg(test)]
+mod i18n_tests {
+    use super::*;
+
+    #[test]
+    fn schedule_captions_preserve_machine_values_and_time_semantics() {
+        let mut trigger: AutomationTrigger = serde_json::from_value(
+            serde_json::json!({"kind":"time", "scheduleKind":"daily", "time":"09:30"}),
+        )
+        .unwrap();
+        let before = serde_json::to_value(&trigger).unwrap();
+        assert_eq!(
+            trigger_label(&trigger),
+            format!("Daily at {}", crate::system_format::wall_time("09:30"))
+        );
+        assert_eq!(serde_json::to_value(&trigger).unwrap(), before);
+        trigger.schedule_kind = "hourly".into();
+        trigger.minute = 5;
+        assert_eq!(
+            trigger_label(&trigger),
+            format!(
+                "Hourly at minute {}",
+                crate::system_format::padded_unsigned(5, 2)
+            )
+        );
+        trigger.schedule_kind = "weekly".into();
+        trigger.day_of_week = 1;
+        assert_eq!(
+            trigger_label(&trigger),
+            format!(
+                "{} at {}",
+                crate::system_format::weekday(1),
+                crate::system_format::wall_time("09:30")
+            )
+        );
+        assert_eq!(event_label("jira", "issue_created"), "Issue appeared");
+        assert_eq!(event_label("custom", "custom-event"), "custom-event");
+    }
+}
+
+#[gpui::test]
+fn closed_time_control_does_not_generate_options(cx: &mut gpui::TestAppContext) {
+    use std::{cell::Cell, rc::Rc};
+    let service = Arc::new(Mutex::new(
+        Service::open(std::path::Path::new(":memory:")).unwrap(),
+    ));
+    let view = cx.new(|cx| Automations::new(service, String::new(), Vec::new(), cx));
+    let calls = Rc::new(Cell::new(0));
+    let count = calls.clone();
+    view.update(cx, |view, cx| {
+        let _closed = view.select_control_lazy(
+            "time-test",
+            crate::system_format::wall_time("09:00"),
+            Choice::Time("test".into()),
+            move || {
+                count.set(count.get() + 1);
+                time_options("09:00")
+            },
+            cx,
+        );
+    });
+    assert_eq!(
+        calls.get(),
+        0,
+        "constructing a closed control must not evaluate its option factory"
+    );
+    let opened = time_options("09:00");
+    assert_eq!(opened.len(), 48);
+    assert_eq!(opened[18].0, "09:00");
+    let custom = time_options("09:17");
+    assert_eq!(custom.len(), 49);
+    assert_eq!(custom[0].0, "09:17");
 }

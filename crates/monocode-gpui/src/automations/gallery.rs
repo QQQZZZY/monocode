@@ -3,18 +3,18 @@ use super::*;
 impl Automations {
     pub(super) fn render_gallery(&self, cx: &mut Context<Self>) -> AnyElement {
         let categories = [
-            ("popular", "Popular"),
-            ("review", "Code Review"),
-            ("security", "Security"),
-            ("incidents", "Incidents & Triage"),
-            ("research", "Data & Research"),
-            ("environment", "Environment"),
+            ("popular", "automations-popular"),
+            ("review", "automations-code-review"),
+            ("security", "automations-security"),
+            ("incidents", "automations-incidents-triage"),
+            ("research", "automations-data-research"),
+            ("environment", "automations-environment"),
         ];
         let mut cards = vec![
             div()
                 .id("automation-scratch")
                 .role(Role::Button)
-                .aria_label("Start from scratch")
+                .aria_label(crate::i18n::text("automations-start-from-scratch"))
                 .min_h(px(148.))
                 .p(px(16.))
                 .rounded(px(12.))
@@ -49,14 +49,13 @@ impl Automations {
                                     div()
                                         .text_size(px(13.))
                                         .font_weight(gpui::FontWeight::MEDIUM)
-                                        .child("Start from scratch"),
+                                        .child(crate::i18n::text("automations-start-from-scratch")),
                                 )
-                                .child(
-                                    div()
-                                        .text_size(px(12.))
-                                        .text_color(content(0.5))
-                                        .child("Write your own instructions and choose a trigger."),
-                                ),
+                                .child(div().text_size(px(12.)).text_color(content(0.5)).child(
+                                    crate::i18n::text(
+                                        "automations-write-your-own-instructions-and-choose",
+                                    ),
+                                )),
                         ),
                 )
                 .on_click(cx.listener(|this, _, _, cx| this.begin(None, cx)))
@@ -144,7 +143,7 @@ impl Automations {
                                 template.trigger["kind"].as_str().unwrap_or("time"),
                                 12.,
                             ))
-                            .child(template.trigger_label.clone()),
+                            .child(template.display_trigger_label()),
                     )
                     .on_click(
                         cx.listener(move |this, _, _, cx| this.begin(Some(selected.clone()), cx)),
@@ -182,14 +181,16 @@ impl Automations {
                         div()
                             .text_size(px(20.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child("New automation"),
+                            .child(crate::i18n::text("automations-new-automation")),
                     )
                     .child(
                         div()
                             .mt(px(6.))
                             .text_size(px(13.))
                             .text_color(content(0.5))
-                            .child("Pick an example or start from scratch."),
+                            .child(crate::i18n::text(
+                                "automations-pick-an-example-or-start-from",
+                            )),
                     )
                     .child(
                         div()
@@ -199,11 +200,12 @@ impl Automations {
                             .flex_wrap()
                             .gap(px(6.))
                             .children(categories.map(|(id, label)| {
+                                let label = crate::i18n::text(label);
                                 let selected = self.category == id;
                                 div()
                                     .id(SharedString::from(format!("automation-category-{id}")))
                                     .role(Role::Tab)
-                                    .aria_label(label)
+                                    .aria_label(label.clone())
                                     .h(px(28.))
                                     .px(px(12.))
                                     .rounded_full()

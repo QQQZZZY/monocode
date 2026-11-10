@@ -187,9 +187,15 @@ pub(crate) fn summary(tools: &[ToolCall], live: bool) -> (String, &'static str) 
     if failed_agents > 0 {
         return (
             if failed_agents == 1 {
-                "Subagent failed".into()
+                crate::i18n::text("activity-subagent-failed")
             } else {
-                format!("{failed_agents} subagents failed")
+                crate::i18n::format(
+                    "activity-subagents-failed",
+                    &[(
+                        "failed_agents",
+                        crate::system_format::unsigned(failed_agents as u64),
+                    )],
+                )
             },
             "bot",
         );
@@ -205,79 +211,94 @@ pub(crate) fn summary(tools: &[ToolCall], live: bool) -> (String, &'static str) 
                 .unwrap_or("")
                 .to_owned()
         } else {
-            format!("{} files", paths.len())
+            crate::i18n::format(
+                "activity-files",
+                &[("count", crate::system_format::unsigned(paths.len() as u64))],
+            )
         }
     };
     let title = order
         .iter()
         .map(|kind| {
             let live = *kind == current;
-            match *kind {
-                "research" if searches > 0 && !reads.is_empty() => if live {
-                    "Exploring the project"
-                } else {
-                    "Explored the project"
+            let (key, target) = match *kind {
+                "research" if searches > 0 && !reads.is_empty() => (
+                    if live {
+                        "activity-exploring-the-project"
+                    } else {
+                        "activity-explored-the-project"
+                    },
+                    String::new(),
+                ),
+                "research" if !reads.is_empty() => (
+                    if live {
+                        "activity-reading-target"
+                    } else {
+                        "activity-read-target"
+                    },
+                    file_label(&reads),
+                ),
+                "research" => (
+                    if live {
+                        "activity-searching-the-project"
+                    } else {
+                        "activity-searched-the-project"
+                    },
+                    String::new(),
+                ),
+                "edit" => (
+                    if live {
+                        "activity-editing-target"
+                    } else {
+                        "activity-edited-target"
+                    },
+                    file_label(&edits),
+                ),
+                "visual" if charts == 0 => (
+                    if live {
+                        "activity-planning-a-chart"
+                    } else {
+                        "activity-planned-a-chart"
+                    },
+                    String::new(),
+                ),
+                kind => {
+                    let (count, one, many, variable) = match kind {
+                        "visual" => (charts, "activity-a-chart", "activity-charts", "charts"),
+                        "agent" => (
+                            agents,
+                            "activity-a-subagent",
+                            "activity-subagents",
+                            "agents",
+                        ),
+                        "run" => (
+                            commands,
+                            "activity-a-command",
+                            "activity-commands",
+                            "commands",
+                        ),
+                        _ => (others, "activity-a-tool", "activity-tools", "others"),
+                    };
+                    let target = if count == 1 {
+                        crate::i18n::text(one)
+                    } else {
+                        crate::i18n::format(
+                            many,
+                            &[(variable, crate::system_format::unsigned(count as u64))],
+                        )
+                    };
+                    (
+                        match (kind, live) {
+                            ("visual", true) => "activity-drawing-target",
+                            ("visual", false) => "activity-drew-target",
+                            (_, true) => "activity-running-target",
+                            (_, false) => "activity-ran-target",
+                        },
+                        target,
+                    )
                 }
-                .into(),
-                "research" if !reads.is_empty() => format!(
-                    "{} {}",
-                    if live { "Reading" } else { "Read" },
-                    file_label(&reads)
-                ),
-                "research" => if live {
-                    "Searching the project"
-                } else {
-                    "Searched the project"
-                }
-                .into(),
-                "edit" => format!(
-                    "{} {}",
-                    if live { "Editing" } else { "Edited" },
-                    file_label(&edits)
-                ),
-                "run" => format!(
-                    "{} {}",
-                    if live { "Running" } else { "Ran" },
-                    if commands == 1 {
-                        "a command".into()
-                    } else {
-                        format!("{commands} commands")
-                    }
-                ),
-                "visual" if charts == 0 => if live {
-                    "Planning a chart"
-                } else {
-                    "Planned a chart"
-                }
-                .into(),
-                "visual" => format!(
-                    "{} {}",
-                    if live { "Drawing" } else { "Drew" },
-                    if charts == 1 {
-                        "a chart".into()
-                    } else {
-                        format!("{charts} charts")
-                    }
-                ),
-                "agent" => format!(
-                    "{} {}",
-                    if live { "Running" } else { "Ran" },
-                    if agents == 1 {
-                        "a subagent".into()
-                    } else {
-                        format!("{agents} subagents")
-                    }
-                ),
-                _ => format!(
-                    "{} {}",
-                    if live { "Running" } else { "Ran" },
-                    if others == 1 {
-                        "a tool".into()
-                    } else {
-                        format!("{others} tools")
-                    }
-                ),
-            }
+            };
+            crate::i18n::format(key, &[("target", target)])
         })
         .collect::<Vec<String>>()
         .join(" · ");

@@ -27,14 +27,22 @@ pub(crate) fn rows(snapshot: Option<&Snapshot>) -> Vec<ResetRow> {
                 .title
                 .clone()
                 .filter(|s| !s.trim().is_empty())
-                .unwrap_or_else(|| format!("Banked reset {}", i + 1)),
+                .unwrap_or_else(|| {
+                    crate::i18n::format(
+                        "accounts-banked-reset",
+                        &[("value", crate::system_format::unsigned((i + 1) as u64))],
+                    )
+                }),
         })
         .collect();
     for i in rows.len()..credits.available_count as usize {
         rows.push(ResetRow {
             key: format!("unlisted:{i}"),
             credit: None,
-            title: format!("Banked reset {}", i + 1),
+            title: crate::i18n::format(
+                "accounts-banked-reset",
+                &[("value", crate::system_format::unsigned((i + 1) as u64))],
+            ),
         });
     }
     rows
@@ -50,16 +58,16 @@ impl ResetAction {
     pub(crate) fn applying(&self) -> bool {
         self.result.is_none()
     }
-    pub(crate) fn message(&self) -> Option<&str> {
+    pub(crate) fn message(&self) -> Option<String> {
         Some(match self.result.as_ref()? {
             Ok(outcome) => match outcome.as_str() {
-                "reset" => "Codex usage was reset.",
-                "nothingToReset" => "There’s no active usage to reset.",
-                "noCredit" => "No banked resets are available.",
-                "alreadyRedeemed" => "That reset was already used.",
-                _ => "Codex returned an unknown reset result.",
+                "reset" => crate::i18n::text("accounts-codex-usage-was-reset"),
+                "nothingToReset" => crate::i18n::text("accounts-there-s-no-active-usage-to-reset"),
+                "noCredit" => crate::i18n::text("accounts-no-banked-resets-are-available"),
+                "alreadyRedeemed" => crate::i18n::text("accounts-that-reset-was-already-used"),
+                _ => crate::i18n::text("accounts-codex-returned-an-unknown-reset-result"),
             },
-            Err(error) => error,
+            Err(error) => error.clone(),
         })
     }
 }
@@ -294,13 +302,13 @@ mod tests {
                 1
             );
             assert_eq!(
-                accounts.reset_actions[&key].message(),
+                accounts.reset_actions[&key].message().as_deref(),
                 Some("Codex usage was reset.")
             );
             assert!(accounts.reset_actions[&key].row.is_none());
             let other = Key::new(Kind::Codex, accounts.profile("other"), None);
             assert_eq!(
-                accounts.reset_actions[&other].message(),
+                accounts.reset_actions[&other].message().as_deref(),
                 Some("There’s no active usage to reset.")
             );
             assert!(!accounts.usage[&key].fetching);
@@ -342,7 +350,7 @@ mod tests {
         center.update(cx, |accounts, cx| {
             assert_eq!(rows(accounts.usage[&key].snapshot.as_ref()).len(), 2);
             assert_eq!(
-                accounts.reset_actions[&key].message(),
+                accounts.reset_actions[&key].message().as_deref(),
                 Some("Network unavailable")
             );
             assert!(!accounts.reset_actions[&key].applying());
