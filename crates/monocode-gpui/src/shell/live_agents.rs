@@ -24,21 +24,42 @@ struct LiveAgent {
 fn live_elapsed(ms: u64) -> String {
     let seconds = ((ms + 500) / 1000).max(1);
     if seconds < 60 {
-        return format!("{seconds}s");
+        return crate::i18n::format(
+            "shell-s",
+            &[("seconds", crate::system_format::unsigned(seconds))],
+        );
     }
     let (minutes, rest) = (seconds / 60, seconds % 60);
     if minutes < 60 {
         return if rest > 0 {
-            format!("{minutes}m {rest}s")
+            crate::i18n::format(
+                "duration-minutes-seconds",
+                &[
+                    ("whole", crate::system_format::unsigned(minutes)),
+                    ("rest", crate::system_format::unsigned(rest)),
+                ],
+            )
         } else {
-            format!("{minutes}m")
+            crate::i18n::format(
+                "shell-m",
+                &[("minutes", crate::system_format::unsigned(minutes))],
+            )
         };
     }
     let (hours, rest) = (minutes / 60, minutes % 60);
     if rest > 0 {
-        format!("{hours}h {rest}m")
+        crate::i18n::format(
+            "duration-hours-minutes",
+            &[
+                ("whole", crate::system_format::unsigned(hours)),
+                ("rest", crate::system_format::unsigned(rest)),
+            ],
+        )
     } else {
-        format!("{hours}h")
+        crate::i18n::format(
+            "shell-h",
+            &[("hours", crate::system_format::unsigned(hours))],
+        )
     }
 }
 
@@ -69,13 +90,13 @@ impl Shell {
                     id: *id,
                     cwd: view.summary.cwd.clone(),
                     provider: view.summary.provider.clone(),
-                    title: view.display_title(),
+                    title: view.localized_title(),
                     activity: if needs_approval {
-                        "Need approval".into()
+                        crate::i18n::text("shell-need-approval")
                     } else if done {
-                        "Done".into()
+                        crate::i18n::text("shell-done")
                     } else {
-                        tool.unwrap_or_else(|| "Working".into())
+                        tool.unwrap_or_else(|| crate::i18n::text("shell-working"))
                     },
                     started_at,
                     duration_ms: duration_ms.filter(|_| done),
@@ -150,7 +171,10 @@ impl Shell {
                 .id("live-agents")
                 .debug_selector(|| "sidebar-activity-card".into())
                 .role(Role::Group)
-                .aria_label(format!("{count} working agents"))
+                .aria_label(crate::i18n::format(
+                    "shell-working-agents",
+                    &[("count", crate::system_format::unsigned(count as u64))],
+                ))
                 .flex_shrink_0()
                 .px_2()
                 .when(self.workspace.boxy_layout(), |d| d.pb_2())
@@ -184,13 +208,13 @@ impl Shell {
                                         .truncate()
                                         .text_size(px(12.))
                                         .text_color(content(0.5))
-                                        .child("Working"),
+                                        .child(crate::i18n::text("shell-working")),
                                 )
                                 .child(
                                     div()
                                         .text_size(px(11.))
                                         .text_color(content(0.4))
-                                        .child(count.to_string()),
+                                        .child(crate::system_format::unsigned(count as u64)),
                                 ),
                         )
                         .child(
@@ -237,9 +261,15 @@ impl Shell {
                                         }),
                                     )
                                     .child(if expanded {
-                                        "Show less".to_owned()
+                                        crate::i18n::text("shell-show-less").to_owned()
                                     } else {
-                                        format!("{extra} more")
+                                        crate::i18n::format(
+                                            "shell-more",
+                                            &[(
+                                                "extra",
+                                                crate::system_format::unsigned(extra as u64),
+                                            )],
+                                        )
                                     })
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.live_agents_expanded = !this.live_agents_expanded;

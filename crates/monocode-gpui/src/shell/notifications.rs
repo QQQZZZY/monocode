@@ -399,7 +399,7 @@ impl Shell {
                 let chat = view.read(cx);
                 SessionInputs {
                     session_id: chat.summary.id.to_string(),
-                    title: chat.display_title().to_owned(),
+                    title: chat.localized_title(),
                     provider: chat.summary.provider.clone(),
                     harness: Kind::from_id(&chat.summary.provider).label().to_owned(),
                     pending: chat.pending_notification_inputs(cx),
@@ -427,7 +427,7 @@ impl Shell {
             {
                 let summary = view.read(cx).summary.clone();
                 let body = if input.kind == approvals::InputKind::Approval {
-                    format!("Approve: {}", input.label)
+                    crate::i18n::format("shell-approve", &[("value", (input.label).to_string())])
                 } else {
                     input.label
                 };
@@ -507,7 +507,7 @@ impl Shell {
             let mono_visible = self.mono_active(cx) && self.notice_session_visible(id, cx);
             snapshots.push(SessionInputs {
                 session_id: id.to_string(),
-                title: chat.display_title().to_owned(),
+                title: chat.localized_title(),
                 provider: chat.summary.provider.clone(),
                 harness: Kind::from_id(&chat.summary.provider).label().to_owned(),
                 pending: chat.pending_notification_inputs(cx),
@@ -633,7 +633,7 @@ impl Shell {
                     session_id: id,
                     due_at,
                 },
-                &summary.title,
+                &crate::i18n::session_title(&summary.title, &summary.provider),
                 None,
                 cx,
             );
@@ -675,16 +675,19 @@ impl Shell {
         }
         self.notification_state.sequence = self.notification_state.sequence.wrapping_add(1);
         let body = if body.trim().is_empty() && category == "agentFinished" {
-            format!("{} finished", Kind::from_id(&summary.provider).label())
+            crate::i18n::format(
+                "notice-agent-finished",
+                &[("agent", Kind::from_id(&summary.provider).label().to_owned())],
+            )
         } else {
             body.to_owned()
         };
         let receiver = platform::show(platform::Notification {
             tag: target.tag(self.notification_state.sequence),
             subtitle: if category == "reminders" {
-                "Session reminder".into()
+                crate::i18n::text("shell-session-reminder")
             } else {
-                summary.title.clone()
+                crate::i18n::session_title(&summary.title, &summary.provider)
             },
             body: delivery::clip_body(&body),
             sound: prefs.sounds,
@@ -961,23 +964,31 @@ impl Shell {
                 stack.child(errors::card(
                     "app-error",
                     message,
-                    icon_button("dismiss-error", "Dismiss error", "close")
-                        .debug_selector(|| "dismiss-error".into())
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.error = None;
-                            cx.notify();
-                        })),
+                    icon_button(
+                        "dismiss-error",
+                        crate::i18n::text("shell-dismiss-error"),
+                        "close",
+                    )
+                    .debug_selector(|| "dismiss-error".into())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.error = None;
+                        cx.notify();
+                    })),
                 ))
             })
             .when_some(mono_error, |stack, (monos, message)| {
                 stack.child(errors::card(
                     "mono-error",
                     message,
-                    icon_button("mono-error-close", "Dismiss Mono error", "close")
-                        .debug_selector(|| "mono-error-close".into())
-                        .on_click(cx.listener(move |_, _, _, cx| {
-                            monos.update(cx, |monos, cx| monos.dismiss_error(cx));
-                        })),
+                    icon_button(
+                        "mono-error-close",
+                        crate::i18n::text("shell-dismiss-mono-error"),
+                        "close",
+                    )
+                    .debug_selector(|| "mono-error-close".into())
+                    .on_click(cx.listener(move |_, _, _, cx| {
+                        monos.update(cx, |monos, cx| monos.dismiss_error(cx));
+                    })),
                 ))
             })
             .when(state.file_error.read(cx).is_visible(), |stack| {
@@ -1332,9 +1343,18 @@ impl Shell {
                     let prompt = this.update_in(cx, |_, window, cx| {
                         window.prompt(
                             gpui::PromptLevel::Warning,
-                            "Delete this conversation permanently?",
-                            Some("Its messages and saved settings will be removed."),
-                            &["Delete", "Cancel"],
+                            crate::i18n::text("shell-prompt-delete-this-conversation-permanently")
+                                .as_str(),
+                            Some(
+                                crate::i18n::text(
+                                    "shell-prompt-its-messages-and-saved-settings-will",
+                                )
+                                .as_str(),
+                            ),
+                            &[
+                                crate::i18n::text("shell-prompt-delete").as_str(),
+                                crate::i18n::text("shell-prompt-cancel").as_str(),
+                            ],
                             cx,
                         )
                     });

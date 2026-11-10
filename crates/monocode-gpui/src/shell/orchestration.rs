@@ -70,7 +70,9 @@ impl Shell {
             .clone()
             .unwrap_or_else(|| conversation.summary.cwd.clone());
         if self.orchestrations.values().any(|run| run.cwd == cwd) {
-            self.error = Some("An orchestration is already using this checkout.".into());
+            self.error = Some(crate::i18n::text(
+                "conversation-orchestration-checkout-in-use",
+            ));
             cx.notify();
             return;
         }

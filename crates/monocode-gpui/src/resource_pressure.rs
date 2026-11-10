@@ -154,7 +154,13 @@ impl ResourceMonitor {
         self.pressure
             .reasons
             .iter()
-            .map(|r| r.label())
+            .map(|r| {
+                crate::i18n::text(match r {
+                    resources::Reason::Cpu => "resource-pressure-high-cpu",
+                    resources::Reason::Memory => "resource-pressure-low-memory",
+                    resources::Reason::Stalls => "resource-pressure-slow-response",
+                })
+            })
             .collect::<Vec<_>>()
             .join(" · ")
     }
@@ -263,7 +269,7 @@ impl ResourceMonitor {
         }
         let busy = self.stopping.is_some();
         let list_height = 320f32.min(window.viewport_size().height.as_f32() * 0.45);
-        let error_line = |id: &'static str, text: &'static str| {
+        let error_line = |id: &'static str, text: String| {
             div()
                 .id(id)
                 .role(Role::Alert)
@@ -276,7 +282,7 @@ impl ResourceMonitor {
             .id("resource-dialog")
             .debug_selector(|| "resource-dialog".into())
             .role(Role::Dialog)
-            .aria_label("Running work")
+            .aria_label(crate::i18n::text("resource-pressure-running-work"))
             .track_focus(&self.dialog)
             .relative()
             .flex()
@@ -307,10 +313,10 @@ impl ResourceMonitor {
                             .text_size(px(16.))
                             .line_height(px(20.))
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child("Running work"),
+                            .child(crate::i18n::text("resource-pressure-running-work")),
                     )
                     .child(
-                        icon_button("close-running-work", "Close", "close")
+                        icon_button("close-running-work", crate::i18n::text("resource-pressure-close"), "close")
                             .size(px(28.))
                             .on_click(cx.listener(|this, _, window, cx| this.close(window, cx))),
                     ),
@@ -344,7 +350,7 @@ impl ResourceMonitor {
                                     .child(div().font_weight(FontWeight::MEDIUM).child(if active {
                                         reasons
                                     } else {
-                                        "Usage is back to normal".into()
+                                        crate::i18n::text("resource-pressure-usage-is-back-to-normal")
                                     }))
                                     .child(
                                         div()
@@ -352,9 +358,9 @@ impl ResourceMonitor {
                                             .line_height(px(19.5))
                                             .text_color(content(0.55))
                                             .child(if active {
-                                                "Things may feel slower. Stop work you no longer need."
+                                                crate::i18n::text("resource-pressure-things-may-feel-slower-stop-work-you-no-longer-need")
                                             } else {
-                                                "The slowdown has cleared. You can close this window."
+                                                crate::i18n::text("resource-pressure-the-slowdown-has-cleared-you-can-close-this-window")
                                             }),
                                     ),
                             ),
@@ -362,13 +368,13 @@ impl ResourceMonitor {
                     .when(self.error.is_some(), |d| {
                         d.child(error_line(
                             "resource-load-error",
-                            "Couldn't load running work. Trying again…",
+                            crate::i18n::text("resource-pressure-couldn-t-load-running-work-trying-again"),
                         ))
                     })
                     .when(self.stop_error.is_some(), |d| {
                         d.child(error_line(
                             "resource-stop-error",
-                            "Couldn't stop this work. Please try again.",
+                            crate::i18n::text("resource-pressure-couldn-t-stop-this-work-please-try-again"),
                         ))
                     })
                     .when(self.loading && self.processes.is_empty(), |d| {
@@ -384,7 +390,7 @@ impl ResourceMonitor {
                                 .text_size(px(12.))
                                 .text_color(content(0.5))
                                 .child(spinner("resource-loading", "loader", 14.))
-                                .child("Checking running work…"),
+                                .child(crate::i18n::text("resource-pressure-checking-running-work")),
                         )
                     })
                     .when(
@@ -398,9 +404,9 @@ impl ResourceMonitor {
                                     .line_height(px(19.5))
                                     .text_color(content(0.5))
                                     .child(if active {
-                                        "No running work found in MonoCode. Other apps may be using these resources."
+                                        crate::i18n::text("resource-pressure-no-running-work-found-in-monocode-other-apps-may-be-using")
                                     } else {
-                                        "No running work found in MonoCode."
+                                        crate::i18n::text("resource-pressure-no-running-work-found-in-monocode")
                                     }),
                             )
                         },
@@ -421,16 +427,13 @@ impl ResourceMonitor {
                                 .text_size(px(11.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(content(0.45))
-                                .child(format!(
-                                    "{count} {} running",
-                                    if count == 1 { "session" } else { "sessions" }
-                                )),
+                                .child(crate::i18n::format("resource-pressure-sessions-running", &[("count", crate::system_format::unsigned((count) as u64)), ("value1", (if count == 1 { crate::i18n::text("resource-pressure-sessions-running-session") } else { crate::i18n::text("resource-pressure-sessions-running-sessions") }).to_string())])),
                         )
                         .child(
                             div()
                                 .id("running-sessions")
                                 .role(Role::List)
-                                .aria_label("Running sessions")
+                                .aria_label(crate::i18n::text("resource-pressure-running-sessions"))
                                 .max_h(px(list_height))
                                 .overflow_y_scroll()
                                 .track_scroll(&self.scroll)
@@ -444,7 +447,7 @@ impl ResourceMonitor {
                                 .border_color(content(0.07))
                                 .text_size(px(11.))
                                 .text_color(content(0.4))
-                                .child("Stopping work keeps your conversations saved."),
+                                .child(crate::i18n::text("resource-pressure-stopping-work-keeps-your-conversations-saved")),
                         )
                     }),
             )
@@ -462,7 +465,7 @@ impl ResourceMonitor {
     ) -> AnyElement {
         let title: SharedString = session
             .map(|s| s.title.clone())
-            .unwrap_or_else(|| "Background work".into());
+            .unwrap_or_else(|| crate::i18n::text("resource-pressure-background-work").into());
         let memory: u64 = rows.iter().map(|r| r.memory_bytes).sum();
         let expanded = self.expanded.contains(&id);
         let stopping_session = self.stopping.as_deref() == Some(&format!("session:{id}"));
@@ -503,7 +506,10 @@ impl ResourceMonitor {
                             div()
                                 .id(("stop-session", id as u64))
                                 .role(Role::Button)
-                                .aria_label(format!("Stop session {title}"))
+                                .aria_label(crate::i18n::format(
+                                    "resource-pressure-stop-session",
+                                    &[("title", title.to_string())],
+                                ))
                                 .h(px(28.))
                                 .flex_shrink_0()
                                 .flex()
@@ -533,9 +539,9 @@ impl ResourceMonitor {
                                     ))
                                 })
                                 .child(if stopping_session {
-                                    "Stopping…"
+                                    crate::i18n::text("resource-pressure-stopping")
                                 } else {
-                                    "Stop"
+                                    crate::i18n::text("resource-pressure-stop")
                                 }),
                         )
                     }),
@@ -562,15 +568,24 @@ impl ResourceMonitor {
                         },
                         12.,
                     ))
-                    .child(format!(
-                        "{} {} · {} memory",
-                        rows.len(),
-                        if rows.len() == 1 {
-                            "process"
-                        } else {
-                            "processes"
-                        },
-                        format_memory(memory)
+                    .child(crate::i18n::format(
+                        "resource-pressure-process-memory",
+                        &[
+                            (
+                                "value1",
+                                crate::system_format::unsigned((rows.len()) as u64),
+                            ),
+                            (
+                                "value2",
+                                (if rows.len() == 1 {
+                                    crate::i18n::text("resource-pressure-process-memory-process")
+                                } else {
+                                    crate::i18n::text("resource-pressure-process-memory-processes")
+                                })
+                                .to_string(),
+                            ),
+                            ("value3", (format_memory(memory)).to_string()),
+                        ],
                     ))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if !this.expanded.remove(&id) {
@@ -632,10 +647,13 @@ impl ResourceMonitor {
                             .truncate()
                             .text_size(px(10.))
                             .text_color(content(0.4))
-                            .child(format!(
-                                "{:.0}% CPU · {} · PID {pid}",
-                                process.cpu_percent,
-                                format_memory(process.memory_bytes)
+                            .child(crate::i18n::format(
+                                "resource-pressure-cpu-pid",
+                                &[
+                                    ("value", crate::system_format::percent(process.cpu_percent)),
+                                    ("value2", format_memory(process.memory_bytes).to_string()),
+                                    ("pid", format!("{}", pid)),
+                                ],
                             )),
                     ),
             )
@@ -643,13 +661,21 @@ impl ResourceMonitor {
                 div()
                     .id(("stop-process", pid as u64))
                     .role(Role::Button)
-                    .aria_label(format!(
-                        "{} for {title} (PID {pid})",
-                        if agent {
-                            "Stop agent"
-                        } else {
-                            "Stop build/tool"
-                        }
+                    .aria_label(crate::i18n::format(
+                        "resource-pressure-for-pid",
+                        &[
+                            (
+                                "value",
+                                (if agent {
+                                    crate::i18n::text("resource-pressure-stop-agent")
+                                } else {
+                                    crate::i18n::text("resource-pressure-stop-build-tool")
+                                })
+                                .to_string(),
+                            ),
+                            ("title", format!("{}", title)),
+                            ("pid", format!("{}", pid)),
+                        ],
                     ))
                     .flex_shrink_0()
                     .rounded_sm()
@@ -672,7 +698,11 @@ impl ResourceMonitor {
                                 }))
                         }
                     })
-                    .child(if stopping { "Stopping…" } else { "Stop" }),
+                    .child(if stopping {
+                        crate::i18n::text("resource-pressure-stopping")
+                    } else {
+                        crate::i18n::text("resource-pressure-stop")
+                    }),
             )
             .into_any_element()
     }
@@ -689,8 +719,11 @@ impl Render for ResourceMonitor {
                     .id("resource-pressure-chip")
                     .debug_selector(|| "resource-pressure-chip".into())
                     .role(Role::Button)
-                    .aria_label("High resource usage")
-                    .aria_description(format!("{} · Review running work", self.reasons()))
+                    .aria_label(crate::i18n::text("resource-pressure-high-resource-usage"))
+                    .aria_description(crate::i18n::format(
+                        "resource-pressure-review-running-work",
+                        &[("value", (self.reasons()).to_string())],
+                    ))
                     .aria_expanded(open)
                     .track_focus(&self.trigger)
                     .tab_index(0)
@@ -718,7 +751,7 @@ impl Render for ResourceMonitor {
                     })
                     .hover(|s| s.bg(content(0.08)).text_color(content(1.)))
                     .child(icon("circle-alert", 14.).text_color(rgb(AMBER)))
-                    .child("High usage")
+                    .child(crate::i18n::text("resource-pressure-high-usage"))
                     .on_click(cx.listener(|this, _, window, cx| this.open(window, cx)))
                     .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
                         if matches!(event.keystroke.key.as_str(), "enter" | "space") {
@@ -771,11 +804,17 @@ fn stable_order(previous: &[OwnedProcess], rows: Vec<OwnedProcess>) -> Vec<Owned
 fn format_memory(bytes: u64) -> String {
     let mb = bytes as f64 / 1024. / 1024.;
     if mb >= 1024. {
-        format!("{:.1} GB", mb / 1024.)
+        crate::i18n::format(
+            "resource-pressure-gb",
+            &[("value", crate::system_format::decimal(mb / 1024., 1, 1))],
+        )
     } else if mb < 1. {
-        "<1 MB".into()
+        crate::i18n::text("resource-pressure-less-than-mb")
     } else {
-        format!("{} MB", mb.round())
+        crate::i18n::format(
+            "resource-pressure-mb",
+            &[("value", crate::system_format::decimal(mb.round(), 0, 0))],
+        )
     }
 }
 

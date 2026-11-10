@@ -110,7 +110,7 @@ fn chip_label<'a>(processes: impl IntoIterator<Item = &'a str>) -> String {
         .into_iter()
         .map(|(name, n)| {
             if n > 1 {
-                format!("{name} ×{n}")
+                format!("{name} ×{}", crate::system_format::unsigned(n as u64))
             } else {
                 name.to_owned()
             }
@@ -268,7 +268,7 @@ impl Shell {
             .id("panel-terminal")
             .debug_selector(|| "panel-terminal".into())
             .role(Role::Region)
-            .aria_label("Terminal")
+            .aria_label(crate::i18n::text("shell-terminal"))
             .size_full()
             .flex()
             .flex_col()
@@ -331,8 +331,8 @@ impl Shell {
             .get(&self.workspace.project)
             .map_or(0, |d| d.terminals.len());
         vec![
-            MenuAction::new("close", "Close").into(),
-            MenuAction::new("close-others", "Close Others")
+            MenuAction::new("close", crate::i18n::text("shell-close")).into(),
+            MenuAction::new("close-others", crate::i18n::text("shell-close-others"))
                 .disabled(count < 2 || ix >= count)
                 .into(),
         ]
@@ -369,15 +369,24 @@ impl Shell {
             .collect();
         let message = match running.as_slice() {
             [] => None,
-            [(label, process)] => Some(format!(
-                "\"{process}\" is still running in {label}. Close this terminal anyway?"
+            [(label, process)] => Some(crate::i18n::format(
+                "shell-is-still-running-in-close-this-terminal",
+                &[
+                    ("process", (process).to_string()),
+                    ("label", (label).to_string()),
+                ],
             )),
-            many => Some(format!(
-                "These terminals are still running:\n{}\n\nClose them anyway?",
-                many.iter()
-                    .map(|(label, process)| format!("• {label} ({process})"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
+            many => Some(crate::i18n::format(
+                "shell-running-terminals-confirm",
+                &[(
+                    "value1",
+                    (many
+                        .iter()
+                        .map(|(label, process)| format!("• {label} ({process})"))
+                        .collect::<Vec<_>>()
+                        .join("\n"))
+                    .to_string(),
+                )],
             )),
         };
         let Some(message) = message else {
@@ -388,7 +397,10 @@ impl Shell {
             gpui::PromptLevel::Warning,
             &message,
             None,
-            &["Close", "Cancel"],
+            &[
+                crate::i18n::text("shell-prompt-close").as_str(),
+                crate::i18n::text("shell-prompt-cancel").as_str(),
+            ],
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
@@ -649,7 +661,7 @@ impl Shell {
                 div()
                     .id("terminal-tabs")
                     .role(Role::TabList)
-                    .aria_label("Terminals")
+                    .aria_label(crate::i18n::text("shell-terminals"))
                     .track_scroll(&self.dock_tab_scroll)
                     .flex_1()
                     .min_w_0()
@@ -774,8 +786,9 @@ impl Shell {
                                         div()
                                             .id(("terminal-tab-close", ix))
                                             .role(Role::Button)
-                                            .aria_label(SharedString::from(format!(
-                                                "Close {label}"
+                                            .aria_label(SharedString::from(crate::i18n::format(
+                                                "shell-close-3",
+                                                &[("label", (label).to_string())],
                                             )))
                                             .group("terminal-tab-close")
                                             .absolute()
@@ -915,9 +928,14 @@ impl Shell {
                             ),
                         )
                         .child(
-                            icon_button("move-terminal", "Move Terminal", side)
-                                .child(move_anchor.probe())
-                                .on_click(cx.listener(move |this, _, window, cx| {
+                            icon_button(
+                                "move-terminal",
+                                crate::i18n::text("shell-move-terminal"),
+                                side,
+                            )
+                            .child(move_anchor.probe())
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
                                     // ExplorerMenu hangs from the button's bottom-left corner.
                                     let at = this
                                         .move_terminal_anchor
@@ -930,7 +948,8 @@ impl Shell {
                                         window,
                                         cx,
                                     );
-                                })),
+                                },
+                            )),
                         )
                         .child(
                             icon_button("hide-terminal", HIDE_TERMINAL_LABEL, hide).on_click(
@@ -976,7 +995,7 @@ impl Shell {
                 .get(&self.workspace.project)
                 .is_some_and(|d| !d.terminals.is_empty());
             let label: SharedString = if has_terminals {
-                "Terminal".into()
+                crate::i18n::text("shell-terminal").into()
             } else {
                 NEW_TERMINAL_LABEL.into()
             };
@@ -988,7 +1007,7 @@ impl Shell {
                             .id("footer-terminal")
                             .debug_selector(|| "footer-terminal".into())
                             .role(Role::Button)
-                            .aria_label(label)
+                            .aria_label(&label)
                             .aria_toggled(if open {
                                 gpui::Toggled::True
                             } else {
@@ -1016,7 +1035,7 @@ impl Shell {
                                 }
                             })
                             .child(icon("terminal", 14.))
-                            .child("Terminal")
+                            .child(crate::i18n::text("shell-terminal"))
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.toggle_terminal(window, cx)),
                             ),
@@ -1030,14 +1049,29 @@ impl Shell {
             .clone();
         let many = running.len() > 1;
         let aria = match (running.as_slice(), open) {
-            ([one], true) => format!("Hide {}", one.process),
-            ([one], false) => format!("Show {}", one.process),
-            (_, true) => "Hide running terminals".into(),
-            (all, false) => format!("{} terminals are running processes", all.len()),
+            ([one], true) => {
+                crate::i18n::format("shell-hide", &[("value", (one.process).to_string())])
+            }
+            ([one], false) => {
+                crate::i18n::format("shell-show", &[("value", (one.process).to_string())])
+            }
+            (_, true) => crate::i18n::text("shell-hide-running-terminals"),
+            (all, false) => crate::i18n::format(
+                "shell-terminals-are-running-processes",
+                &[("count", crate::system_format::unsigned(all.len() as u64))],
+            ),
         };
         let description = running
             .iter()
-            .map(|r| format!("\"{}\" in {}", r.process, r.label))
+            .map(|r| {
+                crate::i18n::format(
+                    "shell-in",
+                    &[
+                        ("value", (r.process).to_string()),
+                        ("value2", (r.label).to_string()),
+                    ],
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n");
         let first = running[0].ix;
@@ -1109,13 +1143,13 @@ impl Shell {
     ) -> Option<(SharedString, Vec<MenuItem>, f32, MenuStyle)> {
         match target {
             MenuTarget::TerminalTab(ix) => Some((
-                "File tab actions".into(),
+                crate::i18n::text("shell-file-tab-actions").into(),
                 self.terminal_tab_menu(*ix),
                 160.,
                 MenuStyle::Explorer,
             )),
             MenuTarget::RunningTerminals => Some((
-                "Running terminals".into(),
+                crate::i18n::text("shell-running-terminals").into(),
                 self.running_terminals_menu(cx),
                 192.,
                 MenuStyle::Explorer,

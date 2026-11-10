@@ -17,17 +17,22 @@ impl Shell {
         .detach();
     }
     pub(super) fn external_editor_menu(&self, path: &str) -> MenuAction {
-        let item = MenuAction::new("external-editor", "Open in editor").icon("app-window");
+        let item = MenuAction::new("external-editor", crate::i18n::text("shell-open-in-editor"))
+            .icon("app-window");
         let none =
             |label: &str| vec![MenuAction::new("external-editor:none", label).disabled(true)];
         if path.starts_with("remote://") {
-            return item
-                .disabled(true)
-                .submenu(none("Remote folders stay on their host"));
+            return item.disabled(true).submenu(none(&crate::i18n::text(
+                "shell-remote-folders-stay-on-their-host",
+            )));
         }
         match &self.external_editors {
-            None => item.disabled(true).submenu(none("Looking for editors…")),
-            Some(editors) if editors.is_empty() => item.submenu(none("No supported editors found")),
+            None => item
+                .disabled(true)
+                .submenu(none(&crate::i18n::text("shell-looking-for-editors"))),
+            Some(editors) if editors.is_empty() => {
+                item.submenu(none(&crate::i18n::text("shell-no-supported-editors-found")))
+            }
             Some(editors) => item.submenu(
                 editors
                     .iter()
@@ -91,14 +96,23 @@ impl Shell {
         let count = self.project_sessions(&path).len();
         let detail = match count {
             0 => String::new(),
-            1 => "Its 1 saved conversation will be deleted. ".into(),
-            n => format!("Its {n} saved conversations will be deleted. "),
-        } + "The folder on disk stays put, and opening it again brings the project back empty.";
+            1 => crate::i18n::text("shell-its-1-saved-conversation-will-be-deleted"),
+            n => crate::i18n::format(
+                "shell-its-saved-conversations-will-be-deleted",
+                &[("n", (n).to_string())],
+            ),
+        } + &crate::i18n::text("shell-the-folder-on-disk-stays-put-and-opening-it");
         let prompt = window.prompt(
             gpui::PromptLevel::Warning,
-            &format!("Delete “{}”?", self.project_label(&path)),
+            &crate::i18n::format(
+                "shell-delete-2",
+                &[("value", (self.project_label(&path)).to_string())],
+            ),
             Some(&detail),
-            &["Delete", "Cancel"],
+            &[
+                crate::i18n::text("shell-prompt-delete").as_str(),
+                crate::i18n::text("shell-prompt-cancel").as_str(),
+            ],
             cx,
         );
         cx.spawn(async move |this, cx| {
@@ -133,12 +147,17 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let title = self.session_metadata(id, cx).display_title();
+        let title = self.session_metadata(id, cx).localized_title();
         let prompt = window.prompt(
             gpui::PromptLevel::Warning,
-            &format!("Delete “{title}”?"),
-            Some("This conversation and its saved settings will be removed permanently."),
-            &["Delete", "Cancel"],
+            &crate::i18n::format("shell-delete-3", &[("title", (title).to_string())]),
+            Some(
+                crate::i18n::text("shell-prompt-this-conversation-and-its-saved-settings").as_str(),
+            ),
+            &[
+                crate::i18n::text("shell-prompt-delete").as_str(),
+                crate::i18n::text("shell-prompt-cancel").as_str(),
+            ],
             cx,
         );
         cx.spawn(async move |this, cx| {

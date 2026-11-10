@@ -55,7 +55,7 @@ fn now() -> i64 {
 fn service_lock(service: &ServiceHandle) -> Result<std::sync::MutexGuard<'_, Service>, String> {
     service
         .lock()
-        .map_err(|_| "Automations are unavailable".into())
+        .map_err(|_| crate::i18n::text("shell-automations-are-unavailable"))
 }
 
 impl Shell {
@@ -549,7 +549,7 @@ impl Shell {
         let (mut ok, mut message) = view.external_outcome(cx);
         if view.submission_generation == run.generation_before {
             ok = false;
-            message = "The selected agent session could not start this run.".into();
+            message = crate::i18n::text("shell-the-selected-agent-session-could-not-start-this");
         }
         let status = if cancelled {
             "cancelled"

@@ -55,9 +55,9 @@ impl QuestionCard {
             .iter()
             .map(|item| {
                 let placeholder = if item.options.is_empty() {
-                    "Type your answer"
+                    crate::i18n::text("questions-type-your-answer")
                 } else {
-                    "Something else"
+                    crate::i18n::text("questions-something-else")
                 };
                 cx.new(|cx| input::Input::field(&item.prompt, placeholder, content(0.35), cx))
             })
@@ -143,15 +143,15 @@ impl QuestionCard {
             cx.notify();
         }
     }
-    pub(crate) fn notification_label(&self) -> &str {
+    pub(crate) fn notification_label(&self) -> String {
         if !self.request.title.is_empty() {
-            &self.request.title
+            self.request.title.clone()
         } else {
             self.request
                 .items
                 .first()
-                .map(|item| item.prompt.as_str())
-                .unwrap_or("Question")
+                .map(|item| item.prompt.clone())
+                .unwrap_or_else(|| crate::i18n::text("questions-question"))
         }
     }
     fn answers(&self, cx: &App) -> Vec<Vec<String>> {
@@ -386,7 +386,7 @@ impl QuestionCard {
                             div()
                                 .text_size(px(11.))
                                 .text_color(content(0.45))
-                                .child("Select all that apply"),
+                                .child(crate::i18n::text("questions-select-all-that-apply")),
                         )
                     }),
             )
@@ -410,9 +410,15 @@ impl QuestionCard {
         let countdown = self.request.auto_resolve_at.map(|deadline| {
             let remaining = deadline.saturating_sub(monocode_core::time::now_ms());
             if remaining > 60_000 {
-                "Optional".to_owned()
+                crate::i18n::text("questions-optional")
             } else {
-                format!("Continues in {}s", remaining.div_ceil(1000))
+                crate::i18n::format(
+                    "questions-continues-in-s",
+                    &[(
+                        "value",
+                        crate::system_format::unsigned((remaining.div_ceil(1000)) as u64),
+                    )],
+                )
             }
         });
         div()
@@ -431,7 +437,7 @@ impl QuestionCard {
                 d.child(
                     icon_button_enabled(
                         "question-prev",
-                        "Previous question",
+                        crate::i18n::text("questions-previous-question"),
                         "chevron-left",
                         step > 0,
                     )
@@ -440,15 +446,23 @@ impl QuestionCard {
                         b.on_click(cx.listener(|this, _, _, cx| this.go(this.step - 1, cx)))
                     }),
                 )
-                .child(div().min_w(px(40.)).flex().justify_center().child(format!(
-                    "{} of {}",
-                    step + 1,
-                    total
-                )))
+                .child(
+                    div()
+                        .min_w(px(40.))
+                        .flex()
+                        .justify_center()
+                        .child(crate::i18n::format(
+                            "questions-of",
+                            &[
+                                ("value", format!("{}", step + 1)),
+                                ("value2", format!("{}", total)),
+                            ],
+                        )),
+                )
                 .child(
                     icon_button_enabled(
                         "question-next",
-                        "Next question",
+                        crate::i18n::text("questions-next-question"),
                         "chevron-right",
                         step < self.reached,
                     )
@@ -459,9 +473,13 @@ impl QuestionCard {
                 )
             })
             .child(
-                icon_button("question-dismiss", "Dismiss question", "close")
-                    .ml(px(4.))
-                    .on_click(cx.listener(|this, _, _, cx| this.dismiss(cx))),
+                icon_button(
+                    "question-dismiss",
+                    crate::i18n::text("questions-dismiss-question"),
+                    "close",
+                )
+                .ml(px(4.))
+                .on_click(cx.listener(|this, _, _, cx| this.dismiss(cx))),
             )
     }
     fn footer(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -500,31 +518,47 @@ impl QuestionCard {
                         .text_size(px(12.))
                         .text_color(content(0.4))
                         .child(if item.options.len() > 1 {
-                            format!("Press 1–{} to choose", item.options.len().min(9))
+                            crate::i18n::format(
+                                "questions-press-1-to-choose",
+                                &[(
+                                    "value",
+                                    crate::system_format::unsigned(
+                                        (item.options.len().min(9)) as u64,
+                                    ),
+                                )],
+                            )
                         } else {
-                            "Choose an option".to_owned()
+                            crate::i18n::text("questions-choose-an-option").to_owned()
                         }),
                 )
             })
             .child(
-                footer_button("question-skip", "Skip question", false)
-                    .debug_selector(|| "question-skip".into())
-                    .child("Skip")
-                    .on_click(cx.listener(|this, _, _, cx| this.skip(cx))),
+                footer_button(
+                    "question-skip",
+                    crate::i18n::text("questions-skip-question"),
+                    false,
+                )
+                .debug_selector(|| "question-skip".into())
+                .child(crate::i18n::text("questions-skip"))
+                .on_click(cx.listener(|this, _, _, cx| this.skip(cx))),
             )
             .when(proceed, |d| {
                 d.child(
                     footer_button(
                         "question-continue",
                         if last {
-                            "Submit answers"
+                            crate::i18n::text("questions-submit-answers")
                         } else {
-                            "Next question"
+                            crate::i18n::text("questions-next-question")
                         },
                         true,
                     )
                     .debug_selector(|| "question-continue".into())
-                    .child(if last { "Submit" } else { "Next" })
+                    .child(if last {
+                        crate::i18n::text("questions-submit")
+                    } else {
+                        crate::i18n::text("questions-next")
+                    })
                     .on_click(cx.listener(|this, _, _, cx| this.advance(cx))),
                 )
             })
@@ -547,13 +581,14 @@ fn badge(child: impl IntoElement, filled: bool) -> impl IntoElement {
 }
 fn footer_button(
     id: &'static str,
-    label: &'static str,
+    label: impl Into<gpui::SharedString>,
     primary: bool,
 ) -> gpui::Stateful<gpui::Div> {
+    let label = label.into();
     div()
         .id(id)
         .role(Role::Button)
-        .aria_label(label)
+        .aria_label(&label)
         .flex_shrink_0()
         .h(px(28.))
         .px(px(12.))

@@ -18,6 +18,14 @@ pub(crate) struct OpenUrl(pub &'static str);
 
 const REPO: &str = "https://github.com/hardbeat920/monocode";
 
+fn window_menu_identity(display: String) -> String {
+    if cfg!(target_os = "macos") {
+        "Window".to_owned()
+    } else {
+        display
+    }
+}
+
 pub(crate) fn bind(cx: &mut App) {
     cx.on_action(|_: &Hide, cx| cx.hide());
     cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
@@ -51,108 +59,143 @@ pub(crate) fn install(prefs: &crate::settings::Preferences, cx: &mut App) {
         return;
     }
     cx.set_menus(vec![
-        Menu::new("Monocode Native").items([
-            MenuItem::action("About Monocode Native", About),
+        Menu::new(crate::i18n::text("app-menu-monocode-native")).items([
+            MenuItem::action(crate::i18n::text("app-menu-about-monocode-native"), About),
             MenuItem::separator(),
-            MenuItem::action("Settings…", OpenSettings),
-            MenuItem::action("Check for Updates…", CheckForUpdates),
+            MenuItem::action(crate::i18n::text("app-menu-settings"), OpenSettings),
+            MenuItem::action(
+                crate::i18n::text("app-menu-check-for-updates"),
+                CheckForUpdates,
+            ),
             MenuItem::separator(),
-            MenuItem::action("Hide Monocode Native", Hide),
-            MenuItem::action("Hide Others", HideOthers),
-            MenuItem::action("Show All", ShowAll),
+            MenuItem::action(crate::i18n::text("app-menu-hide-monocode-native"), Hide),
+            MenuItem::action(crate::i18n::text("app-menu-hide-others"), HideOthers),
+            MenuItem::action(crate::i18n::text("app-menu-show-all"), ShowAll),
             MenuItem::separator(),
-            MenuItem::action("Quit Monocode Native", Quit),
+            MenuItem::action(crate::i18n::text("app-menu-quit-monocode-native"), Quit),
         ]),
-        Menu::new("File").items([
-            MenuItem::action("Open Project…", OpenProject),
-            MenuItem::action("Search…", FocusSearch),
-            MenuItem::action("Go to File…", GoToFile),
-            MenuItem::action("Command Palette…", OpenCommandPalette),
-            MenuItem::action("Find in Files…", SearchFiles),
+        Menu::new(crate::i18n::text("app-menu-file")).items([
+            MenuItem::action(crate::i18n::text("app-menu-open-project"), OpenProject),
+            MenuItem::action(crate::i18n::text("app-menu-search"), FocusSearch),
+            MenuItem::action(crate::i18n::text("app-menu-go-to-file"), GoToFile),
+            MenuItem::action(
+                crate::i18n::text("app-menu-command-palette"),
+                OpenCommandPalette,
+            ),
+            MenuItem::action(crate::i18n::text("app-menu-find-in-files"), SearchFiles),
             MenuItem::separator(),
-            MenuItem::action("Save", Save),
-            MenuItem::action("Reload File", ReloadFile),
-            MenuItem::action("Autosave", ToggleAutosave).checked(prefs.autosave),
+            MenuItem::action(crate::i18n::text("app-menu-save"), Save),
+            MenuItem::action(crate::i18n::text("app-menu-reload-file"), ReloadFile),
+            MenuItem::action(crate::i18n::text("app-menu-autosave"), ToggleAutosave)
+                .checked(prefs.autosave),
             MenuItem::separator(),
-            MenuItem::action("New Tab", NewCodex),
-            MenuItem::action("New Claude Tab", NewClaude),
-            MenuItem::action("New Terminal", NewTerminal),
-            MenuItem::action("Split Terminal Right", SplitTerminal),
-            MenuItem::action("Split Pane Right", SplitRight),
-            MenuItem::action("Split Pane Down", SplitDown),
-            MenuItem::action("Close Pane", CloseTab),
-            MenuItem::action("Close Other Tabs", CloseOtherTabs),
-            MenuItem::action("Close All Tabs", CloseAllTabs),
+            MenuItem::action(crate::i18n::text("app-menu-new-tab"), NewCodex),
+            MenuItem::action(crate::i18n::text("app-menu-new-claude-tab"), NewClaude),
+            MenuItem::action(crate::i18n::text("app-menu-new-terminal"), NewTerminal),
+            MenuItem::action(
+                crate::i18n::text("app-menu-split-terminal-right"),
+                SplitTerminal,
+            ),
+            MenuItem::action(crate::i18n::text("app-menu-split-pane-right"), SplitRight),
+            MenuItem::action(crate::i18n::text("app-menu-split-pane-down"), SplitDown),
+            MenuItem::action(crate::i18n::text("app-menu-close-pane"), CloseTab),
+            MenuItem::action(
+                crate::i18n::text("app-menu-close-other-tabs"),
+                CloseOtherTabs,
+            ),
+            MenuItem::action(crate::i18n::text("app-menu-close-all-tabs"), CloseAllTabs),
             MenuItem::separator(),
-            MenuItem::action("Previous Tab", PreviousTab),
-            MenuItem::action("Next Tab", NextTab),
-            MenuItem::action("Back", VisitBack),
-            MenuItem::action("Forward", VisitForward),
+            MenuItem::action(crate::i18n::text("app-menu-previous-tab"), PreviousTab),
+            MenuItem::action(crate::i18n::text("app-menu-next-tab"), NextTab),
+            MenuItem::action(crate::i18n::text("app-menu-back"), VisitBack),
+            MenuItem::action(crate::i18n::text("app-menu-forward"), VisitForward),
         ]),
-        Menu::new("Edit").items([
-            MenuItem::action("Undo", input::Undo),
-            MenuItem::action("Redo", input::Redo),
+        Menu::new(crate::i18n::text("app-menu-edit")).items([
+            MenuItem::action(crate::i18n::text("app-menu-undo"), input::Undo),
+            MenuItem::action(crate::i18n::text("app-menu-redo"), input::Redo),
             MenuItem::separator(),
-            MenuItem::action("Cut", input::Cut),
-            MenuItem::action("Copy", input::Copy),
-            MenuItem::action("Paste", input::Paste),
-            MenuItem::action("Select All", input::SelectAll),
+            MenuItem::action(crate::i18n::text("app-menu-cut"), input::Cut),
+            MenuItem::action(crate::i18n::text("app-menu-copy"), input::Copy),
+            MenuItem::action(crate::i18n::text("app-menu-paste"), input::Paste),
+            MenuItem::action(crate::i18n::text("app-menu-select-all"), input::SelectAll),
             MenuItem::separator(),
-            MenuItem::action("Find", Find),
-            MenuItem::action("Replace", Replace),
-            MenuItem::action("Format Document", Format),
-            MenuItem::action("Word Wrap", ToggleWordWrap).checked(prefs.file_word_wrap),
+            MenuItem::action(crate::i18n::text("app-menu-find"), Find),
+            MenuItem::action(crate::i18n::text("app-menu-replace"), Replace),
+            MenuItem::action(crate::i18n::text("app-menu-format-document"), Format),
+            MenuItem::action(crate::i18n::text("app-menu-word-wrap"), ToggleWordWrap)
+                .checked(prefs.file_word_wrap),
             MenuItem::separator(),
-            MenuItem::action("Fold", input::FoldCode),
-            MenuItem::action("Unfold", input::UnfoldCode),
-            MenuItem::action("Fold All", input::FoldAll),
-            MenuItem::action("Unfold All", input::UnfoldAll),
+            MenuItem::action(crate::i18n::text("app-menu-fold"), input::FoldCode),
+            MenuItem::action(crate::i18n::text("app-menu-unfold"), input::UnfoldCode),
+            MenuItem::action(crate::i18n::text("app-menu-fold-all"), input::FoldAll),
+            MenuItem::action(crate::i18n::text("app-menu-unfold-all"), input::UnfoldAll),
         ]),
-        Menu::new("View").items([
-            MenuItem::action("Toggle Sidebar", ToggleSidebar),
-            MenuItem::action("Toggle Session Sidebar", ToggleRightPanel),
-            MenuItem::action("Toggle Layout", ToggleLayout),
-            MenuItem::action("Toggle Workspace Style", ToggleWorkspaceStyle),
-            MenuItem::action("Inbox", OpenInbox),
-            MenuItem::action("Notes", OpenNotes),
-            MenuItem::action("Toggle Terminal", ToggleTerminal),
-            MenuItem::action("Switch Model…", SwitchModel),
-            MenuItem::separator(),
-            MenuItem::action("Previous Session", PreviousSession),
-            MenuItem::action("Next Session", NextSession),
-            MenuItem::action("Previous Project", PreviousProject),
-            MenuItem::action("Next Project", NextProject),
-            MenuItem::separator(),
-            MenuItem::action("Focus Left", FocusPaneLeft),
-            MenuItem::action("Focus Right", FocusPaneRight),
-            MenuItem::action("Focus Up", FocusPaneUp),
-            MenuItem::action("Focus Down", FocusPaneDown),
-            MenuItem::separator(),
-            MenuItem::action("Zoom In", ZoomIn),
-            MenuItem::action("Zoom Out", ZoomOut),
-            MenuItem::action("Reset Zoom", ResetZoom),
-            MenuItem::action("Reload", Reload),
-            MenuItem::separator(),
-            MenuItem::action("Sidebar Appearance…", SidebarAppearance),
-        ]),
-        // AppKit adds its window list here once the menu is named "Window".
-        Menu::new("Window").items([
-            MenuItem::action("Minimize", MinimizeWindow),
-            MenuItem::action("Zoom", ZoomWindow),
-        ]),
-        Menu::new("Help").items([
-            MenuItem::action("MonoCode Website", OpenUrl("https://usemono.dev")),
-            MenuItem::action("View on GitHub", OpenUrl(REPO)),
+        Menu::new(crate::i18n::text("app-menu-view")).items([
+            MenuItem::action(crate::i18n::text("app-menu-toggle-sidebar"), ToggleSidebar),
+            MenuItem::action(
+                crate::i18n::text("app-menu-toggle-session-sidebar"),
+                ToggleRightPanel,
+            ),
+            MenuItem::action(crate::i18n::text("app-menu-toggle-layout"), ToggleLayout),
+            MenuItem::action(
+                crate::i18n::text("app-menu-toggle-workspace-style"),
+                ToggleWorkspaceStyle,
+            ),
+            MenuItem::action(crate::i18n::text("app-menu-inbox"), OpenInbox),
+            MenuItem::action(crate::i18n::text("app-menu-notes"), OpenNotes),
+            MenuItem::action(
+                crate::i18n::text("app-menu-toggle-terminal"),
+                ToggleTerminal,
+            ),
+            MenuItem::action(crate::i18n::text("app-menu-switch-model"), SwitchModel),
             MenuItem::separator(),
             MenuItem::action(
-                "Report a Bug…",
+                crate::i18n::text("app-menu-previous-session"),
+                PreviousSession,
+            ),
+            MenuItem::action(crate::i18n::text("app-menu-next-session"), NextSession),
+            MenuItem::action(
+                crate::i18n::text("app-menu-previous-project"),
+                PreviousProject,
+            ),
+            MenuItem::action(crate::i18n::text("app-menu-next-project"), NextProject),
+            MenuItem::separator(),
+            MenuItem::action(crate::i18n::text("app-menu-focus-left"), FocusPaneLeft),
+            MenuItem::action(crate::i18n::text("app-menu-focus-right"), FocusPaneRight),
+            MenuItem::action(crate::i18n::text("app-menu-focus-up"), FocusPaneUp),
+            MenuItem::action(crate::i18n::text("app-menu-focus-down"), FocusPaneDown),
+            MenuItem::separator(),
+            MenuItem::action(crate::i18n::text("app-menu-zoom-in"), ZoomIn),
+            MenuItem::action(crate::i18n::text("app-menu-zoom-out"), ZoomOut),
+            MenuItem::action(crate::i18n::text("app-menu-reset-zoom"), ResetZoom),
+            MenuItem::action(crate::i18n::text("app-menu-reload"), Reload),
+            MenuItem::separator(),
+            MenuItem::action(
+                crate::i18n::text("app-menu-sidebar-appearance"),
+                SidebarAppearance,
+            ),
+        ]),
+        // AppKit adds its window list here once the menu is named "Window".
+        Menu::new(window_menu_identity(crate::i18n::text("app-menu-window"))).items([
+            MenuItem::action(crate::i18n::text("app-menu-minimize"), MinimizeWindow),
+            MenuItem::action(crate::i18n::text("app-menu-zoom"), ZoomWindow),
+        ]),
+        Menu::new(crate::i18n::text("app-menu-help")).items([
+            MenuItem::action(
+                crate::i18n::text("app-menu-monocode-website"),
+                OpenUrl("https://usemono.dev"),
+            ),
+            MenuItem::action(crate::i18n::text("app-menu-view-on-github"), OpenUrl(REPO)),
+            MenuItem::separator(),
+            MenuItem::action(
+                crate::i18n::text("app-menu-report-a-bug"),
                 OpenUrl(concat!(
                     "https://github.com/hardbeat920/monocode",
                     "/issues/new?template=bug_report.yml"
                 )),
             ),
             MenuItem::action(
-                "Request a Feature…",
+                crate::i18n::text("app-menu-request-a-feature"),
                 OpenUrl(concat!(
                     "https://github.com/hardbeat920/monocode",
                     "/issues/new?template=feature_request.yml"
@@ -160,4 +203,33 @@ pub(crate) fn install(prefs: &crate::settings::Preferences, cx: &mut App) {
             ),
         ]),
     ]);
+    #[cfg(target_os = "macos")]
+    if let Some(main) = objc2::MainThreadMarker::new() {
+        use objc2_app_kit::NSApplication;
+        use objc2_foundation::NSString;
+        let app = NSApplication::sharedApplication(main);
+        let title = NSString::from_str(&crate::i18n::text("app-menu-window"));
+        if let Some(item) = app
+            .mainMenu()
+            .and_then(|menu| menu.itemWithTitle(&NSString::from_str("Window")))
+        {
+            item.setTitle(&title);
+        }
+        if let Some(menu) = app.windowsMenu() {
+            menu.setTitle(&title);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn window_menu_preserves_platform_identity() {
+        let expected = if cfg!(target_os = "macos") {
+            "Window"
+        } else {
+            "窗口"
+        };
+        assert_eq!(super::window_menu_identity("窗口".into()), expected);
+    }
 }

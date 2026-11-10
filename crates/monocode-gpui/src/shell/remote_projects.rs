@@ -61,7 +61,7 @@ impl RemoteProjectPicker {
     fn new(remote: Arc<Connections>, store: Database, cx: &mut Context<Self>) -> Self {
         let path = cx.new(|cx| {
             let mut input = input::Input::field(
-                "Folder path on the machine",
+                crate::i18n::text("shell-folder-path-on-the-machine"),
                 "/home/me/code/my-app",
                 content(0.35),
                 cx,
@@ -250,7 +250,10 @@ impl RemoteProjectPicker {
         div()
             .id(("remote-folder", id))
             .role(Role::Button)
-            .aria_label(format!("Browse {name}"))
+            .aria_label(crate::i18n::format(
+                "shell-browse-2",
+                &[("name", name.to_string())],
+            ))
             .w_full()
             .rounded_md()
             .px_2()
@@ -272,21 +275,43 @@ impl RemoteProjectPicker {
 impl Render for RemoteProjectPicker {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let machine = self.machine().cloned();
-        let mut view = div().id("remote-project-picker").debug_selector(|| "remote-project-picker".into()).role(Role::Dialog).aria_label("Open folder on a machine")
+        let mut view = div()
+            .id("remote-project-picker")
+            .debug_selector(|| "remote-project-picker".into())
+            .role(Role::Dialog)
+            .aria_label(crate::i18n::text("shell-open-folder-on-a-machine"))
             .track_focus(&self.focus)
-            .p_4().flex().flex_col().gap_3().min_h_0().text_color(content(1.))
+            .p_4()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .min_h_0()
+            .text_color(content(1.))
             .on_key_down(cx.listener(|_, event: &gpui::KeyDownEvent, _, cx| {
-                if event.keystroke.key == "escape" { cx.stop_propagation(); cx.emit(Picked::Cancel); }
+                if event.keystroke.key == "escape" {
+                    cx.stop_propagation();
+                    cx.emit(Picked::Cancel);
+                }
             }))
-            .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child("Open folder on a machine"))
-            .child(div().text_size(px(12.)).line_height(px(17.)).text_color(content(0.55))
-                .child("Sessions in this project run on that machine, using its checkout and its Codex or Claude Code sign-in. They keep running when you close MonoCode here."));
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(crate::i18n::text("shell-open-folder-on-a-machine")),
+            )
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .line_height(px(17.))
+                    .text_color(content(0.55))
+                    .child(crate::i18n::text("shell-sessions-in-this-project-run-on")),
+            );
         if !self.loaded {
             view = view.child(
                 div()
                     .text_size(px(12.))
                     .text_color(content(0.45))
-                    .child("Loading machines…"),
+                    .child(crate::i18n::text("shell-loading-machines")),
             );
         } else if let Some(machine) = machine {
             if self.machines.len() > 1 {
@@ -299,7 +324,7 @@ impl Render for RemoteProjectPicker {
                             div()
                                 .text_size(px(12.))
                                 .text_color(content(0.55))
-                                .child("Machine"),
+                                .child(crate::i18n::text("shell-machine")),
                         )
                         .child(div().flex().flex_wrap().gap_2().children(
                             self.machines.iter().map(|entry| {
@@ -328,7 +353,10 @@ impl Render for RemoteProjectPicker {
                         .text_size(px(12.))
                         .text_color(content(0.55))
                         .child(icon("globe", 14.))
-                        .child(format!("On {}", machine.name)),
+                        .child(crate::i18n::format(
+                            "shell-on",
+                            &[("value", machine.name.to_string())],
+                        )),
                 );
             }
             let path = self.path.read(cx).content.trim().to_owned();
@@ -355,11 +383,11 @@ impl Render for RemoteProjectPicker {
                     .child(
                         secondary_button(
                             "browse-remote-path",
-                            "Browse path",
+                            crate::i18n::text("shell-browse-path"),
                             false,
                             path.is_empty(),
                         )
-                        .child("Browse")
+                        .child(crate::i18n::text("shell-browse"))
                         .on_click(cx.listener(|this, _, _, cx| {
                             let path = this.path.read(cx).content.trim().to_owned();
                             if !path.is_empty() {
@@ -371,7 +399,7 @@ impl Render for RemoteProjectPicker {
             let mut folders = div()
                 .id("remote-project-folders")
                 .role(Role::List)
-                .aria_label("Folders")
+                .aria_label(crate::i18n::text("shell-folders"))
                 .min_h(px(96.))
                 .max_h(px(280.))
                 .overflow_y_scroll()
@@ -396,7 +424,7 @@ impl Render for RemoteProjectPicker {
                             .py(px(6.))
                             .text_size(px(12.))
                             .text_color(content(0.45))
-                            .child("No subfolders"),
+                            .child(crate::i18n::text("shell-no-subfolders")),
                     );
                 }
             } else if self.loading {
@@ -406,13 +434,18 @@ impl Render for RemoteProjectPicker {
                         .py(px(6.))
                         .text_size(px(12.))
                         .text_color(content(0.45))
-                        .child("Loading folders…"),
+                        .child(crate::i18n::text("shell-loading-folders")),
                 );
             }
             view = view.child(folders);
         } else {
-            view = view.child(div().text_size(px(12.)).line_height(px(17.)).text_color(content(0.55))
-                .child("No machines are connected yet. Add one in Settings, then open a folder on it here."));
+            view = view.child(
+                div()
+                    .text_size(px(12.))
+                    .line_height(px(17.))
+                    .text_color(content(0.55))
+                    .child(crate::i18n::text("shell-no-machines-are-connected-yet-add")),
+            );
         }
         if !self.error.is_empty() {
             view = view.child(
@@ -431,15 +464,21 @@ impl Render for RemoteProjectPicker {
                 .justify_end()
                 .gap_2()
                 .child(
-                    crate::modal::ghost_button("cancel-remote-project", "Cancel")
-                        .cursor_pointer()
-                        .on_click(cx.listener(|_, _, _, cx| cx.emit(Picked::Cancel))),
+                    crate::modal::ghost_button(
+                        "cancel-remote-project",
+                        crate::i18n::text("shell-cancel"),
+                    )
+                    .cursor_pointer()
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(Picked::Cancel))),
                 )
                 .when(self.loaded && self.machines.is_empty(), |d| {
                     d.child(
-                        crate::modal::primary_button("add-project-machine", "Add a machine")
-                            .cursor_pointer()
-                            .on_click(cx.listener(|_, _, _, cx| cx.emit(Picked::Connections))),
+                        crate::modal::primary_button(
+                            "add-project-machine",
+                            crate::i18n::text("shell-add-a-machine"),
+                        )
+                        .cursor_pointer()
+                        .on_click(cx.listener(|_, _, _, cx| cx.emit(Picked::Connections))),
                     )
                 })
                 .when(!self.machines.is_empty(), |d| {
@@ -447,7 +486,11 @@ impl Render for RemoteProjectPicker {
                         crate::modal::disabled(
                             crate::modal::primary_button(
                                 "open-remote-project",
-                                if self.opening { "Opening…" } else { "Open" },
+                                if self.opening {
+                                    crate::i18n::text("shell-opening")
+                                } else {
+                                    crate::i18n::text("shell-open-2")
+                                },
                             ),
                             self.opening || self.path.read(cx).content.trim().is_empty(),
                         )

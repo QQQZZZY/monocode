@@ -6,15 +6,27 @@ impl Shell {
     pub(super) fn filter_menu_items(&self, cx: &App) -> Vec<MenuItem> {
         let filters = &self.workspace.session_filters;
         let mut items = vec![
-            MenuAction::new("archived", "Archived")
+            MenuAction::new("archived", crate::i18n::text("shell-archived"))
                 .checked(self.workspace.preferences.show_archived)
                 .into(),
-            MenuItem::Header("Status".into()),
+            MenuItem::Header(crate::i18n::text("filters-status").into()),
         ];
         for (id, label, checked) in [
-            ("working", "Working", filters.status.working),
-            ("approval", "Needs approval", filters.status.needs_approval),
-            ("done", "Done", filters.status.done),
+            (
+                "working",
+                crate::i18n::text("filters-working"),
+                filters.status.working,
+            ),
+            (
+                "approval",
+                crate::i18n::text("filters-needs-approval"),
+                filters.status.needs_approval,
+            ),
+            (
+                "done",
+                crate::i18n::text("filters-done"),
+                filters.status.done,
+            ),
         ] {
             items.push(
                 MenuAction::new(id, label)
@@ -23,8 +35,14 @@ impl Shell {
                     .into(),
             );
         }
-        items.push(MenuItem::Header("Time".into()));
-        for (time, id, label) in TimeFilter::OPTIONS {
+        items.push(MenuItem::Header(crate::i18n::text("filters-time").into()));
+        for (time, id, _) in TimeFilter::OPTIONS {
+            let label = match time {
+                TimeFilter::All => crate::i18n::text("filters-all-time"),
+                TimeFilter::Today => crate::i18n::text("filters-today"),
+                TimeFilter::Week => crate::i18n::text("filters-last-7-days"),
+                TimeFilter::Month => crate::i18n::text("filters-last-30-days"),
+            };
             items.push(
                 MenuAction::new(format!("time:{id}"), label)
                     .checked(filters.time == time)
@@ -45,7 +63,9 @@ impl Shell {
             })
             .collect();
         if !providers.is_empty() {
-            items.push(MenuItem::Header("Provider".into()));
+            items.push(MenuItem::Header(
+                crate::i18n::text("filters-provider").into(),
+            ));
             for kind in providers {
                 items.push(
                     MenuAction::new(format!("provider:{}", kind.id()), kind.label())
@@ -58,7 +78,11 @@ impl Shell {
         }
         if filters.active(self.workspace.preferences.show_archived) {
             items.push(MenuItem::Separator);
-            items.push(MenuAction::new("clear", "Clear filters").keep_open().into());
+            items.push(
+                MenuAction::new("clear", crate::i18n::text("shell-clear-filters"))
+                    .keep_open()
+                    .into(),
+            );
         }
         items
     }

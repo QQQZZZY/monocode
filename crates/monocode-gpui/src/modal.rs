@@ -370,9 +370,12 @@ mod tests {
             .update(cx, |_, window, cx| {
                 window.prompt(
                     PromptLevel::Warning,
-                    "Delete?",
+                    crate::i18n::text("modal-prompt-delete").as_str(),
                     None,
-                    &["Delete", "Cancel"],
+                    &[
+                        crate::i18n::text("modal-prompt-delete-2").as_str(),
+                        crate::i18n::text("modal-prompt-cancel").as_str(),
+                    ],
                     cx,
                 )
             })
@@ -386,9 +389,12 @@ mod tests {
             .update(visual, |_, window, cx| {
                 window.prompt(
                     PromptLevel::Info,
-                    "Continue?",
-                    Some("Detail"),
-                    &["OK", "Cancel"],
+                    crate::i18n::text("modal-prompt-continue").as_str(),
+                    Some(crate::i18n::text("modal-prompt-detail").as_str()),
+                    &[
+                        crate::i18n::text("modal-prompt-ok").as_str(),
+                        crate::i18n::text("modal-prompt-cancel").as_str(),
+                    ],
                     cx,
                 )
             })

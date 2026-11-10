@@ -1371,7 +1371,7 @@ fn default_title(cwd: &str) -> String {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     if name.is_empty() || name == "/" {
-        "Terminal".into()
+        crate::i18n::text("terminal-terminal")
     } else {
         name
     }

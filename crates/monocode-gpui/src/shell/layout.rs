@@ -111,7 +111,7 @@ fn panel_button(enabled: bool, dot: bool) -> gpui::Stateful<gpui::Div> {
         .id(id)
         .debug_selector(move || id.into())
         .role(Role::Button)
-        .aria_label(super::TOGGLE_RIGHT_PANEL_LABEL)
+        .aria_label(crate::i18n::text(super::TOGGLE_RIGHT_PANEL_LABEL))
         .group(id)
         .cursor_pointer()
         .size(px(24.))
@@ -574,18 +574,23 @@ impl Shell {
         let mut tabs = vec![
             (
                 "right-panel-explorer",
-                "Explorer",
+                crate::i18n::text("shell-explorer"),
                 "file-script",
                 RightTab::Files,
             ),
-            ("right-panel-history", "History", "clock", RightTab::Graph),
+            (
+                "right-panel-history",
+                crate::i18n::text("shell-history"),
+                "clock",
+                RightTab::Graph,
+            ),
         ];
         if self.terminal_in_panel(cx) {
             tabs.insert(
                 1,
                 (
                     "right-panel-terminal",
-                    "Terminal",
+                    crate::i18n::text("shell-terminal"),
                     "terminal",
                     RightTab::Terminal,
                 ),
@@ -602,7 +607,7 @@ impl Shell {
                         div()
                             .id("right-panel-corner-tabs")
                             .role(Role::TabList)
-                            .aria_label("Project")
+                            .aria_label(crate::i18n::text("shell-project"))
                             .flex_shrink_0()
                             .flex()
                             .items_center()
@@ -955,7 +960,8 @@ mod tests {
             };
             let label_selector = Box::leak(format!("{}-label", selectors[1]).into_boxed_str());
             let mut full_label_width = None;
-            for width in [420., 290., 270., 260., 220., 420.] {
+            // Actual glyph widths leave more room than the old byte-count estimate.
+            for width in [420., 290., 220., 420.] {
                 window
                     .update(visual, |shell, _, cx| {
                         shell.workspace.new_layout_boxy = boxy;

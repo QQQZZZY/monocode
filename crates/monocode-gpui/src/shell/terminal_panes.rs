@@ -53,22 +53,34 @@ impl Shell {
                 close(self, window, cx);
                 return;
             }
-            [(label, process)] => {
-                format!("\"{process}\" is still running in {label}. Close this terminal anyway?")
-            }
-            many => format!(
-                "These terminals are still running:\n{}\n\nClose them anyway?",
-                many.iter()
-                    .map(|(label, process)| format!("• {label} ({process})"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
+            [(label, process)] => crate::i18n::format(
+                "shell-is-still-running-in-close-this-terminal",
+                &[
+                    ("process", (process).to_string()),
+                    ("label", (label).to_string()),
+                ],
+            ),
+            many => crate::i18n::format(
+                "shell-running-terminals-confirm",
+                &[(
+                    "value1",
+                    (many
+                        .iter()
+                        .map(|(label, process)| format!("• {label} ({process})"))
+                        .collect::<Vec<_>>()
+                        .join("\n"))
+                    .to_string(),
+                )],
             ),
         };
         let answer = window.prompt(
             gpui::PromptLevel::Warning,
             &message,
             None,
-            &["Close", "Cancel"],
+            &[
+                crate::i18n::text("shell-prompt-close").as_str(),
+                crate::i18n::text("shell-prompt-cancel").as_str(),
+            ],
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
@@ -326,7 +338,7 @@ impl Shell {
             .id(("terminal-pane", pane.unsigned_abs() as usize))
             .debug_selector(move || format!("terminal-pane-{pane}"))
             .role(Role::Region)
-            .aria_label("Terminal")
+            .aria_label(crate::i18n::text("shell-terminal"))
             .size_full()
             .flex()
             .flex_col()

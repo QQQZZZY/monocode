@@ -337,17 +337,24 @@ impl Shell {
                 || preference["mutedUntil"].as_u64().is_some_and(|at| at > now)
         });
         if muted {
-            MenuAction::new("mute:resume", "Resume notifications").icon("bell")
+            MenuAction::new(
+                "mute:resume",
+                crate::i18n::text("shell-resume-notifications"),
+            )
+            .icon("bell")
         } else {
-            MenuAction::new("notifications-mute", "Mute notifications")
-                .icon("bell-off")
-                .submenu(vec![
-                    MenuAction::new("mute:1h", "For 1 hour"),
-                    MenuAction::new("mute:4h", "For 4 hours"),
-                    MenuAction::new("mute:8h", "For 8 hours"),
-                    MenuAction::new("mute:forever", "Until resumed"),
-                    MenuAction::new("mute:custom", "Custom…"),
-                ])
+            MenuAction::new(
+                "notifications-mute",
+                crate::i18n::text("shell-mute-notifications"),
+            )
+            .icon("bell-off")
+            .submenu(vec![
+                MenuAction::new("mute:1h", crate::i18n::text("shell-for-1-hour")),
+                MenuAction::new("mute:4h", crate::i18n::text("shell-for-4-hours")),
+                MenuAction::new("mute:8h", crate::i18n::text("shell-for-8-hours")),
+                MenuAction::new("mute:forever", crate::i18n::text("shell-until-resumed")),
+                MenuAction::new("mute:custom", crate::i18n::text("shell-custom")),
+            ])
         }
     }
 
