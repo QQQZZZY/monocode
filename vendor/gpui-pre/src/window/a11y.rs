@@ -164,6 +164,11 @@ pub(crate) struct A11y {
 }
 
 impl A11y {
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn activate_for_test(&mut self) {
+        self.active_flag.store(true, Ordering::SeqCst);
+    }
+
     pub(crate) fn new(
         active_flag: Arc<AtomicBool>,
         force_disabled: bool,
