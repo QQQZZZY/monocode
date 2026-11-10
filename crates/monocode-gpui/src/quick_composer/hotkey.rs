@@ -82,9 +82,9 @@ impl Registration {
             );
             if error != 0 {
                 RemoveEventHandler(handler);
-                return Err(
-                    "This shortcut is already in use. Choose another in Keybindings.".into(),
-                );
+                return Err(crate::i18n::text(
+                    "quick-composer-this-shortcut-is-already-in-use-choose-another-in",
+                ));
             }
         }
         Ok((

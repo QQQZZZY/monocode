@@ -2,6 +2,38 @@
 use super::github_activity::Card;
 use crate::theme::*;
 use gpui::{Context, EventEmitter, Render, Role, Window, div, prelude::*, px};
+fn activity_summary(card: &Card) -> String {
+    let mut parts = Vec::new();
+    for (kind, key) in [
+        ("commit", "notifications-new-commits"),
+        ("review", "notifications-new-reviews"),
+        ("comment", "notifications-new-comments"),
+    ] {
+        let count = card
+            .entries
+            .iter()
+            .filter(|entry| {
+                entry.kind == kind || (kind == "comment" && entry.kind == "review_comment")
+            })
+            .count();
+        if count > 0 {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("count", count);
+            args.set("countText", crate::system_format::unsigned(count as u64));
+            parts.push(crate::i18n::message(key, Some(&args)));
+        }
+    }
+    if !parts.is_empty() {
+        parts.join(" · ")
+    } else {
+        crate::i18n::text(if card.details_error {
+            "notifications-details-unavailable"
+        } else {
+            "notifications-metadata-or-status-changed"
+        })
+    }
+}
+
 #[derive(Clone)]
 pub(crate) enum LinkedActivityEvent {
     Acknowledge(i64),
@@ -68,27 +100,27 @@ impl Render for LinkedActivity {
         let session = card.session;
         let number = card.item.number;
         let kind = if card.item.kind == "pr" {
-            "Pull request"
+            crate::i18n::text("notifications-pull-request")
         } else {
-            "Issue"
+            crate::i18n::text("notifications-issue")
         };
         let latest = card.entries.first();
         let discussion = latest
             .is_some_and(|e| matches!(e.kind.as_str(), "comment" | "review" | "review_comment"));
         let commit = latest.is_some_and(|e| e.kind == "commit");
         let agent_label = if discussion {
-            "Address with agent"
+            crate::i18n::text("notifications-address-with-agent")
         } else if commit {
-            "Review with agent"
+            crate::i18n::text("notifications-review-with-agent")
         } else {
-            "Continue with agent"
+            crate::i18n::text("notifications-continue-with-agent")
         };
         let open_label = if commit {
-            "Open commit"
+            crate::i18n::text("notifications-open-commit")
         } else if card.item.kind == "pr" {
-            "Open PR"
+            crate::i18n::text("notifications-open-pr")
         } else {
-            "Open issue"
+            crate::i18n::text("notifications-open-issue")
         };
         let item_url = card.item.url.clone();
         let open_url = latest
@@ -118,13 +150,16 @@ impl Render for LinkedActivity {
                     .flex_1()
                     .text_size(px(12.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .child("GitHub activity"),
+                    .child(crate::i18n::text("notifications-github-activity")),
             )
             .child(
                 div()
                     .id("dismiss-linked-activity")
                     .role(Role::Button)
-                    .aria_label(format!("Dismiss updates for {kind} {number}"))
+                    .aria_label(crate::i18n::format(
+                        "notifications-dismiss-updates-for",
+                        &[("kind", kind.to_string()), ("number", number.to_string())],
+                    ))
                     .cursor_pointer()
                     .size(px(24.))
                     .flex()
@@ -168,29 +203,50 @@ impl Render for LinkedActivity {
                         .mt(px(6.))
                         .text_size(px(11.))
                         .text_color(content(0.55))
-                        .child(card.summary()),
+                        .child(activity_summary(&card)),
                 ),
         );
         for (ix, entry) in card.entries.iter().take(3).enumerate() {
             let url = entry.url.clone();
             let label = match entry.kind.as_str() {
-                "commit" => format!("Commit {}", entry.id.chars().take(7).collect::<String>()),
-                "review" => "Review".into(),
-                "review_comment" => "Review comment".into(),
-                _ => "Comment".into(),
+                "commit" => crate::i18n::format(
+                    "notifications-commit",
+                    &[(
+                        "value",
+                        (entry.id.chars().take(7).collect::<String>()).to_string(),
+                    )],
+                ),
+                "review" => crate::i18n::text("notifications-review"),
+                "review_comment" => crate::i18n::text("notifications-review-comment"),
+                _ => crate::i18n::text("notifications-comment"),
             };
             let relative = chrono::DateTime::parse_from_rfc3339(&entry.created_at)
                 .ok()
                 .map(|at| {
                     let minutes = (chrono::Utc::now().timestamp() - at.timestamp()).max(0) / 60;
                     if minutes < 1 {
-                        "just now".into()
+                        crate::i18n::text("notifications-just-now")
                     } else if minutes < 60 {
-                        format!("{minutes}m ago")
+                        crate::i18n::format(
+                            "notifications-m-ago",
+                            &[("minutes", crate::system_format::unsigned(minutes as u64))],
+                        )
                     } else if minutes < 1440 {
-                        format!("{}h ago", minutes / 60)
+                        crate::i18n::format(
+                            "notifications-h-ago",
+                            &[(
+                                "value",
+                                crate::system_format::unsigned((minutes / 60) as u64),
+                            )],
+                        )
                     } else {
-                        format!("{}d ago", minutes / 1440)
+                        crate::i18n::format(
+                            "notifications-d-ago",
+                            &[(
+                                "value",
+                                crate::system_format::unsigned((minutes / 1440) as u64),
+                            )],
+                        )
                     }
                 })
                 .unwrap_or_default();
@@ -232,7 +288,7 @@ impl Render for LinkedActivity {
                             .line_height(px(19.5))
                             .text_color(content(0.65))
                             .child(if entry.text.is_empty() {
-                                "No message".to_owned()
+                                crate::i18n::text("notifications-no-message").to_owned()
                             } else {
                                 entry.text.clone()
                             }),
@@ -247,12 +303,12 @@ impl Render for LinkedActivity {
                     .py(px(10.))
                     .border_t_1()
                     .border_color(content(0.1))
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .text_color(content(0.75))
-                            .child(format!("{terminal}   Clean up this session")),
-                    )
+                    .child(div().text_size(px(11.)).text_color(content(0.75)).child(
+                        crate::i18n::format(
+                            "notifications-clean-up-this-session",
+                            &[("terminal", terminal.to_string())],
+                        ),
+                    ))
                     .child(
                         div()
                             .mt(px(8.))
@@ -278,9 +334,9 @@ impl Render for LinkedActivity {
                                         ))
                                     })
                                     .child(if self.cleanup == Some(Cleanup::Archive) {
-                                        "Archiving…"
+                                        crate::i18n::text("notifications-archiving")
                                     } else {
-                                        "Archive session"
+                                        crate::i18n::text("notifications-archive-session")
                                     }),
                             )
                             .child(
@@ -303,9 +359,9 @@ impl Render for LinkedActivity {
                                         ))
                                     })
                                     .child(if self.cleanup == Some(Cleanup::Delete) {
-                                        "Deleting…"
+                                        crate::i18n::text("notifications-deleting")
                                     } else {
-                                        "Delete…"
+                                        crate::i18n::text("notifications-delete")
                                     }),
                             ),
                     ),
@@ -373,7 +429,10 @@ impl Render for LinkedActivity {
         super::surface::glass_frame()
             .id("linked-work-item-update-notice")
             .role(Role::Status)
-            .aria_label(format!("New activity on {kind} {number}"))
+            .aria_label(crate::i18n::format(
+                "notifications-new-activity-on",
+                &[("kind", kind.to_string()), ("number", number.to_string())],
+            ))
             .w(px(320.))
             .child(body)
             .into_any_element()

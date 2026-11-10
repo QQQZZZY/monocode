@@ -596,11 +596,13 @@ impl Completion {
                         server.provider,
                         server.scope,
                         if server.provider != self.provider.id() {
-                            "Different provider"
+                            crate::i18n::text("composer-completion-different-provider")
                         } else if !server.enabled {
-                            "Disabled in provider configuration"
+                            crate::i18n::text(
+                                "composer-completion-disabled-in-provider-configuration",
+                            )
                         } else {
-                            "Configured for this provider"
+                            crate::i18n::text("composer-completion-configured-for-this-provider")
                         }
                     ),
                     insertion: String::new(),
@@ -664,46 +666,58 @@ impl Completion {
             for (order, (id, label, detail)) in [
                 (
                     "draft",
-                    "Draft",
-                    "Save this message without starting the agent",
+                    "composer-completion-draft",
+                    "composer-completion-save-this-message-without-starting-the-agent",
                 ),
                 (
                     "orchestrator",
-                    "Orchestrator",
-                    "Plan and coordinate agent work",
+                    "composer-completion-orchestrator",
+                    "composer-completion-plan-and-coordinate-agent-work",
                 ),
                 (
                     "operator",
-                    "Operator",
-                    "Give this thread access to MonoCode",
+                    "composer-completion-operator",
+                    "composer-completion-give-this-thread-access-to-monocode",
                 ),
-                ("plan", "Plan mode", "Review a plan before building"),
+                (
+                    "plan",
+                    "composer-completion-plan-mode",
+                    "composer-completion-review-a-plan-before-building",
+                ),
                 (
                     "btw",
-                    "Side question",
-                    "Ask a read-only side question about the current turn",
+                    "composer-completion-side-question",
+                    "composer-completion-ask-a-read-only-side-question-about-the",
                 ),
                 (
                     "compact",
-                    "Compact context",
-                    "Summarize older conversation context to free space",
+                    "composer-completion-compact-context",
+                    "composer-completion-summarize-older-conversation-context-to-free-space",
                 ),
                 (
                     "add-to-folder",
-                    "Add to folder",
-                    "Place this session in an existing or new sidebar folder",
+                    "composer-completion-add-to-folder",
+                    "composer-completion-place-this-session-in-an-existing-or-new",
                 ),
-                ("mcp", "MCP server", "Find an MCP server for this message"),
-                ("stage", "Stage", "Stage only this session's changes"),
+                (
+                    "mcp",
+                    "composer-completion-mcp-server",
+                    "composer-completion-find-an-mcp-server-for-this-message",
+                ),
+                (
+                    "stage",
+                    "composer-completion-stage",
+                    "composer-completion-stage-only-this-session-s-changes",
+                ),
                 (
                     "commit",
-                    "Commit",
-                    "Stage and commit this session's changes",
+                    "composer-completion-commit",
+                    "composer-completion-stage-and-commit-this-session-s-changes",
                 ),
                 (
                     "visualize",
-                    "Visualize",
-                    "Create an inline visual of this topic or a specific request",
+                    "composer-completion-visualize",
+                    "composer-completion-create-an-inline-visual-of-this-topic-or",
                 ),
             ]
             .into_iter()
@@ -722,6 +736,8 @@ impl Completion {
                 {
                     continue;
                 }
+                let label = crate::i18n::text(label);
+                let detail = crate::i18n::text(detail);
                 if let Some(score) = composer::score(&token.query, &format!("{id} {label}")) {
                     // Only the bare slash menu uses the fixed command order.
                     let priority = if token.query.is_empty() {
@@ -732,8 +748,8 @@ impl Completion {
                     choices.push((
                         score + priority,
                         Choice {
-                            label: label.into(),
-                            detail: detail.into(),
+                            label,
+                            detail,
                             insertion: format!("/{id}"),
                             builtin: Some(id),
                             mode: (!matches!(
@@ -1023,15 +1039,15 @@ impl Render for Completion {
                 .collect();
             let weak = cx.weak_entity();
             let title = if self.mcp_open {
-                "MCP SERVERS"
+                crate::i18n::text("composer-completion-mcp-servers")
             } else if self
                 .token
                 .as_ref()
                 .is_some_and(|t| t.trigger == Trigger::Mention)
             {
-                "FILES & NOTES"
+                crate::i18n::text("composer-completion-files-notes")
             } else {
-                "SKILLS & COMMANDS"
+                crate::i18n::text("composer-completion-skills-commands")
             };
             let anchor = if self.composer_anchor.get().is_some() {
                 self.composer_anchor.clone()
@@ -1083,7 +1099,7 @@ impl Render for Completion {
                             .id("composer-completion-list")
                             .debug_selector(|| "composer-completion-list".into())
                             .role(Role::ListBox)
-                            .aria_label(title)
+                            .aria_label(title.to_owned())
                             .p_2()
                             .min_h_0()
                             .flex()
@@ -1115,11 +1131,11 @@ impl Render for Completion {
                                         .text_size(px(12.))
                                         .text_color(content(0.45))
                                         .child(SharedString::from(if self.loading {
-                                            "Loading…".to_owned()
+                                            crate::i18n::text("composer-completion-loading")
                                         } else {
-                                            self.error
-                                                .clone()
-                                                .unwrap_or_else(|| "No matches".into())
+                                            self.error.clone().unwrap_or_else(|| {
+                                                crate::i18n::text("composer-completion-no-matches")
+                                            })
                                         })),
                                 )
                             })
@@ -1134,7 +1150,9 @@ impl Render for Completion {
                                     .border_color(content(0.07))
                                     .text_size(px(10.))
                                     .text_color(content(0.35))
-                                    .child("↑ ↓ navigate    ↵ / Tab select    Esc dismiss"),
+                                    .child(crate::i18n::text(
+                                        "composer-completion-navigate-tab-select-esc-dismiss",
+                                    )),
                             ),
                     ),
             );

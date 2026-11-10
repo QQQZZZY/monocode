@@ -34,7 +34,7 @@ impl Render for FileActionError {
             message.clone(),
             icon_button(
                 "dismiss-file-action-error",
-                "Dismiss file action error",
+                crate::i18n::text("notifications-dismiss-file-action-error"),
                 "close",
             )
             .debug_selector(|| "dismiss-file-action-error".into())

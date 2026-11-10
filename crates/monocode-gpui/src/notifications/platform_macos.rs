@@ -89,7 +89,7 @@ pub fn initialize() -> bool {
         *slot.borrow_mut() = Some(delegate);
         let show = UNNotificationAction::actionWithIdentifier_title_options(
             &NSString::from_str(SHOW),
-            &NSString::from_str("Show"),
+            &NSString::from_str(&crate::i18n::text("notifications-show")),
             UNNotificationActionOptions::Foreground,
         );
         let category =

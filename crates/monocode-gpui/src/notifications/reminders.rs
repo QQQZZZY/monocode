@@ -92,7 +92,14 @@ impl View {
                 action.into()
             })
             .collect();
-        let menu = cx.new(|cx| Menu::new("Snooze reminder", items, window, cx));
+        let menu = cx.new(|cx| {
+            Menu::new(
+                crate::i18n::text("notifications-menu-snooze-reminder"),
+                items,
+                window,
+                cx,
+            )
+        });
         let events = cx.subscribe(&menu, move |this, _, event: &MenuEvent, cx| {
             if let MenuEvent::Picked(id, _) = event
                 && this
@@ -184,7 +191,7 @@ impl Render for View {
                                     .hover(|s| s.bg(content(0.15)))
                                     .px_2()
                                     .py_1()
-                                    .child("Open session")
+                                    .child(crate::i18n::text("notifications-open-session"))
                                     .on_click(cx.listener(move |_, _, _, cx| {
                                         cx.emit(Action::Open {
                                             session_id: target.0,
@@ -196,7 +203,7 @@ impl Render for View {
                                 div()
                                     .id(("due-reminder-snooze", ix))
                                     .role(Role::Button)
-                                    .aria_label("Snooze")
+                                    .aria_label(crate::i18n::text("notifications-snooze"))
                                     .cursor_pointer()
                                     .relative()
                                     .rounded_md()
@@ -204,7 +211,7 @@ impl Render for View {
                                     .hover(|s| s.bg(content(0.1)))
                                     .px_2()
                                     .py_1()
-                                    .child("Snooze")
+                                    .child(crate::i18n::text("notifications-snooze"))
                                     .child(anchor.probe())
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.snooze(target, trigger.clone(), window, cx)
@@ -221,7 +228,7 @@ impl Render for View {
                                     .hover(|s| s.bg(content(0.1)))
                                     .px_2()
                                     .py_1()
-                                    .child("Dismiss")
+                                    .child(crate::i18n::text("notifications-dismiss"))
                                     .on_click(cx.listener(move |_, _, _, cx| {
                                         cx.emit(Action::Dismiss {
                                             session_id: target.0,
@@ -242,7 +249,7 @@ impl Render for View {
                     .id("reminder-accessible-1")
                     .relative()
                     .role(Role::Region)
-                    .aria_label("Due reminders")
+                    .aria_label(crate::i18n::text("notifications-due-reminders"))
                     .overflow_hidden()
                     .rounded(px(12.))
                     .border_1()
@@ -266,7 +273,7 @@ impl Render for View {
                                     .flex_1()
                                     .text_size(px(12.))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .child("Due reminders"),
+                                    .child(crate::i18n::text("notifications-due-reminders")),
                             )
                             .child(
                                 div()
@@ -292,14 +299,14 @@ impl Render for View {
                                 .text_color(content(0.7))
                                 .flex()
                                 .gap_1()
-                                .child("Couldn’t load reminders.")
+                                .child(crate::i18n::text("notifications-couldn-t-load-reminders"))
                                 .child(
                                     div()
                                         .id("reminder-retry")
                                         .role(Role::Button)
                                         .cursor_pointer()
                                         .underline()
-                                        .child("Retry")
+                                        .child(crate::i18n::text("notifications-retry"))
                                         .on_click(
                                             cx.listener(|_, _, _, cx| cx.emit(Action::Retry)),
                                         ),
@@ -327,7 +334,9 @@ impl Render for View {
                                 .text_size(px(11.))
                                 .text_color(content(0.5))
                                 .hover(|s| s.text_color(content(1.)))
-                                .child("Desktop alerts are off. Enable in Settings.")
+                                .child(crate::i18n::text(
+                                    "notifications-desktop-alerts-are-off-enable-in",
+                                ))
                                 .on_click(cx.listener(|_, _, _, cx| cx.emit(Action::OpenSettings))),
                         )
                     }),

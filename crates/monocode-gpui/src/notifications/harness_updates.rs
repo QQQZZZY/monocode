@@ -149,9 +149,9 @@ impl Render for HarnessUpdates {
                     .text_size(px(12.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .child(if self.updates.len() == 1 {
-                        "Harness update available"
+                        crate::i18n::text("notifications-harness-update-available")
                     } else {
-                        "Harness updates available"
+                        crate::i18n::text("notifications-harness-updates-available")
                     }),
             );
         if pending.len() > 1 {
@@ -159,7 +159,7 @@ impl Render for HarnessUpdates {
                 div()
                     .id("update-all-harnesses")
                     .role(Role::Button)
-                    .aria_label("Update all")
+                    .aria_label(crate::i18n::text("notifications-update-all"))
                     .cursor_pointer()
                     .px(px(8.))
                     .py(px(4.))
@@ -168,14 +168,14 @@ impl Render for HarnessUpdates {
                     .text_color(content(0.7))
                     .hover(|s| s.bg(content(0.1)))
                     .on_click(cx.listener(move |this, _, _, cx| this.start(pending.clone(), cx)))
-                    .child("Update all"),
+                    .child(crate::i18n::text("notifications-update-all")),
             );
         }
         header = header.child(
             div()
                 .id("dismiss-harness-updates")
                 .role(Role::Button)
-                .aria_label("Dismiss harness updates")
+                .aria_label(crate::i18n::text("notifications-dismiss-harness-updates"))
                 .size(px(24.))
                 .flex()
                 .items_center()
@@ -209,7 +209,10 @@ impl Render for HarnessUpdates {
                     div()
                         .text_size(px(11.))
                         .text_color(gpui::rgb(0x34d399))
-                        .child(format!("✓ Updated to {version}")),
+                        .child(crate::i18n::format(
+                            "notifications-updated-to",
+                            &[("version", version.to_string())],
+                        )),
                 );
             } else {
                 let updating = matches!(state, Some(RowState::Updating));
@@ -257,11 +260,11 @@ impl Render for HarnessUpdates {
                                 ))
                             })
                             .child(if updating {
-                                "Updating"
+                                crate::i18n::text("notifications-updating")
                             } else if matches!(state, Some(RowState::Failed(_))) {
-                                "Retry"
+                                crate::i18n::text("notifications-retry")
                             } else {
-                                "Update"
+                                crate::i18n::text("notifications-update")
                             }),
                     );
             }
@@ -285,7 +288,7 @@ impl Render for HarnessUpdates {
         super::surface::glass_frame()
             .id("harness-update-notice")
             .role(Role::Status)
-            .aria_label("Harness updates")
+            .aria_label(crate::i18n::text("notifications-harness-updates"))
             .child(
                 panel.child(
                     div()
@@ -294,9 +297,9 @@ impl Render for HarnessUpdates {
                         .text_size(px(11.))
                         .text_color(content(0.5))
                         .child(if updated {
-                            "Model picker refreshed with the new version’s models."
+                            crate::i18n::text("notifications-model-picker-refreshed-with-the-new")
                         } else {
-                            "New models often need the latest version."
+                            crate::i18n::text("notifications-new-models-often-need-the-latest")
                         }),
                 ),
             )

@@ -38,16 +38,19 @@ const PICKER_FADE: f32 = 0.18;
 const COMMANDS: [(Command, &str); 4] = [
     (
         Command::Plan,
-        "Create a reviewable implementation plan before changing files.",
+        "quick-composer-hint-create-a-reviewable-implementation-plan-before",
     ),
     (
         Command::Operator,
-        "Give this thread access to MonoCode sessions, folders, and notes.",
+        "quick-composer-hint-give-this-thread-access-to-monocode",
     ),
-    (Command::Orchestrator, "Plan and coordinate agent work."),
+    (
+        Command::Orchestrator,
+        "quick-composer-hint-plan-and-coordinate-agent-work",
+    ),
     (
         Command::Draft,
-        "Save this message without starting the agent.",
+        "quick-composer-hint-save-this-message-without-starting-the",
     ),
 ];
 /// RUNTIME_MODES, with their icons and hints.
@@ -55,22 +58,22 @@ const PERMISSIONS: [(AccessMode, &str, &str); 4] = [
     (
         AccessMode::Supervised,
         "lock",
-        "Ask before commands and file changes.",
+        "quick-composer-hint-ask-before-commands-and-file-changes",
     ),
     (
         AccessMode::AutoAcceptEdits,
         "pencil",
-        "Auto-approve edits, ask before other actions.",
+        "quick-composer-hint-auto-approve-edits-ask-before-other",
     ),
     (
         AccessMode::Auto,
         "sparkles",
-        "An AI reviewer can approve or deny actions.",
+        "quick-composer-hint-an-ai-reviewer-can-approve-or",
     ),
     (
         AccessMode::FullAccess,
         "shield",
-        "Allow commands, edits, and supported MCP confirmations in non-plan turns without prompts.",
+        "quick-composer-hint-allow-commands-edits-and-supported-mcp",
     ),
 ];
 
@@ -241,8 +244,14 @@ impl QuickComposer {
             input.enable_inline_commands(cx);
             input
         });
-        let query =
-            cx.new(|cx| input::Input::field("Find a project", "Find a project", content(0.35), cx));
+        let query = cx.new(|cx| {
+            input::Input::field(
+                crate::i18n::text("quick-composer-find-a-project"),
+                crate::i18n::text("quick-composer-find-a-project"),
+                content(0.35),
+                cx,
+            )
+        });
         let subscriptions = vec![
             cx.subscribe(&input, |this, _, _: &input::Submitted, cx| {
                 this.launch(false, cx)
@@ -337,12 +346,14 @@ impl QuickComposer {
     }
     fn update_placeholder(&mut self, cx: &mut Context<Self>) {
         let text = if self.cwd.is_empty() {
-            "Open a project in MonoCode first".to_owned()
+            crate::i18n::text("quick-composer-open-project-first")
         } else {
-            format!(
-                "Start a {} session in {}…",
-                self.kind.label(),
-                crate::workspace::project_name(&self.cwd)
+            crate::i18n::format(
+                "quick-composer-start-session",
+                &[
+                    ("provider", self.kind.label().to_owned()),
+                    ("project", crate::workspace::project_name(&self.cwd)),
+                ],
             )
         };
         self.input
@@ -701,7 +712,9 @@ impl QuickComposer {
     // useQuickAttachments: files, pasted images and screenshots.
     fn add_attachments(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
         if !self.attachments_supported() {
-            self.error = Some("This provider does not support attachments".into());
+            self.error = Some(crate::i18n::text(
+                "quick-composer-this-provider-does-not-support-attachments",
+            ));
             cx.notify();
             return;
         }
@@ -751,7 +764,12 @@ impl QuickComposer {
                     self.staged_attachments.push(path.clone());
                     paths.push(path);
                 }
-                Err(error) => self.error = Some(format!("Could not paste the image: {error}")),
+                Err(error) => {
+                    self.error = Some(crate::i18n::format(
+                        "quick-composer-could-not-paste-the-image",
+                        &[("error", (error).to_string())],
+                    ))
+                }
             }
         }
         self.add_attachments(paths, cx);
@@ -765,7 +783,7 @@ impl QuickComposer {
             files: true,
             directories: false,
             multiple: true,
-            prompt: Some("Attach".into()),
+            prompt: Some(crate::i18n::text("quick-composer-attach").into()),
         });
         cx.spawn_in(window, async move |this, cx| {
             if let Ok(Ok(Some(paths))) = prompt.await {
@@ -798,13 +816,21 @@ impl QuickComposer {
                     .args(["-i", "-x", "-t", "png"])
                     .arg(&path)
                     .output()
-                    .map_err(|e| format!("Could not take a screenshot: {e}"))?;
+                    .map_err(|e| {
+                        crate::i18n::format(
+                            "quick-composer-could-not-take-a-screenshot",
+                            &[("e", (e).to_string())],
+                        )
+                    })?;
                 if path.is_file() {
                     return Ok(Some(path));
                 }
                 let error = String::from_utf8_lossy(&output.stderr).trim().to_owned();
                 if !output.status.success() && !error.is_empty() {
-                    return Err(format!("Could not take a screenshot: {error}"));
+                    return Err(crate::i18n::format(
+                        "quick-composer-could-not-take-a-screenshot-2",
+                        &[("error", (error).to_string())],
+                    ));
                 }
                 Ok(None)
             }
@@ -941,9 +967,9 @@ impl QuickComposer {
             && !matches!(self.picker, Some(p) if !matches!(p, Picker::Workspace | Picker::Branch))
             && self.git.as_ref().is_some_and(|g| g.current.is_some());
         let label = if new {
-            "New worktree"
+            crate::i18n::text("quick-composer-new-worktree")
         } else {
-            "Current checkout"
+            crate::i18n::text("quick-composer-current-checkout")
         };
         let current = self.git.as_ref().and_then(|g| g.current.clone());
         let base = self
@@ -953,13 +979,13 @@ impl QuickComposer {
             .or(current.clone())
             .unwrap_or_else(|| "HEAD".into());
         let branch = if new {
-            format!("From {base}")
+            crate::i18n::format("quick-composer-from", &[("base", (base).to_string())])
         } else {
             current.unwrap_or_else(|| {
                 if self.git_settled {
-                    "No repo".into()
+                    crate::i18n::text("quick-composer-no-repo")
                 } else {
-                    "Loading…".into()
+                    crate::i18n::text("quick-composer-loading")
                 }
             })
         };
@@ -971,7 +997,7 @@ impl QuickComposer {
                     .any(|w| !w.main && Some(w.path.as_str()) == self.workspace.tree.as_deref())
             });
         let project = if self.cwd.is_empty() {
-            "No project".to_owned()
+            crate::i18n::text("quick-composer-no-project")
         } else {
             self.project_label(&self.cwd)
         };
@@ -986,7 +1012,10 @@ impl QuickComposer {
             .child(
                 pill(
                     "quick-workspace",
-                    format!("Workspace {label}"),
+                    crate::i18n::format(
+                        "quick-composer-workspace",
+                        &[("label", (label).to_string())],
+                    ),
                     self.picker == Some(Picker::Workspace),
                     0.55,
                 )
@@ -1017,9 +1046,12 @@ impl QuickComposer {
                 pill(
                     "quick-branch",
                     if new {
-                        format!("Create worktree from {base}")
+                        crate::i18n::format(
+                            "quick-composer-create-worktree-from",
+                            &[("base", (base).to_string())],
+                        )
                     } else {
-                        "Choose branch".into()
+                        crate::i18n::text("quick-composer-choose-branch")
                     },
                     self.picker == Some(Picker::Branch),
                     0.55,
@@ -1059,7 +1091,7 @@ impl QuickComposer {
                             .bg(content(0.08))
                             .text_size(px(10.))
                             .text_color(content(0.45))
-                            .child("Worktree"),
+                            .child(crate::i18n::text("quick-composer-worktree")),
                     )
                 })
                 .on_click(cx.listener(move |this, _, window, cx| {
@@ -1071,7 +1103,7 @@ impl QuickComposer {
             .child(
                 pill(
                     "quick-project",
-                    "Project (⌘P)",
+                    crate::i18n::text("quick-composer-pill-project-p"),
                     self.picker == Some(Picker::Project),
                     0.55,
                 )
@@ -1117,7 +1149,7 @@ impl QuickComposer {
             div()
                 .id("quick-attachments")
                 .role(Role::Group)
-                .aria_label("Attachments")
+                .aria_label(crate::i18n::text("quick-composer-attachments"))
                 .flex_shrink_0()
                 .max_h(px(112.))
                 .overflow_y_scroll()
@@ -1137,7 +1169,10 @@ impl QuickComposer {
                     let remove = div()
                         .id(("quick-remove-attachment", ix))
                         .role(Role::Button)
-                        .aria_label(format!("Remove {label}"))
+                        .aria_label(crate::i18n::format(
+                            "quick-composer-remove",
+                            &[("label", label.to_string())],
+                        ))
                         .cursor_pointer()
                         .flex_shrink_0()
                         .size(px(16.))
@@ -1210,7 +1245,7 @@ impl QuickComposer {
             .child(
                 pill(
                     "quick-attach",
-                    "Add attachment",
+                    crate::i18n::text("quick-composer-pill-add-attachment"),
                     self.picker == Some(Picker::Attachments),
                     0.7,
                 )
@@ -1232,7 +1267,7 @@ impl QuickComposer {
             .child(
                 pill(
                     "quick-model",
-                    "Model (⌘.)",
+                    crate::i18n::text("quick-composer-pill-model"),
                     self.picker == Some(Picker::Model),
                     0.7,
                 )
@@ -1253,7 +1288,7 @@ impl QuickComposer {
                 d.child(
                     pill(
                         "quick-permissions",
-                        "Permissions",
+                        crate::i18n::text("quick-composer-pill-permissions"),
                         self.picker == Some(Picker::Permissions),
                         0.7,
                     )
@@ -1266,7 +1301,11 @@ impl QuickComposer {
                             content(0.7)
                         },
                     ))
-                    .child(div().truncate().child(self.access.label()))
+                    .child(
+                        div()
+                            .truncate()
+                            .child(crate::conversation::access_label(self.access)),
+                    )
                     .child(icon("chevron-down", 12.).text_color(content(0.4)))
                     .on_click(
                         cx.listener(|this, _, window, cx| {
@@ -1290,7 +1329,7 @@ impl QuickComposer {
                                 div()
                                     .id("quick-attaching")
                                     .role(Role::Status)
-                                    .child("Adding attachment…"),
+                                    .child(crate::i18n::text("quick-composer-adding-attachment")),
                             )
                         } else if let Some(error) = self.error.clone() {
                             d.child(
@@ -1307,7 +1346,7 @@ impl QuickComposer {
                                     .items_center()
                                     .gap_1()
                                     .child(kbd("↵"))
-                                    .child("start"),
+                                    .child(crate::i18n::text("quick-composer-start")),
                             )
                             .child(
                                 div()
@@ -1315,7 +1354,7 @@ impl QuickComposer {
                                     .items_center()
                                     .gap_1()
                                     .child(kbd("⌘↵"))
-                                    .child("start and open"),
+                                    .child(crate::i18n::text("quick-composer-start-and-open")),
                             )
                         }
                     })
@@ -1323,7 +1362,11 @@ impl QuickComposer {
                         div()
                             .id("quick-send")
                             .role(Role::Button)
-                            .aria_label(if draft { "Save draft" } else { "Start" })
+                            .aria_label(if draft {
+                                crate::i18n::text("quick-composer-save-draft")
+                            } else {
+                                crate::i18n::text("quick-composer-start-2")
+                            })
                             .px(px(10.))
                             .py_1()
                             .rounded(px(6.))
@@ -1333,7 +1376,11 @@ impl QuickComposer {
                             .text_color(white(1.))
                             .when(!can_submit, |d| d.opacity(0.4))
                             .when(can_submit, |d| d.cursor_pointer())
-                            .child(if draft { "Save draft" } else { "Start" })
+                            .child(if draft {
+                                crate::i18n::text("quick-composer-save-draft")
+                            } else {
+                                crate::i18n::text("quick-composer-start-2")
+                            })
                             .on_click(cx.listener(|this, _, _, cx| this.launch(false, cx))),
                     ),
             )
@@ -1373,7 +1420,7 @@ impl QuickComposer {
         div()
             .id("quick-composer-commands")
             .role(Role::ListBox)
-            .aria_label("Commands")
+            .aria_label(crate::i18n::text("quick-composer-commands"))
             .flex_shrink_0()
             .border_t_1()
             .border_color(content(0.08))
@@ -1385,7 +1432,7 @@ impl QuickComposer {
                         .py_2()
                         .text_size(px(12.))
                         .text_color(content(0.45))
-                        .child("No matching commands"),
+                        .child(crate::i18n::text("quick-composer-no-matching-commands")),
                 )
             })
             .children(
@@ -1414,7 +1461,7 @@ impl QuickComposer {
                                     .text_size(px(11.))
                                     .line_height(px(16.))
                                     .text_color(content(0.5))
-                                    .child(description),
+                                    .child(crate::i18n::text(description)),
                             )
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.choose_command(ix, cx);
@@ -1428,7 +1475,7 @@ impl QuickComposer {
         div()
             .id("quick-permissions-list")
             .role(Role::ListBox)
-            .aria_label("Permissions")
+            .aria_label(crate::i18n::text("quick-composer-permissions"))
             .track_focus(&self.permissions_focus)
             .flex_shrink_0()
             .border_t_1()
@@ -1450,7 +1497,7 @@ impl QuickComposer {
                     .map(|(ix, (mode, glyph, hint))| {
                         let selected = mode == self.access;
                         self.option_row(("quick-permission", ix), ix == self.highlight, cx)
-                            .aria_label(mode.label())
+                            .aria_label(crate::conversation::access_label(mode))
                             .aria_selected(selected)
                             .px_3()
                             .py_2()
@@ -1472,14 +1519,14 @@ impl QuickComposer {
                                         div()
                                             .text_size(px(13.))
                                             .font_weight(gpui::FontWeight::MEDIUM)
-                                            .child(mode.label()),
+                                            .child(crate::conversation::access_label(mode)),
                                     )
                                     .child(
                                         div()
                                             .mt(px(2.))
                                             .text_size(px(11.))
                                             .text_color(content(0.45))
-                                            .child(hint),
+                                            .child(crate::i18n::text(hint)),
                                     ),
                             )
                             .when(selected, |d| {
@@ -1534,7 +1581,7 @@ impl QuickComposer {
                 div()
                     .id("quick-project-list")
                     .role(Role::ListBox)
-                    .aria_label("Projects")
+                    .aria_label(crate::i18n::text("quick-composer-projects"))
                     .max_h(px(256.))
                     .overflow_y_scroll()
                     .px_2()
@@ -1546,7 +1593,7 @@ impl QuickComposer {
                                 .py_2()
                                 .text_size(px(12.))
                                 .text_color(content(0.45))
-                                .child("No matches"),
+                                .child(crate::i18n::text("quick-composer-no-matches")),
                         )
                     })
                     .children(options.into_iter().enumerate().map(|(ix, path)| {
@@ -1581,11 +1628,11 @@ impl QuickComposer {
     fn workspace_list(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let new = self.workspace.new_worktree;
         let current = !new && self.workspace.tree.is_none();
-        let row = |id: &'static str, glyph: &'static str, label: &'static str, checked: bool| {
+        let row = |id: &'static str, glyph: &'static str, label: String, checked: bool| {
             div()
                 .id(id)
                 .role(Role::MenuItemRadio)
-                .aria_label(label)
+                .aria_label(label.clone())
                 .aria_selected(checked)
                 .cursor_pointer()
                 .h(px(32.))
@@ -1616,7 +1663,7 @@ impl QuickComposer {
                         row(
                             "quick-workspace-current",
                             "folder",
-                            "Current checkout",
+                            crate::i18n::text("quick-composer-current-checkout"),
                             current,
                         )
                         .on_click(cx.listener(|this, _, window, cx| {
@@ -1624,11 +1671,15 @@ impl QuickComposer {
                         })),
                     )
                     .child(
-                        row("quick-workspace-new", "folder-tree", "New worktree", new).on_click(
-                            cx.listener(|this, _, window, cx| {
-                                this.choose_workspace(true, window, cx)
-                            }),
-                        ),
+                        row(
+                            "quick-workspace-new",
+                            "folder-tree",
+                            crate::i18n::text("quick-composer-new-worktree"),
+                            new,
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.choose_workspace(true, window, cx)
+                        })),
                     ),
             )
             .child(
@@ -1638,7 +1689,7 @@ impl QuickComposer {
                     .pb_1()
                     .text_size(px(11.))
                     .text_color(content(0.45))
-                    .child("Existing worktrees"),
+                    .child(crate::i18n::text("quick-composer-existing-worktrees")),
             )
             .children(
                 self.git_picker
@@ -1710,7 +1761,7 @@ impl QuickComposer {
                                 div()
                                     .id("quick-fast")
                                     .role(Role::Button)
-                                    .aria_label("Fast mode")
+                                    .aria_label(crate::i18n::text("quick-composer-fast-mode"))
                                     .aria_toggled(if fast {
                                         gpui::Toggled::True
                                     } else {
@@ -1749,7 +1800,9 @@ impl QuickComposer {
                             div()
                                 .id("quick-effort-reset")
                                 .role(Role::Button)
-                                .aria_label("Reset to saved defaults")
+                                .aria_label(crate::i18n::text(
+                                    "quick-composer-reset-to-saved-defaults",
+                                ))
                                 .group("quick-effort-reset")
                                 .cursor_pointer()
                                 .size(px(28.))
@@ -1778,9 +1831,9 @@ impl QuickComposer {
                         .id("quick-effort")
                         .role(Role::Slider)
                         .aria_label(if self.kind == Kind::Codex {
-                            "Reasoning"
+                            crate::i18n::text("quick-composer-reasoning")
                         } else {
-                            "Effort"
+                            crate::i18n::text("quick-composer-effort")
                         })
                         .aria_value(effort_label)
                         .relative()
@@ -2004,7 +2057,7 @@ impl Render for QuickComposer {
                         div()
                             .id("quick-close")
                             .role(Role::Button)
-                            .aria_label("Close composer")
+                            .aria_label(crate::i18n::text("quick-composer-close-composer"))
                             .group("quick-close")
                             .cursor_pointer()
                             .absolute()
@@ -2045,7 +2098,7 @@ impl Render for QuickComposer {
                                 .text_size(px(12.))
                                 .text_color(amber(1.))
                                 .child(
-                                    "Choose a provider that supports attachments, or remove the attached files.",
+                                    crate::i18n::text("quick-composer-choose-a-provider-that-supports-attachments"),
                                 ),
                         )
                     })
@@ -2094,7 +2147,7 @@ impl Render for QuickComposer {
                                 .justify_center()
                                 .text_size(px(14.))
                                 .text_color(accent_color())
-                                .child("Drop to attach"),
+                                .child(crate::i18n::text("quick-composer-drop-to-attach")),
                         )
                     }),
             );
@@ -2114,7 +2167,7 @@ impl Render for QuickComposer {
                                 div()
                                     .id("quick-choose-files")
                                     .role(Role::MenuItem)
-                                    .aria_label("Choose files…")
+                                    .aria_label(crate::i18n::text("quick-composer-choose-files"))
                                     .cursor_pointer()
                                     .flex()
                                     .items_center()
@@ -2125,7 +2178,7 @@ impl Render for QuickComposer {
                                     .text_size(px(12.))
                                     .hover(|s| s.bg(content(0.08)))
                                     .child(icon("image-add", 14.).text_color(content(0.75)))
-                                    .child("Choose files…")
+                                    .child(crate::i18n::text("quick-composer-choose-files"))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.choose_files(window, cx)
                                     })),
@@ -2134,7 +2187,7 @@ impl Render for QuickComposer {
                                 div()
                                     .id("quick-screenshot")
                                     .role(Role::MenuItem)
-                                    .aria_label("Take screenshot…")
+                                    .aria_label(crate::i18n::text("quick-composer-take-screenshot"))
                                     .cursor_pointer()
                                     .flex()
                                     .items_center()
@@ -2145,7 +2198,7 @@ impl Render for QuickComposer {
                                     .text_size(px(12.))
                                     .hover(|s| s.bg(content(0.08)))
                                     .child(icon("maximize-2", 14.).text_color(content(0.75)))
-                                    .child("Take screenshot…")
+                                    .child(crate::i18n::text("quick-composer-take-screenshot"))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.take_screenshot(window, cx)
                                     })),
