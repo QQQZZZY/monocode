@@ -21,6 +21,23 @@ pub(super) struct QueueEdit {
     _submit: Subscription,
 }
 
+fn message_label(message: &Message) -> String {
+    if message.text.trim().is_empty() {
+        crate::i18n::format(
+            if message.attachments.len() == 1 {
+                "conversation-one-attachment"
+            } else {
+                "conversation-many-attachments"
+            },
+            &[(
+                "count",
+                crate::system_format::unsigned(message.attachments.len() as u64),
+            )],
+        )
+    } else {
+        message.text.trim().to_owned()
+    }
+}
 impl Conversation {
     pub(super) fn draft_active(&self, cx: &gpui::App) -> bool {
         self.follow_ups.draft_selected
@@ -78,7 +95,10 @@ impl Conversation {
                     }
                     Err(error) if this.follow_ups.state.revision == revision => {
                         this.follow_ups.state.paused = true;
-                        this.status = format!("Could not save messages: {error}");
+                        this.status = crate::i18n::format(
+                            "conversation-could-not-save-messages",
+                            &[("error", (error).to_string())],
+                        );
                         if let Some(head) = this.follow_ups.state.messages.first_mut() {
                             head.error = Some(this.status.clone());
                         }
@@ -162,7 +182,10 @@ impl Conversation {
         let attachments = std::mem::take(&mut self.attachments);
         let mut message = self.message(text, attachments, None, cx);
         message.at = self.transcript.read(cx).source_rows().len();
-        if self.summary.title.starts_with("New ") {
+        if monocode_core::session_title::is_default_title(
+            &self.summary.title,
+            &self.summary.provider,
+        ) {
             self.summary.title = message
                 .label()
                 .split_whitespace()
@@ -362,7 +385,9 @@ impl Conversation {
                 } else {
                     self.fail_follow_up(
                         &message.id,
-                        "The provider disconnected before accepting this message".into(),
+                        crate::i18n::text(
+                            "conversation-the-provider-disconnected-before-accepting-this-message",
+                        ),
                         cx,
                     );
                 }
@@ -519,23 +544,23 @@ impl Conversation {
             .when(self.follow_ups.state.paused && !self.follow_ups.resuming, |d| d.child(
                 div().h(px(28.)).flex().items_center().gap_2().border_b_1().border_color(content(0.1))
                     .child(icon("queue-pause", 14.))
-                    .child(div().flex_1().min_w_0().truncate().child(if failed { "A message couldn't be sent" } else { "Queue paused because you interrupted" }))
-                    .child(queue_button("queue-resume", if failed { "Retry queue" } else { "Resume queue" }, "queue-play").w_auto().px(px(6.)).gap(px(6.)).child(if failed { "Retry" } else { "Resume" }).on_click(cx.listener(|this, _, _, cx| this.resume_queue(cx))))
+                    .child(div().flex_1().min_w_0().truncate().child(if failed { crate::i18n::text("conversation-a-message-couldn-t-be-sent") } else { crate::i18n::text("conversation-queue-paused-because-you-interrupted") }))
+                    .child(queue_button("queue-resume", if failed { crate::i18n::text("conversation-retry-queue") } else { crate::i18n::text("conversation-resume-queue") }, "queue-play").w_auto().px(px(6.)).gap(px(6.)).child(if failed { crate::i18n::text("conversation-retry") } else { crate::i18n::text("conversation-resume") }).on_click(cx.listener(|this, _, _, cx| this.resume_queue(cx))))
             ))
             .children(self.follow_ups.state.messages.iter().enumerate().map(|(index, message)| {
                 let id = message.id.clone();
                 let editing = self.follow_ups.edit.as_ref().filter(|edit| edit.id == id);
                 let sending = self.follow_ups.sending.as_ref() == Some(&id);
-                div().id(SharedString::from(format!("queued-{id}"))).role(Role::Group).aria_label(format!("Queued message: {}", message.label())).min_h(px(32.)).flex().items_center().gap(px(10.)).when(index > 0, |d| d.border_t_1().border_color(content(0.05)))
+                div().id(SharedString::from(format!("queued-{id}"))).role(Role::Group).aria_label(crate::i18n::format("conversation-queued-message", &[("name", message_label(message).to_string())])).min_h(px(32.)).flex().items_center().gap(px(10.)).when(index > 0, |d| d.border_t_1().border_color(content(0.05)))
                     .child(icon("queue-list", 14.).text_color(content(0.35)))
                     .map(|row| if let Some(edit) = editing {
                         row.child(div().flex_1().min_w_0().px(px(6.)).py(px(2.)).rounded_md().border_1().border_color(content(0.3)).bg(content(0.05)).on_action(cx.listener(|this, _: &crate::shell::DismissMenu, window, cx| { this.finish_queue_edit(false, window, cx); cx.stop_propagation(); })).child(edit.input.clone()))
-                            .child(queue_button("queue-save", "Save queued message", "check").on_click(cx.listener(|this, _, window, cx| this.finish_queue_edit(true, window, cx))))
-                            .child(queue_button("queue-cancel", "Cancel queued message edit", "close").on_click(cx.listener(|this, _, window, cx| this.finish_queue_edit(false, window, cx))))
+                            .child(queue_button("queue-save", crate::i18n::text("conversation-save-queued-message"), "check").on_click(cx.listener(|this, _, window, cx| this.finish_queue_edit(true, window, cx))))
+                            .child(queue_button("queue-cancel", crate::i18n::text("conversation-cancel-queued-message-edit"), "close").on_click(cx.listener(|this, _, window, cx| this.finish_queue_edit(false, window, cx))))
                     } else {
                         let (steer, edit, remove) = (id.clone(), id.clone(), id);
-                        row.child(div().flex_1().min_w_0().py_1().child(div().id("queued-message-text").role(Role::Label).aria_label(message.label()).truncate().text_color(content(0.75)).child(message.label())).when_some(message.error.clone(), |d, error| d.child(div().id("queue-error").role(Role::Alert).text_color(gpui::rgb(0xf87171)).child(error))))
-                            .when(Kind::from_id(&self.summary.provider).can_steer(), |d| d.child(queue_button("queue-steer", "Steer queued message", "queue-steer").w_auto().px_2().gap(px(6.)).opacity(if sending { 0.4 } else { 1. }).child("Steer").on_click(cx.listener(move |this, _, _, cx| {
+                        row.child(div().flex_1().min_w_0().py_1().child(div().id("queued-message-text").role(Role::Label).aria_label(message_label(message)).truncate().text_color(content(0.75)).child(message_label(message))).when_some(message.error.clone(), |d, error| d.child(div().id("queue-error").role(Role::Alert).text_color(gpui::rgb(0xf87171)).child(error))))
+                            .when(Kind::from_id(&self.summary.provider).can_steer(), |d| d.child(queue_button("queue-steer", crate::i18n::text("conversation-steer-queued-message"), "queue-steer").w_auto().px_2().gap(px(6.)).opacity(if sending { 0.4 } else { 1. }).child(crate::i18n::text("conversation-steer")).on_click(cx.listener(move |this, _, _, cx| {
                                 if !sending && let Some(message) = this.follow_ups.state.messages.iter_mut().find(|m| m.id == steer) {
                                     if !message.can_steer() && this.busy { return; }
                                     message.steer = true;
@@ -544,8 +569,8 @@ impl Conversation {
                                     this.save_follow_ups(cx);
                                 }
                             }))))
-                            .child(queue_button("queue-edit", "Edit queued message", "pencil-edit").opacity(if sending { 0.4 } else { 1. }).on_click(cx.listener(move |this, _, window, cx| { if !sending { this.edit_queued(edit.clone(), window, cx); } })))
-                            .child(queue_button("queue-remove", "Remove queued message", "trash").opacity(if sending { 0.4 } else { 1. }).on_click(cx.listener(move |this, _, _, cx| {
+                            .child(queue_button("queue-edit", crate::i18n::text("conversation-edit-queued-message"), "pencil-edit").opacity(if sending { 0.4 } else { 1. }).on_click(cx.listener(move |this, _, window, cx| { if !sending { this.edit_queued(edit.clone(), window, cx); } })))
+                            .child(queue_button("queue-remove", crate::i18n::text("conversation-remove-queued-message"), "trash").opacity(if sending { 0.4 } else { 1. }).on_click(cx.listener(move |this, _, _, cx| {
                                 if !sending {
                                     this.follow_ups.state.messages.retain(|m| m.id != remove);
                                     this.follow_ups.continuations.retain(|id| id != &remove);
@@ -564,13 +589,14 @@ impl Conversation {
 
 fn queue_button(
     id: &'static str,
-    label: &'static str,
+    label: impl Into<gpui::SharedString>,
     glyph: &'static str,
 ) -> gpui::Stateful<gpui::Div> {
+    let label = label.into();
     div()
         .id(id)
         .role(Role::Button)
-        .aria_label(label)
+        .aria_label(&label)
         .size(px(24.))
         .flex_shrink_0()
         .rounded_md()
@@ -945,16 +971,16 @@ mod tests {
         };
         assert_eq!(action(cx, "steer", false), None, "idle sends start a turn");
         window.update(cx, |view, _, _| view.busy = true).unwrap();
-        assert_eq!(action(cx, "steer", false), Some("Steer"));
-        assert_eq!(action(cx, "steer", true), Some("Queue"));
-        assert_eq!(action(cx, "queue", false), Some("Queue"));
-        assert_eq!(action(cx, "queue", true), Some("Steer"));
+        assert_eq!(action(cx, "steer", false), Some("composer-send-steer"));
+        assert_eq!(action(cx, "steer", true), Some("composer-send-queue"));
+        assert_eq!(action(cx, "queue", false), Some("composer-send-queue"));
+        assert_eq!(action(cx, "queue", true), Some("composer-send-steer"));
         window
             .update(cx, |view, _, _| view.settings.plan = true)
             .unwrap();
         assert_eq!(
             action(cx, "queue", true),
-            Some("Queue"),
+            Some("composer-send-queue"),
             "modes always queue"
         );
     }
@@ -1133,6 +1159,34 @@ mod tests {
     }
 
     #[gpui::test]
+    fn saved_draft_preserves_a_manual_title_starting_with_new(cx: &mut TestAppContext) {
+        let window = conversation(cx);
+        window
+            .update(cx, |view, _, cx| {
+                view.summary.title = "New feature plan".into();
+                locked(&view.store)
+                    .unwrap()
+                    .title(view.summary.id, &view.summary.title)
+                    .unwrap();
+                view.input.update(cx, |input, cx| {
+                    input.set_text("/draft Save this idea".into(), cx)
+                });
+                view.send(cx);
+                assert_eq!(view.summary.title, "New feature plan");
+            })
+            .unwrap();
+        cx.run_until_parked();
+        window
+            .update(cx, |view, _, _| {
+                assert_eq!(
+                    locked(&view.store).unwrap().sessions().unwrap()[0].title,
+                    "New feature plan"
+                );
+            })
+            .unwrap();
+    }
+
+    #[gpui::test]
     fn sending_a_saved_draft_preserves_the_new_composer(cx: &mut TestAppContext) {
         let window = conversation(cx);
         cx.update(|cx| {
@@ -1173,4 +1227,28 @@ mod tests {
             })
             .unwrap();
     }
+}
+
+#[cfg(test)]
+#[test]
+fn queue_caption_preserves_user_content_and_attachment_plural() {
+    for count in [0, 1, 2] {
+        let message = Message {
+            attachments: vec![std::path::PathBuf::from("raw name"); count],
+            ..Default::default()
+        };
+        assert_eq!(
+            message_label(&message),
+            format!(
+                "{} attachment{}",
+                crate::system_format::unsigned(count as u64),
+                if count == 1 { "" } else { "s" }
+            )
+        );
+    }
+    let message = Message {
+        text: "  Raw 用户 content  ".into(),
+        ..Default::default()
+    };
+    assert_eq!(message_label(&message), "Raw 用户 content");
 }

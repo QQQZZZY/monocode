@@ -59,7 +59,8 @@ impl Conversation {
             return false;
         }
         let Some(controls) = &self.controls else {
-            self.status = "The provider is no longer waiting for this approval".into();
+            self.status =
+                crate::i18n::text("conversation-the-provider-is-no-longer-waiting-for-this");
             cx.notify();
             return false;
         };
@@ -70,7 +71,8 @@ impl Conversation {
             })
             .is_err()
         {
-            self.status = "The provider is no longer waiting for this approval".into();
+            self.status =
+                crate::i18n::text("conversation-the-provider-is-no-longer-waiting-for-this");
             cx.notify();
             return false;
         }

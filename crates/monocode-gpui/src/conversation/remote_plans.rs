@@ -20,11 +20,11 @@ impl Plan {
             && !self.text.trim().is_empty()
             && !matches!(self.status.as_str(), "streaming" | "building" | "built")
     }
-    pub(crate) fn build_label(&self) -> &'static str {
+    pub(crate) fn build_label(&self) -> String {
         match self.status.as_str() {
-            "building" => "Building…",
-            "built" => "Built",
-            _ => "Build",
+            "building" => crate::i18n::text("conversation-building"),
+            "built" => crate::i18n::text("conversation-built"),
+            _ => crate::i18n::text("conversation-build"),
         }
     }
     pub(crate) fn title(&self) -> String {
@@ -45,7 +45,7 @@ impl Plan {
                     .find(|line| !line.is_empty() && !line.starts_with("```") && *line != "---")
                     .map(str::to_owned)
             })
-            .unwrap_or_else(|| "Plan".into())
+            .unwrap_or_else(|| crate::i18n::text("conversation-plan"))
             .chars()
             .take(80)
             .collect()
@@ -150,14 +150,16 @@ impl Conversation {
             || self.busy
             || self.stopping
         {
-            self.status =
-                "Reconnect and wait for the remote turn to finish before building this plan."
-                    .into();
+            self.status = crate::i18n::text(
+                "conversation-reconnect-and-wait-for-the-remote-turn-to-finish-before-building-this-plan",
+            );
             cx.notify();
             return;
         }
         if !self.remote_state.capabilities.contains("sessions.plan") {
-            self.status = "Update MonoCode Host in Connections settings to build plans.".into();
+            self.status = crate::i18n::text(
+                "conversation-update-monocode-host-in-connections-settings-to-build",
+            );
             cx.notify();
             return;
         }
@@ -192,7 +194,7 @@ impl Conversation {
             .plans
             .get(&id)
             .map(Plan::title)
-            .unwrap_or_else(|| "Plan".into());
+            .unwrap_or_else(|| crate::i18n::text("conversation-plan"));
         let mut fill = pane_fill();
         fill.a = 1.;
         Some(
@@ -218,11 +220,11 @@ impl Conversation {
                         .child(
                             crate::settings::widgets::secondary_button(
                                 "remote-reader-build",
-                                "Build approved plan",
+                                crate::i18n::text("conversation-build-approved-plan"),
                                 false,
                                 !build,
                             )
-                            .child("Build")
+                            .child(crate::i18n::text("conversation-build"))
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
                                     if build {
@@ -232,12 +234,15 @@ impl Conversation {
                             )),
                         )
                         .child(
-                            icon_button("close-remote-plan", "Close plan", "x").on_click(
-                                cx.listener(|this, _, _, cx| {
-                                    this.remote_plans.reader = None;
-                                    cx.notify();
-                                }),
-                            ),
+                            icon_button(
+                                "close-remote-plan",
+                                crate::i18n::text("conversation-close-plan"),
+                                "x",
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.remote_plans.reader = None;
+                                cx.notify();
+                            })),
                         ),
                 )
                 .child(div().flex_1().min_h_0().child(reader.view.clone()))

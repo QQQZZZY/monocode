@@ -97,25 +97,48 @@ impl gpui::EventEmitter<MonoResponseAction> for TranscriptView {}
 
 fn work_title(model: Option<&str>, elapsed_ms: Option<u64>, live: bool) -> String {
     let model = model.map(str::trim).filter(|model| !model.is_empty());
-    let verb = match (live, model.is_some()) {
-        (true, true) => "working",
-        (true, false) => "Working",
-        (false, true) => "worked",
-        (false, false) => "Worked",
+    let title = match model {
+        Some(model) => crate::i18n::format(
+            if live {
+                "transcript-model-working"
+            } else {
+                "transcript-model-worked"
+            },
+            &[("model", model.to_owned())],
+        ),
+        None => crate::i18n::text(if live {
+            "transcript-working"
+        } else {
+            "transcript-worked"
+        }),
     };
-    let title = model.map_or_else(|| verb.to_owned(), |model| format!("{model} {verb}"));
     let Some(ms) = elapsed_ms else {
         return if live { format!("{title}…") } else { title };
     };
     let seconds = ms.saturating_add(500).saturating_div(1000).max(1);
     let duration = if seconds < 60 {
-        format!("{seconds}s")
+        crate::i18n::format(
+            "transcript-s",
+            &[("seconds", crate::system_format::unsigned(seconds))],
+        )
     } else if seconds % 60 == 0 {
-        format!("{}m", seconds / 60)
+        crate::i18n::format("transcript-m", &[("value", (seconds / 60).to_string())])
     } else {
-        format!("{}m {}s", seconds / 60, seconds % 60)
+        crate::i18n::format(
+            "duration-minutes-seconds",
+            &[
+                ("whole", crate::system_format::unsigned(seconds / 60)),
+                ("rest", crate::system_format::unsigned(seconds % 60)),
+            ],
+        )
     };
-    format!("{title} for {duration}")
+    crate::i18n::format(
+        "transcript-for-2",
+        &[
+            ("title", (title).to_string()),
+            ("duration", (duration).to_string()),
+        ],
+    )
 }
 
 struct Message {
@@ -480,6 +503,15 @@ pub(crate) fn mono_continues(source: &[Row], turn: usize) -> Option<usize> {
             .map_or(0, |i| i + 1),
     )
 }
+/// The display text of a saved error row. The stored text is a stable runtime
+/// value, so a language change localizes old rows without rewriting them.
+fn error_rows(role: &str, rows: &[Row]) -> Vec<String> {
+    debug_assert_eq!(role, "error");
+    rows.iter()
+        .filter(|row| row.role != "mono-system")
+        .map(|row| crate::runtime_text::status(&row.text))
+        .collect()
+}
 /// monoWorkStatus: a short status for the turn's latest activity.
 pub(crate) fn mono_work_label(source: &[Row], group: usize) -> String {
     let turn = source[group.min(source.len())..]
@@ -487,10 +519,10 @@ pub(crate) fn mono_work_label(source: &[Row], group: usize) -> String {
         .rposition(|r| r.is_prompt())
         .map_or(group, |i| group + i + 1);
     const THINKING: [&str; 4] = [
-        "Thinking…",
-        "Pondering…",
-        "Considering…",
-        "Working it through…",
+        "transcript-thinking-3",
+        "transcript-pondering",
+        "transcript-considering",
+        "transcript-working-it-through",
     ];
     let end = (turn..source.len())
         .find(|&i| source[i].is_prompt())
@@ -532,15 +564,15 @@ pub(crate) fn mono_work_label(source: &[Row], group: usize) -> String {
     }
     let Some(tool) = latest.and_then(|at| serde_json::from_str::<ToolCall>(&message(at)).ok())
     else {
-        return THINKING[thought.saturating_sub(1) % THINKING.len()].into();
+        return crate::i18n::text(THINKING[thought.saturating_sub(1) % THINKING.len()]);
     };
     if tool.is_milestone() {
         return if tool.state != ToolState::Running {
-            "Thinking…".into()
+            crate::i18n::text("transcript-thinking-3")
         } else if tool.is_handoff() {
             format!("{}…", tool.summary().0)
         } else {
-            "Compacting context…".into()
+            crate::i18n::text("transcript-compacting-context")
         };
     }
     tool_status(&tool)
@@ -582,29 +614,31 @@ fn tool_status(tool: &ToolCall) -> String {
             {
                 return format!("{description}…");
             }
-            command_status(shown.command.as_deref().unwrap_or("")).into()
+            command_status(shown.command.as_deref().unwrap_or(""))
         }
-        "Edit" | "Write" => "Editing file…".into(),
-        "Read" => "Reading file…".into(),
-        "Search" => "Searching the web…".into(),
-        "Find" | "List" | "Glob" | "Grep" => "Exploring project…".into(),
-        "Agent" | "Task" => "Running agent…".into(),
-        _ => mcp_status(&tool.name).unwrap_or_else(|| "Using tool…".into()),
+        "Edit" | "Write" => crate::i18n::text("transcript-editing-file"),
+        "Read" => crate::i18n::text("transcript-reading-file"),
+        "Search" => crate::i18n::text("transcript-searching-the-web"),
+        "Find" | "List" | "Glob" | "Grep" => crate::i18n::text("transcript-exploring-project"),
+        "Agent" | "Task" => crate::i18n::text("transcript-running-agent"),
+        _ => mcp_status(&tool.name).unwrap_or_else(|| crate::i18n::text("transcript-using-tool")),
     }
 }
 /// A status for a shell command the model did not describe.
-fn command_status(command: &str) -> &'static str {
+fn command_status(command: &str) -> String {
     let mut words = command.split_whitespace();
     match (words.next().unwrap_or(""), words.next().unwrap_or("")) {
-        ("gh", "pr") => "Looking at pull requests…",
-        ("gh", "issue") => "Looking at issues…",
-        ("gh", "run" | "workflow") => "Checking CI…",
-        ("gh", "search" | "repo") => "Searching GitHub…",
-        ("gh", _) => "Checking GitHub…",
-        ("git", _) => "Checking git…",
-        ("curl" | "wget", _) => "Fetching from the web…",
-        ("npm" | "bun" | "pnpm" | "yarn" | "cargo" | "make", _) => "Running a build…",
-        _ => "Running command…",
+        ("gh", "pr") => crate::i18n::text("transcript-looking-at-pull-requests"),
+        ("gh", "issue") => crate::i18n::text("transcript-looking-at-issues"),
+        ("gh", "run" | "workflow") => crate::i18n::text("transcript-checking-ci"),
+        ("gh", "search" | "repo") => crate::i18n::text("transcript-searching-github"),
+        ("gh", _) => crate::i18n::text("transcript-checking-github"),
+        ("git", _) => crate::i18n::text("transcript-checking-git"),
+        ("curl" | "wget", _) => crate::i18n::text("transcript-fetching-from-the-web"),
+        ("npm" | "bun" | "pnpm" | "yarn" | "cargo" | "make", _) => {
+            crate::i18n::text("transcript-running-a-build")
+        }
+        _ => crate::i18n::text("transcript-running-command"),
     }
 }
 /// `mcp__github__search_repositories` → "Search repositories…".
@@ -1073,7 +1107,11 @@ impl TranscriptView {
                     response_actions::button(
                         turn,
                         "mono-copy-response",
-                        if copied { "Copied" } else { "Copy response" },
+                        if copied {
+                            crate::i18n::text("transcript-copied")
+                        } else {
+                            crate::i18n::text("transcript-copy-response")
+                        },
                         if copied { "check" } else { "response-copy" },
                         false,
                     )
@@ -1101,11 +1139,11 @@ impl TranscriptView {
                         turn,
                         "mono-note-response",
                         if saved {
-                            "Saved to Notes"
+                            crate::i18n::text("transcript-saved-to-notes")
                         } else if pending {
-                            "Saving note…"
+                            crate::i18n::text("transcript-saving-note")
                         } else {
-                            "Save as note"
+                            crate::i18n::text("transcript-save-as-note")
                         },
                         if saved { "check" } else { "response-note" },
                         false,
@@ -1127,7 +1165,7 @@ impl TranscriptView {
                     response_actions::button(
                         turn,
                         "mono-quote-response",
-                        "Quote response",
+                        crate::i18n::text("transcript-quote-response"),
                         "comment-add",
                         false,
                     )
@@ -1143,7 +1181,7 @@ impl TranscriptView {
             response_actions::button(
                 turn,
                 "mono-response-activity",
-                "Show activity",
+                crate::i18n::text("transcript-show-activity"),
                 "list-bullet",
                 false,
             )
@@ -1170,7 +1208,7 @@ impl TranscriptView {
                     div()
                         .flex_shrink_0()
                         .text_color(content(0.35))
-                        .child(monocode_core::response::local_clock(time)),
+                        .child(crate::system_format::clock(time)),
                 )
             })
             .into_any_element()
@@ -1212,7 +1250,7 @@ impl TranscriptView {
         Some((
             group,
             if typing {
-                "Typing…".into()
+                crate::i18n::text("transcript-typing")
             } else {
                 mono_work_label(&self.source, group)
             },
@@ -1276,11 +1314,11 @@ impl TranscriptView {
                                 )
                             })
                             .when(turn < self.source.len(), |d| {
-                                d.role(Role::Button).aria_label("Show activity").on_click(
-                                    cx.listener(move |_, _, _, cx| {
+                                d.role(Role::Button)
+                                    .aria_label(crate::i18n::text("transcript-show-activity"))
+                                    .on_click(cx.listener(move |_, _, _, cx| {
                                         cx.emit(MonoResponseAction::Activity(turn))
-                                    }),
-                                )
+                                    }))
                             }),
                     )
             })
@@ -1316,7 +1354,10 @@ impl TranscriptView {
                 .text_size(px(11. * scale))
                 .line_height(px(11. * scale))
                 .opacity(opacity)
-                .aria_label(format!("Reacted {emoji}"))
+                .aria_label(crate::i18n::format(
+                    "transcript-reacted",
+                    &[("emoji", emoji.to_string())],
+                ))
                 .child(emoji.clone())
                 .into_any_element(),
         )
@@ -1360,7 +1401,11 @@ impl TranscriptView {
                 response_actions::button(
                     start,
                     "mono-copy-message",
-                    if copied { "Copied" } else { "Copy message" },
+                    if copied {
+                        crate::i18n::text("transcript-copied")
+                    } else {
+                        crate::i18n::text("transcript-copy-message")
+                    },
                     if copied { "check" } else { "response-copy" },
                     false,
                 )
@@ -1388,7 +1433,7 @@ impl TranscriptView {
                         response_actions::button(
                             start,
                             "edit-last-message",
-                            "Edit last message",
+                            crate::i18n::text("transcript-edit-last-message"),
                             "pencil",
                             false,
                         )
@@ -1410,7 +1455,7 @@ impl TranscriptView {
                         .text_color(content(0.4))
                         .aria_label(label.clone())
                         .child(stamp_anchor.probe())
-                        .child(monocode_core::response::local_clock(at))
+                        .child(crate::system_format::clock(at))
                         .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
                             this.action_hover(start, "sent-at", *hovered, cx)
                         })),
@@ -2032,7 +2077,10 @@ impl TranscriptView {
                                             message.id
                                         )))
                                         .role(Role::Alert)
-                                        .child(format!("Not sent · {error}")),
+                                        .child(crate::i18n::format(
+                                            "transcript-not-sent",
+                                            &[("error", error.to_string())],
+                                        )),
                                 )
                                 .child(
                                     div()
@@ -2045,7 +2093,7 @@ impl TranscriptView {
                                         .py(px(2.))
                                         .text_color(content(0.7))
                                         .hover(|s| s.bg(content(0.08)))
-                                        .child("Retry")
+                                        .child(crate::i18n::text("transcript-retry"))
                                         .on_click(cx.listener(move |_, _, _, cx| {
                                             cx.emit(MonoResponseAction::Queue {
                                                 id: retry.clone(),
@@ -2064,7 +2112,7 @@ impl TranscriptView {
                                         .py(px(2.))
                                         .text_color(content(0.7))
                                         .hover(|s| s.bg(content(0.08)))
-                                        .child("Discard")
+                                        .child(crate::i18n::text("transcript-discard"))
                                         .on_click(cx.listener(move |_, _, _, cx| {
                                             cx.emit(MonoResponseAction::Queue {
                                                 id: discard.clone(),
@@ -2082,7 +2130,11 @@ impl TranscriptView {
                         .max_w(px(COLUMN))
                         .min_w_0()
                         .px(px(COLUMN_PAD))
-                        .child(self.mono_header(self.source.len(), Some("Thinking…".into()), cx)),
+                        .child(self.mono_header(
+                            self.source.len(),
+                            Some(crate::i18n::text("transcript-thinking-3")),
+                            cx,
+                        )),
                 )
             })
             .into_any_element()
@@ -2201,7 +2253,11 @@ impl TranscriptView {
             .flex_shrink_0()
             .w(px(strip_width));
         if !output.is_empty() {
-            let copy_label = if copied { "Copied" } else { "Copy response" };
+            let copy_label = if copied {
+                crate::i18n::text("transcript-copied")
+            } else {
+                crate::i18n::text("transcript-copy-response")
+            };
             let anchor = self
                 .action_anchors
                 .entry((turn, "copy"))
@@ -2250,11 +2306,11 @@ impl TranscriptView {
                     turn,
                     "response-note",
                     if saved {
-                        "Saved to Notes"
+                        crate::i18n::text("transcript-saved-to-notes")
                     } else if pending {
-                        "Saving note…"
+                        crate::i18n::text("transcript-saving-note")
                     } else {
-                        "Save as note"
+                        crate::i18n::text("transcript-save-as-note")
                     },
                     if saved { "check" } else { "response-note" },
                     false,
@@ -2282,13 +2338,13 @@ impl TranscriptView {
         for (action, label, glyph, kind) in [
             (
                 "handoff",
-                "Handoff",
+                crate::i18n::text("transcript-handoff"),
                 "response-handoff",
                 monocode_core::response::TransferKind::Handoff,
             ),
             (
                 "opinion",
-                "Second opinion",
+                crate::i18n::text("transcript-second-opinion"),
                 "response-opinion",
                 monocode_core::response::TransferKind::SecondOpinion,
             ),
@@ -2329,7 +2385,7 @@ impl TranscriptView {
                 response_actions::button(
                     turn,
                     "response-metrics",
-                    "Turn metrics",
+                    crate::i18n::text("transcript-turn-metrics"),
                     "response-metrics",
                     false,
                 )
@@ -2365,7 +2421,7 @@ impl TranscriptView {
                     div()
                         .flex_shrink_0()
                         .text_color(content(0.35))
-                        .child(monocode_core::response::local_clock(time)),
+                        .child(crate::system_format::clock(time)),
                 )
             });
         if let Some(Err(error)) = self.note_feedback.get(&turn) {
@@ -2374,51 +2430,71 @@ impl TranscriptView {
                     .id(("note-save-error", turn))
                     .role(Role::Alert)
                     .text_size(px(11.))
-                    .child(format!("Could not save note. {error}")),
+                    .child(crate::i18n::format(
+                        "transcript-could-not-save-note",
+                        &[("error", error.to_string())],
+                    )),
             );
         }
         if let Some((hover_turn, action)) = self.hovered_action
             && hover_turn == turn
         {
             let (headline, detail) = match action {
-                "copy" => (if copied { "Copied" } else { "Copy response" }.into(), None),
-                "note" => (
-                    if saved {
-                        "Saved to Notes"
+                "copy" => (
+                    if copied {
+                        crate::i18n::text("transcript-copied")
                     } else {
-                        "Save as note"
-                    }
-                    .into(),
+                        crate::i18n::text("transcript-copy-response")
+                    },
                     None,
                 ),
-                "handoff" => ("Handoff".into(), None),
-                "opinion" => ("Second opinion".into(), None),
+                "note" => (
+                    if saved {
+                        crate::i18n::text("transcript-saved-to-notes")
+                    } else {
+                        crate::i18n::text("transcript-save-as-note")
+                    },
+                    None,
+                ),
+                "handoff" => (crate::i18n::text("transcript-handoff"), None),
+                "opinion" => (crate::i18n::text("transcript-second-opinion"), None),
                 _ => {
                     let metrics = metrics.unwrap_or_default();
                     let mut summary = Vec::new();
                     if let Some(hit) = metrics.cache_hit_percent {
-                        summary.push(format!("Cache hit {hit:.0}%"));
+                        summary.push(crate::i18n::format(
+                            "cache-hit",
+                            &[("percent", crate::system_format::percent(hit))],
+                        ));
                     }
                     if info.duration_ms > 0 && metrics.output_tokens > 0 {
-                        summary.push(format!(
-                            "Output {:.0} tok/s",
-                            metrics.output_tokens as f64 / (info.duration_ms as f64 / 1000.)
+                        summary.push(crate::i18n::format(
+                            "transcript-output-tok-s",
+                            &[(
+                                "value",
+                                crate::system_format::decimal(
+                                    metrics.output_tokens as f64
+                                        / (info.duration_ms as f64 / 1000.),
+                                    0,
+                                    0,
+                                ),
+                            )],
                         ));
                     }
                     let headline = if summary.is_empty() {
-                        "Turn tokens".into()
+                        crate::i18n::text("transcript-turn-tokens")
                     } else {
                         summary.join(" · ")
                     };
                     let detail = [
-                        (metrics.input_tokens, "input"),
-                        (metrics.output_tokens, "output"),
-                        (metrics.cache_read_tokens, "cached"),
+                        (metrics.input_tokens, "transcript-tokens-input"),
+                        (metrics.output_tokens, "transcript-tokens-output"),
+                        (metrics.cache_read_tokens, "transcript-tokens-cached"),
                     ]
                     .into_iter()
                     .filter(|(n, _)| *n > 0)
                     .map(|(n, label)| {
-                        format!("{} {label}", monocode_core::context::format_tokens(n))
+                        crate::i18n::format(label, &[("count", crate::i18n::tokens(n))])
                     })
                     .collect::<Vec<_>>()
                     .join(" · ");
@@ -3423,7 +3499,14 @@ impl TranscriptView {
             {
                 let group = phase.unwrap();
                 let (title, icon) = if group.calls.is_empty() {
-                    (if active { "Thinking…" } else { "Thought" }.into(), "minus")
+                    (
+                        if active {
+                            crate::i18n::text("transcript-thinking-3")
+                        } else {
+                            crate::i18n::text("transcript-thought")
+                        },
+                        "minus",
+                    )
                 } else {
                     crate::activity::summary(&group.calls, active)
                 };
@@ -3488,7 +3571,9 @@ impl TranscriptView {
                 if !elsewhere {
                     let body = match document {
                         Some(document) => Body::Visual(Arc::new(document)),
-                        None => Body::Plain("This visual could not be loaded.".into()),
+                        None => Body::Plain(
+                            crate::i18n::text("transcript-this-visual-could-not-be-loaded").into(),
+                        ),
                     };
                     self.rows.push(UiRow {
                         key: (0, 0),
@@ -3660,6 +3745,11 @@ impl TranscriptView {
                         .into_iter()
                         .map(|row| row.text)
                         .collect::<Vec<_>>()
+                } else if role == "error" {
+                    // Saved error rows hold the stable runtime text. Localize
+                    // only this display copy so a language change re-renders
+                    // old rows, and never rewrite what is stored.
+                    error_rows(&role, &self.source[at..end])
                 } else {
                     self.source[at..end]
                         .iter()
@@ -4554,7 +4644,11 @@ impl TranscriptView {
                         .child(
                             icon_button(
                                 "copy-code",
-                                if copied { "Copied" } else { "Copy code" },
+                                if copied {
+                                    crate::i18n::text("transcript-copied")
+                                } else {
+                                    crate::i18n::text("transcript-copy-code")
+                                },
                                 if copied { "check" } else { "copy" },
                             )
                             .on_click(cx.listener(
@@ -4794,6 +4888,11 @@ impl TranscriptView {
             Body::RemotePlan(plan) => self.remote_plan_card(&plan, cx),
             Body::Visual(document) => self.visual_row(message_start, document, cx),
             Body::Interjection(ref note) => {
+                let label = match note.custom_type.as_str() {
+                    "advisor" => crate::i18n::text("transcript-advisor"),
+                    "custom" => crate::i18n::text("transcript-notice"),
+                    value => value.to_owned(),
+                };
                 let open = self.expanded.contains(&message_start);
                 let long = note.text.lines().count() > 4 || note.text.len() > 300;
                 let severity = note.severity.as_deref();
@@ -4819,24 +4918,22 @@ impl TranscriptView {
                                 div()
                                     .id(("interjection-label", message_start))
                                     .role(Role::Group)
-                                    .aria_label(format!("Interjection: {}", note.label()))
+                                    .aria_label(crate::i18n::format(
+                                        "transcript-interjection",
+                                        &[("name", label.clone())],
+                                    ))
                                     .text_size(px(12.))
                                     .text_color(content(0.55))
-                                    .child(note.label().to_owned()),
+                                    .child(label.clone()),
                             )
                             .when_some(severity, |d, severity| {
                                 let label = match severity {
-                                    "blocker" => "Blocker",
-                                    "concern" => "Concern",
-                                    "nit" => "Nit",
-                                    value => value,
+                                    "blocker" => crate::i18n::text("transcript-severity-blocker"),
+                                    "concern" => crate::i18n::text("transcript-severity-concern"),
+                                    "nit" => crate::i18n::text("transcript-severity-nit"),
+                                    value => value.to_owned(),
                                 };
-                                d.child(
-                                    div()
-                                        .text_size(px(11.))
-                                        .text_color(color)
-                                        .child(label.to_owned()),
-                                )
+                                d.child(div().text_size(px(11.)).text_color(color).child(label))
                             })
                             .child(div().h(px(1.)).flex_1().bg(content(0.12))),
                     )
@@ -4859,7 +4956,11 @@ impl TranscriptView {
                                 .aria_expanded(open)
                                 .text_size(px(11.))
                                 .text_color(content(0.5))
-                                .child(if open { "Show less" } else { "Show more" })
+                                .child(if open {
+                                    crate::i18n::text("transcript-show-less")
+                                } else {
+                                    crate::i18n::text("transcript-show-more")
+                                })
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.toggle(message_start, cx);
                                 })),
@@ -4920,9 +5021,9 @@ impl TranscriptView {
                     .unwrap_or(!self.fold_work);
                 let label = if expandable {
                     if open {
-                        "Hide the work".into()
+                        crate::i18n::text("transcript-hide-the-work")
                     } else {
-                        "Show the work".into()
+                        crate::i18n::text("transcript-show-the-work")
                     }
                 } else {
                     title.clone()
@@ -4958,7 +5059,7 @@ impl TranscriptView {
                     } else {
                         Role::Label
                     })
-                    .aria_label(label)
+                    .aria_label(&label)
                     .aria_expanded(open)
                     .group("work-fold")
                     .flex()
@@ -5039,9 +5140,20 @@ impl TranscriptView {
                 div()
                     .id(("phase", group))
                     .role(Role::Button)
-                    .aria_label(format!(
-                        "{} the steps for {title}",
-                        if open { "Hide" } else { "Show" }
+                    .aria_label(crate::i18n::format(
+                        "transcript-the-steps-for",
+                        &[
+                            (
+                                "value",
+                                (if open {
+                                    crate::i18n::text("transcript-hide")
+                                } else {
+                                    crate::i18n::text("transcript-show")
+                                })
+                                .to_string(),
+                            ),
+                            ("title", title.to_string()),
+                        ],
                     ))
                     .aria_expanded(open)
                     .group("activity-phase")
@@ -5150,7 +5262,7 @@ impl TranscriptView {
                     .flat_map(|block| markdown::rows(&block.block))
                     .map(|row| markdown::row_text(&row))
                     .find(|text| !text.trim().is_empty())
-                    .unwrap_or_else(|| "Thinking…".into())
+                    .unwrap_or_else(|| crate::i18n::text("transcript-thinking-3"))
                     .split_whitespace()
                     .collect::<Vec<_>>()
                     .join(" ");
@@ -5159,9 +5271,20 @@ impl TranscriptView {
                     .id(("thinking", message_start))
                     .debug_selector(move || format!("thinking-{message_start}"))
                     .role(Role::Button)
-                    .aria_label(format!(
-                        "{} thinking: {summary}",
-                        if open { "Hide" } else { "Show" }
+                    .aria_label(crate::i18n::format(
+                        "transcript-thinking-2",
+                        &[
+                            (
+                                "value",
+                                (if open {
+                                    crate::i18n::text("transcript-hide")
+                                } else {
+                                    crate::i18n::text("transcript-show")
+                                })
+                                .to_string(),
+                            ),
+                            ("summary", summary.to_string()),
+                        ],
                     ))
                     .aria_expanded(open)
                     .flex()
@@ -5174,7 +5297,7 @@ impl TranscriptView {
                     .hover(|s| s.text_color(content(0.8)))
                     .when(!nested_phase, |d| d.child(icon("minus", 14.)))
                     .child(div().min_w_0().flex_1().truncate().child(if open {
-                        "Thinking".into()
+                        crate::i18n::text("transcript-thinking")
                     } else {
                         summary
                     }))
@@ -5423,7 +5546,11 @@ impl TranscriptView {
                                     .line_height(px(16.))
                                     .text_color(content(0.6))
                                     .hover(|s| s.bg(content(0.08)).text_color(content(1.)))
-                                    .child(if collapsed { "Show more" } else { "Show less" })
+                                    .child(if collapsed {
+                                        crate::i18n::text("transcript-show-more")
+                                    } else {
+                                        crate::i18n::text("transcript-show-less")
+                                    })
                                     .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
                                         cx.stop_propagation()
                                     })
@@ -5909,9 +6036,9 @@ impl Render for TranscriptView {
             .on_mouse_up_out(gpui::MouseButton::Left, cx.listener(Self::finish_selection))
             .role(Role::Log)
             .aria_label(if self.document {
-                "Note body"
+                crate::i18n::text("transcript-note-body")
             } else {
-                "Conversation transcript"
+                crate::i18n::text("transcript-conversation-transcript")
             })
             .relative()
             .size_full()
@@ -6013,7 +6140,9 @@ impl Render for TranscriptView {
                                         .id("jump-to-bottom")
                                         .child(self.jump_anchor.probe())
                                         .role(Role::Button)
-                                        .aria_label("Scroll to bottom")
+                                        .aria_label(crate::i18n::text(
+                                            "transcript-scroll-to-bottom",
+                                        ))
                                         .relative()
                                         .flex()
                                         .items_center()
@@ -6095,6 +6224,22 @@ mod mono_status_tests {
     }
     fn label(rows: Vec<Row>) -> String {
         mono_work_label(&rows, 0)
+    }
+
+    #[test]
+    fn saved_error_rows_localize_for_display_without_changing_the_stored_text() {
+        use crate::i18n::Language;
+        let stored = row("error", "Window closed");
+        // This thread only: the process startup language must stay untouched.
+        crate::i18n::configure_thread_for_test(Language::SimplifiedChinese);
+        assert_eq!(
+            error_rows("error", std::slice::from_ref(&stored)),
+            ["窗口已关闭"]
+        );
+        assert_eq!(stored.text, "Window closed");
+        // A stale language is not baked into the row: switching back restores it.
+        crate::i18n::configure_thread_for_test(Language::English);
+        assert_eq!(error_rows("error", &[stored]), ["Window closed"]);
     }
 
     #[test]

@@ -57,20 +57,20 @@ impl GitAction {
             .into_iter()
             .find(|action| action.message() == text.trim())
     }
-    pub(crate) fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> String {
         match self {
-            Self::Stage => "Stage",
-            Self::Commit => "Commit",
-            Self::CommitPush => "Commit & push",
-            Self::Push => "Push",
+            Self::Stage => crate::i18n::text("conversation-stage"),
+            Self::Commit => crate::i18n::text("conversation-commit"),
+            Self::CommitPush => crate::i18n::text("conversation-commit-push"),
+            Self::Push => crate::i18n::text("conversation-push"),
         }
     }
-    fn description(self) -> &'static str {
+    fn description(self) -> String {
         match self {
-            Self::Stage => "Stage only this session's changes",
-            Self::Commit => "Stage and commit with a written message",
-            Self::CommitPush => "Commit, then push the branch",
-            Self::Push => "Push this session's commits",
+            Self::Stage => crate::i18n::text("conversation-stage-only-this-session-s-changes"),
+            Self::Commit => crate::i18n::text("conversation-stage-and-commit-with-a-written"),
+            Self::CommitPush => crate::i18n::text("conversation-commit-then-push-the-branch"),
+            Self::Push => crate::i18n::text("conversation-push-this-session-s-commits"),
         }
     }
     pub(crate) fn icon(self) -> &'static str {
@@ -305,12 +305,15 @@ impl Conversation {
         }
         if !self.git_actions_ready() {
             self.status = if self.busy || !self.follow_ups.state.messages.is_empty() {
-                format!(
-                    "Wait for the current turn and queued messages before /{}.",
-                    action.id()
+                crate::i18n::format(
+                    "conversation-wait-before-action",
+                    &[("value1", (action.id()).to_string())],
                 )
             } else {
-                format!("/{} is not available in this session.", action.id())
+                crate::i18n::format(
+                    "conversation-action-unavailable",
+                    &[("value1", (action.id()).to_string())],
+                )
             };
             cx.notify();
             return true;
@@ -365,7 +368,7 @@ impl Conversation {
             .child(div().text_size(px(12.)).child(current.label()))
             .on_click(cx.listener(move |this, _, _, cx| this.run_git_action(current, cx)));
         let chevron = segment("git-action-menu")
-            .aria_label("Git actions")
+            .aria_label(crate::i18n::text("conversation-git-actions"))
             .aria_expanded(menu_open)
             .relative()
             .px(px(7.))
@@ -380,7 +383,7 @@ impl Conversation {
                 .id("git-actions")
                 .debug_selector(|| "git-actions".into())
                 .role(Role::Group)
-                .aria_label("Git actions")
+                .aria_label(crate::i18n::text("conversation-git-actions"))
                 .relative()
                 .h(px(30.))
                 .flex()

@@ -74,9 +74,22 @@ impl Conversation {
             return None;
         };
         let open = self.changes.open;
-        let label: SharedString = format!(
-            "{count} changed {}: {additions} additions, {deletions} deletions",
-            if count == 1 { "file" } else { "files" }
+        let label: SharedString = crate::i18n::format(
+            "conversation-changed-files-summary",
+            &[
+                ("count", crate::system_format::unsigned((count) as u64)),
+                (
+                    "value1",
+                    (if count == 1 {
+                        crate::i18n::text("conversation-changed-files-summary-file")
+                    } else {
+                        crate::i18n::text("conversation-changed-files-summary-files")
+                    })
+                    .to_string(),
+                ),
+                ("additions", crate::system_format::integer(additions)),
+                ("deletions", crate::system_format::integer(deletions)),
+            ],
         )
         .into();
         let squares = squares(additions, deletions);
@@ -85,7 +98,7 @@ impl Conversation {
                 .id("changes-pill")
                 .debug_selector(|| "changes-pill".into())
                 .role(Role::Button)
-                .aria_label(label)
+                .aria_label(&label)
                 .aria_expanded(open)
                 .relative()
                 .h(px(30.))

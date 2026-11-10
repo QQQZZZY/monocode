@@ -51,7 +51,8 @@ impl Conversation {
                 this.install_transfer(settings, None, cx);
             }
         }));
-        self.status = "Finish or cancel the current message edit to continue".into();
+        self.status =
+            crate::i18n::text("conversation-finish-or-cancel-the-current-message-edit-to");
         cx.notify();
     }
     fn can_prepare_edit(&self, cx: &gpui::App) -> bool {
@@ -87,7 +88,8 @@ impl Conversation {
         cx: &mut Context<Self>,
     ) {
         if self.is_remote() {
-            self.status = "Editing the last message is not supported by this remote host.".into();
+            self.status =
+                crate::i18n::text("conversation-editing-the-last-message-is-not-supported-by");
             cx.notify();
             return;
         }
@@ -107,7 +109,7 @@ impl Conversation {
             .max_by_key(|(row, _)| **row)
             .and_then(|(_, info)| info.provider_turn_id.clone());
         self.editing_last_turn.active = true;
-        self.status = "Preparing edit…".into();
+        self.status = crate::i18n::text("conversation-preparing-edit");
         self.response_menu = None;
         let store = self.store.clone();
         let id = self.summary.id;
@@ -133,12 +135,21 @@ impl Conversation {
                             .update(cx, |input, cx| input.set_text(edit.prompt.clone(), cx));
                         this.attachments = edit.attachments.clone();
                         this.editing_last_turn.prepared = Some(edit);
-                        this.status = "Editing last message — send to replace its turn".into();
+                        this.status = crate::i18n::text(
+                            "conversation-editing-last-message-send-to-replace-its-turn",
+                        );
                     }
                     Ok(_) => {
-                        this.status = "Composer or conversation changed; edit cancelled".into()
+                        this.status = crate::i18n::text(
+                            "conversation-composer-or-conversation-changed-edit-cancelled",
+                        )
                     }
-                    Err(error) => this.status = format!("Could not edit last message: {error}"),
+                    Err(error) => {
+                        this.status = crate::i18n::format(
+                            "conversation-could-not-edit-last-message",
+                            &[("error", (error).to_string())],
+                        )
+                    }
                 }
                 if !this.editing_last_turn.pending() {
                     this.run_history_actions(cx);
@@ -167,8 +178,9 @@ impl Conversation {
                 return true;
             }
             Err(error) => {
-                self.status = format!(
-                    "Could not verify conversation history: {error}. Your draft is preserved."
+                self.status = crate::i18n::format(
+                    "conversation-could-not-verify-conversation-history-your-draft",
+                    &[("error", (error).to_string())],
                 );
                 cx.notify();
                 return true;
@@ -195,7 +207,9 @@ impl Conversation {
                 .any(|command| monocode_core::composer::consume_command(text, command).is_some())
             || self.draft_active(cx)
         {
-            self.status = "Cancel message editing before running a local command".into();
+            self.status = crate::i18n::text(
+                "conversation-cancel-message-editing-before-running-a-local-command",
+            );
             cx.notify();
             return true;
         }
@@ -220,15 +234,17 @@ impl Conversation {
             || self.settings.account.id != edit.account_id
             || self.execution_cwd() != edit.cwd
         {
-            self.status = "Conversation changed; cancel the edit before sending".into();
+            self.status = crate::i18n::text(
+                "conversation-conversation-changed-cancel-the-edit-before-sending",
+            );
             cx.notify();
             return true;
         }
         let kind = Kind::from_id(&self.summary.provider);
         let Some(binary) = provider::resolve(kind) else {
-            self.status = format!(
-                "{} executable was not found; edited prompt preserved",
-                kind.label()
+            self.status = crate::i18n::format(
+                "conversation-executable-was-not-found-edited-prompt-preserved",
+                &[("name", (kind.label()).to_string())],
             );
             cx.notify();
             return true;
@@ -252,51 +268,60 @@ impl Conversation {
         // Keep the visible draft in place until confirmation, including on a
         // rejected RPC. IME composition was checked before making it read-only.
         self.input.update(cx, |input, _| input.set_read_only(true));
-        self.status = "Rewinding last turn…".into();
+        self.status = crate::i18n::text("conversation-rewinding-last-turn");
         let store = self.store.clone();
         let id = self.summary.id;
         let work = cx.background_executor().spawn(async move {
             monocode_core::composer::validate_attachments(&checked_attachments)?;
             locked(&store)?.validate_edit_last_turn(id, &edit)?;
-            let binding = match provider::rewind_last_turn(request, edit.provider_turn_id.as_deref()) {
-                Ok(binding)=>binding,
-                Err(error)=> {
-                    if error.provider_may_have_changed {
-                        locked(&store)?.mark_edit_recovery_required(id)?;
-                        return Err(format!("Provider recovery required: {error}"));
+            let binding =
+                match provider::rewind_last_turn(request, edit.provider_turn_id.as_deref()) {
+                    Ok(binding) => binding,
+                    Err(error) => {
+                        if error.provider_may_have_changed {
+                            locked(&store)?.mark_edit_recovery_required(id)?;
+                            return Err(crate::i18n::format(
+                                "conversation-provider-recovery-required",
+                                &[("error", (error).to_string())],
+                            ));
+                        }
+                        return Err(error.to_string());
                     }
-                    return Err(error.to_string());
-                }
-            };
+                };
             // Provider confirmation is the only path to the destructive write.
             match locked(&store)?.finish_edit_last_turn(id, &edit, &binding) {
                 Ok(()) => Ok((edit, binding)),
-                Err(error) => Err(format!(
-                    "Provider recovery required: Provider rewound, but local history changed: {error}"
+                Err(error) => Err(crate::i18n::format(
+                    "conversation-provider-recovery-required-provider-rewound-but-local",
+                    &[("error", (error).to_string())],
                 )),
             }
         });
-        cx.spawn(async move |this,cx| {
-            let result: Result<(EditSnapshot,String),String> = work.await;
-            let _ = this.update(cx,|this,cx| {
+        cx.spawn(async move |this, cx| {
+            let result: Result<(EditSnapshot, String), String> = work.await;
+            let _ = this.update(cx, |this, cx| {
                 this.editing_last_turn.active = false;
-                this.input.update(cx,|input,_| input.set_read_only(false));
+                this.input.update(cx, |input, _| input.set_read_only(false));
                 match result {
-                    Ok((edit,binding)) => {
+                    Ok((edit, binding)) => {
                         this.editing_last_turn.prepared = None;
                         this.summary.provider_id = Some(binding);
-                        this.settings.turns.retain(|&row,_| row < edit.start);
-                        this.transcript.update(cx,|view,cx| view.replace_history(edit.rows[..edit.start].to_vec(),cx));
+                        this.settings.turns.retain(|&row, _| row < edit.start);
+                        this.transcript.update(cx, |view, cx| {
+                            view.replace_history(edit.rows[..edit.start].to_vec(), cx)
+                        });
                         this.summary.has_messages = edit.start > 0;
                         this.context = None;
-                        if this.input.read(cx).content.as_str() == prompt && this.attachments == attachments {
+                        if this.input.read(cx).content.as_str() == prompt
+                            && this.attachments == attachments
+                        {
                             // Normal submit still owns mode commands, attachments,
                             // account checks, durable acceptance and failure recovery.
                             this.send(cx);
                         } else {
                             // Programmatic composer updates can bypass read-only.
                             // Preserve both the new composer and the accepted edit.
-                            this.preserve_interrupted_edit(prompt,attachments,edit.start,cx);
+                            this.preserve_interrupted_edit(prompt, attachments, edit.start, cx);
                         }
                         this.run_history_actions(cx);
                     }
@@ -304,15 +329,23 @@ impl Conversation {
                         if error.starts_with("Provider recovery required:") {
                             this.editing_last_turn.blocked = true;
                             this.editing_last_turn.prepared = None;
-                            this.status = format!("{error}. Start a new conversation; your edited draft is preserved here.");
+                            this.status = crate::i18n::format(
+                                "conversation-start-a-new-conversation-your-edited-draft",
+                                &[("error", (error).to_string())],
+                            );
                         } else {
-                            this.status = format!("Could not rewind last turn: {error}. Your edited prompt is preserved.");
+                            this.status = crate::i18n::format(
+                                "conversation-could-not-rewind-last-turn-your-edited",
+                                &[("error", (error).to_string())],
+                            );
                         }
                     }
                 }
-                cx.emit(SessionChanged); cx.notify();
+                cx.emit(SessionChanged);
+                cx.notify();
             });
-        }).detach();
+        })
+        .detach();
         cx.notify();
         true
     }
@@ -341,7 +374,8 @@ impl Conversation {
             self.follow_ups.state.messages.push(message);
         }
         self.save_follow_ups(cx);
-        self.status = "Last turn rewound; the edited prompt was saved as a draft because the composer changed".into();
+        self.status =
+            crate::i18n::text("conversation-last-turn-rewound-the-edited-prompt-was-saved");
     }
 }
 

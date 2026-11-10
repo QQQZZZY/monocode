@@ -35,11 +35,51 @@ pub(super) fn render(
         Panel::Agent(run) => agent(view, call, &run, start, width, cx),
     })
 }
+fn task_progress(list: &TaskList) -> String {
+    let done = list
+        .items
+        .iter()
+        .filter(|t| t.status == TaskStatus::Completed)
+        .count();
+    let total = list
+        .items
+        .iter()
+        .filter(|t| t.status != TaskStatus::Cancelled)
+        .count();
+    if total > 0 && done == total {
+        crate::i18n::text("transcript-tasks-complete")
+    } else {
+        crate::i18n::format(
+            "transcript-tasks-count",
+            &[
+                ("done", crate::system_format::unsigned(done as u64)),
+                (
+                    "total",
+                    crate::system_format::unsigned(
+                        if total == 0 { list.items.len() } else { total } as u64,
+                    ),
+                ),
+            ],
+        )
+    }
+}
+fn task_status(status: TaskStatus) -> String {
+    crate::i18n::text(match status {
+        TaskStatus::Pending => "transcript-task-pending",
+        TaskStatus::InProgress => "transcript-task-in-progress",
+        TaskStatus::Completed => "transcript-completed",
+        TaskStatus::Cancelled => "transcript-cancelled",
+    })
+}
 fn task_list(list: &TaskList, start: usize) -> AnyElement {
+    let progress = task_progress(list);
     div()
         .id(("task-progress", start))
         .role(Role::Group)
-        .aria_label(format!("Task progress: {}", list.progress()))
+        .aria_label(crate::i18n::format(
+            "transcript-task-progress",
+            &[("value", progress.clone())],
+        ))
         .w_full()
         .min_w_0()
         .my_1()
@@ -64,7 +104,7 @@ fn task_list(list: &TaskList, start: usize) -> AnyElement {
                                 .flex_1()
                                 .text_size(px(12.))
                                 .text_color(content(0.85))
-                                .child("Tasks"),
+                                .child(crate::i18n::text("transcript-tasks")),
                         )
                         .child(
                             div()
@@ -74,7 +114,7 @@ fn task_list(list: &TaskList, start: usize) -> AnyElement {
                                 .bg(content(0.07))
                                 .text_size(px(10.))
                                 .text_color(content(0.5))
-                                .child(list.progress()),
+                                .child(progress),
                         ),
                 )
                 .when(!list.explanation.is_empty(), |d| {
@@ -100,7 +140,7 @@ fn task_list(list: &TaskList, start: usize) -> AnyElement {
                             .py_1()
                             .text_size(px(12.))
                             .text_color(content(0.5))
-                            .child("No tasks"),
+                            .child(crate::i18n::text("transcript-no-tasks")),
                     )
                 })
                 .children(
@@ -118,7 +158,13 @@ fn task_list(list: &TaskList, start: usize) -> AnyElement {
                             div()
                                 .id(("task-item", index))
                                 .role(Role::Label)
-                                .aria_label(format!("{}: {}", task.status.label(), task.text))
+                                .aria_label(crate::i18n::format(
+                                    "transcript-task-status-text",
+                                    &[
+                                        ("status", task_status(task.status)),
+                                        ("text", task.text.clone()),
+                                    ],
+                                ))
                                 .flex()
                                 .items_start()
                                 .gap_2p5()
@@ -159,7 +205,10 @@ fn task_list(list: &TaskList, start: usize) -> AnyElement {
                             .py_1()
                             .text_size(px(11.))
                             .text_color(content(0.45))
-                            .child(format!("Showing 100 of {} tasks", list.items.len())),
+                            .child(crate::i18n::format(
+                                "transcript-showing-100-of-tasks",
+                                &[("count", format!("{}", list.items.len()))],
+                            )),
                     )
                 }),
         )
@@ -404,9 +453,23 @@ fn agent(
             Role::Label
         })
         .aria_label(if has_detail {
-            format!("{} {name}'s work", if open { "Hide" } else { "Show" })
+            crate::i18n::format(
+                "transcript-s-work",
+                &[
+                    (
+                        "value",
+                        (if open {
+                            crate::i18n::text("transcript-hide")
+                        } else {
+                            crate::i18n::text("transcript-show")
+                        })
+                        .to_string(),
+                    ),
+                    ("name", (name).to_string()),
+                ],
+            )
         } else {
-            format!("Subagent: {name}")
+            crate::i18n::format("transcript-subagent-2", &[("name", (name).to_string())])
         })
         .when(has_detail, |d| d.aria_expanded(open))
         .tooltip({
@@ -693,9 +756,15 @@ fn agent_trail(
             .count();
         let title = if failed_agents > 0 {
             if failed_agents == 1 {
-                "Subagent failed".to_owned()
+                crate::i18n::text("transcript-subagent-failed")
             } else {
-                format!("{failed_agents} subagents failed")
+                crate::i18n::format(
+                    "transcript-subagents-failed",
+                    &[(
+                        "failed_agents",
+                        crate::system_format::unsigned(failed_agents as u64),
+                    )],
+                )
             }
         } else {
             phase
@@ -704,7 +773,12 @@ fn agent_trail(
                 .filter(|text| !text.is_empty())
                 .unwrap_or_else(|| {
                     if calls.is_empty() {
-                        if live { "Thinking" } else { "Thought" }.to_owned()
+                        if live {
+                            crate::i18n::text("transcript-thinking")
+                        } else {
+                            crate::i18n::text("transcript-thought")
+                        }
+                        .to_owned()
                     } else {
                         crate::activity::summary(&calls, live).0
                     }
@@ -750,9 +824,20 @@ fn agent_trail(
                 div()
                     .id("header")
                     .role(if inert { Role::Label } else { Role::Button })
-                    .aria_label(format!(
-                        "{} the steps for {title}",
-                        if open { "Hide" } else { "Show" }
+                    .aria_label(crate::i18n::format(
+                        "transcript-the-steps-for",
+                        &[
+                            (
+                                "value",
+                                (if open {
+                                    crate::i18n::text("transcript-hide")
+                                } else {
+                                    crate::i18n::text("transcript-show")
+                                })
+                                .to_string(),
+                            ),
+                            ("title", title.to_string()),
+                        ],
                     ))
                     .when(!inert, |d| d.aria_expanded(open).cursor_pointer())
                     .group("agent-phase")
@@ -917,10 +1002,29 @@ fn agent_step(
                 .id("toggle")
                 .role(Role::Button)
                 .aria_expanded(open)
-                .aria_label(format!(
-                    "{} {}: {summary}",
-                    if open { "Hide" } else { "Show" },
-                    if reasoning { "thinking" } else { "note" }
+                .aria_label(crate::i18n::format(
+                    "transcript-toggle-agent-step",
+                    &[
+                        (
+                            "value1",
+                            (if open {
+                                crate::i18n::text("transcript-hide")
+                            } else {
+                                crate::i18n::text("transcript-show")
+                            })
+                            .to_string(),
+                        ),
+                        (
+                            "value2",
+                            (if reasoning {
+                                crate::i18n::text("transcript-toggle-agent-step-thinking")
+                            } else {
+                                crate::i18n::text("transcript-toggle-agent-step-note")
+                            })
+                            .to_string(),
+                        ),
+                        ("summary", (summary).to_string()),
+                    ],
                 ))
                 .flex()
                 .items_center()
@@ -938,7 +1042,7 @@ fn agent_step(
                         .min_w_0()
                         .truncate()
                         .child(if open && reasoning {
-                            "Thinking".to_owned()
+                            crate::i18n::text("transcript-thinking").to_owned()
                         } else {
                             summary
                         }),
@@ -1034,5 +1138,38 @@ impl gpui::Render for AgentBrief {
             .line_height(px(18.))
             .text_color(content(0.85))
             .child(self.0.clone())
+    }
+}
+
+#[cfg(test)]
+mod message_tests {
+    use super::*;
+    #[test]
+    fn progress_preserves_cancelled_and_complete_semantics() {
+        use monocode_core::tool::tasks::Task;
+        let mut list = TaskList::default();
+        assert_eq!(task_progress(&list), "0 of 0");
+        list.items.push(Task {
+            id: None,
+            text: "raw content".into(),
+            status: TaskStatus::Cancelled,
+        });
+        assert_eq!(task_progress(&list), "0 of 1");
+        list.items.push(Task {
+            id: None,
+            text: "raw content".into(),
+            status: TaskStatus::Pending,
+        });
+        assert_eq!(task_progress(&list), "0 of 1");
+        list.items[1].status = TaskStatus::Completed;
+        assert_eq!(task_progress(&list), "Complete");
+        for status in [
+            TaskStatus::Pending,
+            TaskStatus::InProgress,
+            TaskStatus::Completed,
+            TaskStatus::Cancelled,
+        ] {
+            assert_eq!(task_status(status), status.label());
+        }
     }
 }

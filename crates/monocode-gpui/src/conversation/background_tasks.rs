@@ -59,9 +59,12 @@ impl Conversation {
         let collapsible = count > 1;
         let collapsed = collapsible && self.background.collapsed;
         let title = if count == 1 {
-            "Running in background".to_owned()
+            crate::i18n::text("conversation-running-in-background")
         } else {
-            format!("{count} tasks running in background")
+            crate::i18n::format(
+                "conversation-tasks-running-in-background",
+                &[("count", crate::system_format::unsigned(count as u64))],
+            )
         };
         let agent = Kind::from_id(&self.summary.provider).label();
         let header = div()
@@ -113,7 +116,10 @@ impl Conversation {
                             .collect::<Vec<_>>()
                             .join(" · ")
                     } else {
-                        format!("{agent} continues when they finish")
+                        crate::i18n::format(
+                            "conversation-continues-when-they-finish",
+                            &[("agent", (agent).to_string())],
+                        )
                     }),
             )
             .when_some(single, |d, task| d.child(live_clock(task)))
@@ -148,7 +154,7 @@ impl Conversation {
             }));
         let card = composer_shelf::card("background-tasks-card", self.classic_layout)
             .role(Role::Group)
-            .aria_label("Background tasks")
+            .aria_label(crate::i18n::text("conversation-background-tasks"))
             .child(header)
             .when(!collapsed && single.is_none(), |d| d.child(rows));
         composer_shelf::shelf("background-tasks")
@@ -166,7 +172,10 @@ fn background_row(task: &BackgroundTask) -> gpui::Stateful<gpui::Div> {
             move || format!("background-task-{id}")
         })
         .role(Role::Group)
-        .aria_label(format!("Background task: {}", task.description))
+        .aria_label(crate::i18n::format(
+            "conversation-background-task",
+            &[("value", task.description.to_string())],
+        ))
         .min_h(px(ROW_HEIGHT))
         .flex()
         .items_center()
@@ -265,13 +274,31 @@ fn first_line(command: &str) -> &str {
 fn elapsed(ms: u64) -> String {
     let seconds = ms / 1000;
     if seconds < 60 {
-        return format!("{seconds}s");
+        return crate::i18n::format(
+            "conversation-s",
+            &[("seconds", crate::system_format::unsigned(seconds))],
+        );
     }
     let (minutes, rest) = (seconds / 60, seconds % 60);
     if minutes < 60 {
-        return format!("{minutes}m {rest:02}s");
+        return crate::i18n::format(
+            "duration-minutes-seconds",
+            &[
+                ("whole", crate::system_format::unsigned(minutes)),
+                ("rest", crate::system_format::padded_unsigned(rest, 2)),
+            ],
+        );
     }
-    format!("{}h {:02}m", minutes / 60, minutes % 60)
+    crate::i18n::format(
+        "duration-hours-minutes",
+        &[
+            ("whole", crate::system_format::unsigned(minutes / 60)),
+            (
+                "rest",
+                crate::system_format::padded_unsigned(minutes % 60, 2),
+            ),
+        ],
+    )
 }
 
 #[cfg(test)]

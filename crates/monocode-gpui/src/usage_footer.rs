@@ -171,10 +171,16 @@ impl UsageFooter {
         }
     }
     fn percent_label(&self, used: f64) -> String {
-        format!(
-            "{:.0}% {}",
-            self.display_percent(used),
-            if self.show_remaining { "left" } else { "used" }
+        crate::i18n::format(
+            if self.show_remaining {
+                "usage-percent-left"
+            } else {
+                "usage-percent-used"
+            },
+            &[(
+                "percent",
+                crate::system_format::percent(self.display_percent(used)),
+            )],
         )
     }
     pub(crate) fn set_classic(&mut self, classic: bool, cx: &mut Context<Self>) {
@@ -306,11 +312,14 @@ impl UsageFooter {
                     .find(|a| a.id == self.key.profile.id)
             })
             .map(|a| a.label)
-            .unwrap_or_else(|| "Removed account".into());
+            .unwrap_or_else(|| crate::i18n::text("usage-footer-removed-account"));
         div()
             .id("usage-switch-account")
             .role(Role::Button)
-            .aria_label(format!("Switch account from {label}"))
+            .aria_label(crate::i18n::format(
+                "usage-footer-switch-account-from",
+                &[("label", label.to_string())],
+            ))
             .h_8()
             .px(px(10.))
             .rounded_lg()
@@ -328,7 +337,7 @@ impl UsageFooter {
                 div()
                     .text_size(px(10.))
                     .text_color(content(0.4))
-                    .child("Switch"),
+                    .child(crate::i18n::text("usage-footer-switch")),
             )
             .child(icon("chevron-right", 12.).text_color(content(0.35)))
             .on_click(cx.listener(|this, _, window, cx| this.open_accounts(window, cx)))
@@ -362,7 +371,7 @@ impl UsageFooter {
             return div()
                 .id("footer-account-picker")
                 .role(Role::Dialog)
-                .aria_label("Choose account")
+                .aria_label(crate::i18n::text("usage-footer-choose-account"))
                 .track_focus(&self.details)
                 .key_context("UsageDetails")
                 .on_action(
@@ -381,7 +390,10 @@ impl UsageFooter {
             return div()
                 .id("usage-details-content")
                 .role(Role::Dialog)
-                .aria_label(format!("{} usage details", self.kind.label()))
+                .aria_label(crate::i18n::format(
+                    "usage-footer-usage-details",
+                    &[("name", self.kind.label().to_string())],
+                ))
                 .track_focus(&self.details)
                 .key_context("UsageDetails")
                 .on_action(
@@ -400,12 +412,18 @@ impl UsageFooter {
         let updated = match &state.snapshot {
             Some(snapshot) if snapshot.updated_at > 0 => {
                 match (now - snapshot.updated_at).max(0) / 60_000 {
-                    0 => "Updated just now".to_owned(),
-                    minutes @ 1..60 => format!("Updated {minutes}m ago"),
-                    minutes => format!("Updated {}h ago", minutes / 60),
+                    0 => crate::i18n::text("usage-updated-now"),
+                    minutes @ 1..60 => crate::i18n::format(
+                        "usage-updated-minutes",
+                        &[("count", crate::system_format::integer(minutes))],
+                    ),
+                    minutes => crate::i18n::format(
+                        "usage-updated-hours",
+                        &[("count", crate::system_format::integer(minutes / 60))],
+                    ),
                 }
             }
-            _ => "Rate-limit details".into(),
+            _ => crate::i18n::text("usage-rate-limit-details"),
         };
         let windows = state.snapshot.iter().flat_map(|s| &s.windows);
         let has_windows = state
@@ -415,7 +433,10 @@ impl UsageFooter {
         div()
             .id("usage-details-content")
             .role(Role::Dialog)
-            .aria_label(format!("{} usage details", self.kind.label()))
+            .aria_label(crate::i18n::format(
+                "usage-footer-usage-details",
+                &[("name", self.kind.label().to_string())],
+            ))
             .track_focus(&self.details)
             .key_context("UsageDetails")
             .on_action(cx.listener(|this, _: &DismissUsage, window, cx| {
@@ -455,7 +476,10 @@ impl UsageFooter {
                                     .text_size(px(13.))
                                     .line_height(px(16.))
                                     .font_weight(FontWeight::MEDIUM)
-                                    .child(format!("{} usage", self.kind.label())),
+                                    .child(crate::i18n::format(
+                                        "usage-footer-usage",
+                                        &[("name", self.kind.label().to_string())],
+                                    )),
                             )
                             .child(
                                 div()
@@ -479,7 +503,7 @@ impl UsageFooter {
                                 .text_size(px(10.))
                                 .text_color(content(0.4))
                                 .child(icon("refresh", 10.).text_color(content(0.4)))
-                                .child("Updating"),
+                                .child(crate::i18n::text("usage-footer-updating")),
                         )
                     }),
             )
@@ -496,7 +520,9 @@ impl UsageFooter {
                             .text_size(px(10.))
                             .line_height(px(16.))
                             .text_color(rgb(0xfcd34d))
-                            .child("Couldn’t refresh. Showing the last available snapshot."),
+                            .child(crate::i18n::text(
+                                "usage-footer-couldn-t-refresh-showing-the-last",
+                            )),
                     )
                 },
             )
@@ -518,11 +544,11 @@ impl UsageFooter {
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(content(0.65))
                                 .child(if loading {
-                                    "Loading usage…"
+                                    crate::i18n::text("usage-footer-loading-usage-2")
                                 } else if state.error.as_ref().is_some_and(|e| e.unavailable) {
-                                    "Not connected"
+                                    crate::i18n::text("usage-footer-not-connected")
                                 } else {
-                                    "Usage unavailable"
+                                    crate::i18n::text("usage-footer-usage-unavailable")
                                 }),
                         )
                         .children(state.error.as_ref().map(|error| {
@@ -566,13 +592,13 @@ impl UsageFooter {
                                 div()
                                     .font_weight(FontWeight::MEDIUM)
                                     .text_color(content(0.65))
-                                    .child("Extra usage balance"),
+                                    .child(crate::i18n::text("usage-footer-extra-usage-balance")),
                             )
                             .child(
                                 div()
                                     .flex_shrink_0()
                                     .font_weight(FontWeight::MEDIUM)
-                                    .child(format!("${balance:.2}")),
+                                    .child(crate::system_format::usd(balance)),
                             )
                     }),
             )
@@ -596,13 +622,16 @@ impl UsageFooter {
                     .find(|a| a.id == id)
             })
             .map(|a| a.label)
-            .unwrap_or_else(|| "Removed account".into());
+            .unwrap_or_else(|| crate::i18n::text("usage-footer-removed-account"));
         let subtitle = center
             .and_then(|center| center.update(cx, |center, cx| center.subtitle(kind, &id, cx)));
         div()
             .id("usage-switch-account")
             .role(Role::Button)
-            .aria_label(format!("Switch {} account", kind.label()))
+            .aria_label(crate::i18n::format(
+                "usage-footer-switch-account-2",
+                &[("name", kind.label().to_string())],
+            ))
             .mt_1()
             .ml(px(-4.))
             .max_w_full()
@@ -649,10 +678,10 @@ impl UsageFooter {
         let used = w.used_percent.clamp(0., 100.);
         let shown = self.display_percent(used);
         let label = match w.minutes {
-            1_440 => "Daily limit",
-            10_080 => "Weekly limit",
-            43_200 => "Monthly limit",
-            _ => "5-hour limit",
+            1_440 => crate::i18n::text("usage-limit-daily"),
+            10_080 => crate::i18n::text("usage-limit-weekly"),
+            43_200 => crate::i18n::text("usage-limit-monthly"),
+            _ => crate::i18n::text("usage-limit-five-hours"),
         };
         div()
             .rounded_lg()
@@ -673,19 +702,16 @@ impl UsageFooter {
                             .text_color(content(0.65))
                             .child(label),
                     )
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(format!(
-                                "{shown:.0}% {}",
-                                if self.show_remaining {
-                                    "remaining"
-                                } else {
-                                    "used"
-                                }
-                            )),
-                    ),
+                    .child(div().flex_shrink_0().font_weight(FontWeight::MEDIUM).child(
+                        crate::i18n::format(
+                            if self.show_remaining {
+                                "usage-percent-remaining"
+                            } else {
+                                "usage-percent-used"
+                            },
+                            &[("percent", crate::system_format::percent(shown))],
+                        ),
+                    )),
             )
             .child(
                 div()
@@ -712,16 +738,15 @@ impl UsageFooter {
                     .text_size(px(10.))
                     .line_height(px(16.))
                     .text_color(content(0.4))
-                    .child(format!(
-                        "{:.0}% {}",
-                        100. - shown,
+                    .child(crate::i18n::format(
                         if self.show_remaining {
-                            "used"
+                            "usage-percent-used"
                         } else {
-                            "remaining"
-                        }
+                            "usage-percent-remaining"
+                        },
+                        &[("percent", crate::system_format::percent(100. - shown))],
                     ))
-                    .child(div().truncate().child(w.reset_label(now))),
+                    .child(div().truncate().child(reset_label(w, now))),
             )
     }
     fn suggestion(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
@@ -760,13 +785,17 @@ impl UsageFooter {
                                 .text_size(px(10.))
                                 .line_height(px(16.))
                                 .text_color(content(0.45))
-                                .child(format!(
-                                    "{} · switch to",
-                                    if exhausted {
-                                        "Out of usage"
-                                    } else {
-                                        "Running low"
-                                    }
+                                .child(crate::i18n::format(
+                                    "usage-footer-switch-to",
+                                    &[(
+                                        "value",
+                                        (if exhausted {
+                                            crate::i18n::text("usage-footer-out-of-usage")
+                                        } else {
+                                            crate::i18n::text("usage-footer-running-low")
+                                        })
+                                        .to_string(),
+                                    )],
                                 )),
                         )
                         .child(
@@ -791,7 +820,7 @@ impl UsageFooter {
                 .child(
                     crate::settings::widgets::primary_button(
                         "switch-suggested-account",
-                        "Switch account",
+                        crate::i18n::text("usage-footer-switch-account"),
                         false,
                     )
                     .h_7()
@@ -799,7 +828,7 @@ impl UsageFooter {
                     .px(px(10.))
                     .rounded_md()
                     .text_size(px(11.))
-                    .child("Switch")
+                    .child(crate::i18n::text("usage-footer-switch"))
                     .on_click(cx.listener(move |_, _, _, cx| {
                         center.update(cx, |center, cx| {
                             center.choose(kind, account.id.clone(), project.clone(), session, cx)
@@ -821,9 +850,9 @@ impl Render for UsageFooter {
                 .iter()
                 .map(|w| {
                     format!(
-                        "{:.0}% {}",
-                        self.display_percent(w.used_percent),
-                        w.countdown(now)
+                        "{} {}",
+                        crate::system_format::percent(self.display_percent(w.used_percent)),
+                        countdown(w, now)
                     )
                 })
                 .collect::<Vec<_>>()
@@ -831,9 +860,9 @@ impl Render for UsageFooter {
         } else if state.fetching || state.error.is_none() {
             "···".into()
         } else if state.error.as_ref().is_some_and(|e| e.unavailable) {
-            "not connected".into()
+            crate::i18n::text("usage-footer-not-connected-detail")
         } else {
-            "usage unavailable".into()
+            crate::i18n::text("usage-footer-usage-unavailable-detail")
         };
         let description = state
             .snapshot
@@ -845,14 +874,14 @@ impl Render for UsageFooter {
                         format!(
                             "{} · {}",
                             self.percent_label(w.used_percent),
-                            w.reset_label(now)
+                            reset_label(w, now)
                         )
                     })
                     .collect::<Vec<_>>()
                     .join(" · ")
             })
             .or_else(|| state.error.as_ref().map(|e| e.message.clone()))
-            .unwrap_or_else(|| "Loading usage".into());
+            .unwrap_or_else(|| crate::i18n::text("usage-footer-loading-usage"));
         let fetching = state.fetching;
         let tightest = state
             .snapshot
@@ -863,7 +892,7 @@ impl Render for UsageFooter {
         div()
             .id("usage-footer")
             .role(Role::Group)
-            .aria_label("Provider usage")
+            .aria_label(crate::i18n::text("usage-footer-provider-usage"))
             .h(px(if classic { 28. } else { 30. }))
             .w_full()
             .flex_shrink_0()
@@ -877,7 +906,10 @@ impl Render for UsageFooter {
                 div()
                     .id("usage-provider-chip")
                     .role(Role::Button)
-                    .aria_label(format!("{} usage details", self.kind.label()))
+                    .aria_label(crate::i18n::format(
+                        "usage-footer-usage-details",
+                        &[("name", self.kind.label().to_string())],
+                    ))
                     .aria_description(description)
                     .track_focus(&self.trigger)
                     .key_context("UsageChip")
@@ -926,7 +958,7 @@ impl Render for UsageFooter {
                 div()
                     .id("refresh-usage")
                     .role(Role::Button)
-                    .aria_label("Refresh usage")
+                    .aria_label(crate::i18n::text("usage-footer-refresh-usage"))
                     .track_focus(&self.refresh_focus)
                     .tab_index(0)
                     .key_context("UsageRefresh")
@@ -1054,5 +1086,92 @@ mod tests {
         assert!(state.snapshot.is_none());
         state.complete(Ok(Snapshot::default()));
         assert!(state.error.is_none());
+    }
+}
+
+pub(crate) fn window_label(window: &usage::Window) -> String {
+    match window.minutes {
+        1_440 => crate::i18n::text("usage-window-day"),
+        10_080 => crate::i18n::text("usage-window-week"),
+        43_200 => crate::i18n::text("usage-window-month"),
+        n if n % 60 == 0 => crate::i18n::format(
+            "usage-window-hours",
+            &[("count", crate::system_format::unsigned(n / 60))],
+        ),
+        n => crate::i18n::format(
+            "usage-window-minutes",
+            &[("count", crate::system_format::unsigned(n))],
+        ),
+    }
+}
+
+pub(crate) fn countdown(window: &usage::Window, now: i64) -> String {
+    window
+        .resets_at
+        .map(|at| crate::i18n::duration(at.saturating_sub(now)))
+        .unwrap_or_else(|| window_label(window))
+}
+
+fn reset_label(window: &usage::Window, now: i64) -> String {
+    match window.resets_at {
+        Some(at) if at <= now => crate::i18n::text("usage-resets-now"),
+        Some(at) => crate::i18n::format(
+            "usage-resets-in",
+            &[("duration", crate::i18n::duration(at.saturating_sub(now)))],
+        ),
+        None => crate::i18n::format("usage-window", &[("duration", window_label(window))]),
+    }
+}
+
+#[cfg(test)]
+mod message_tests {
+    use super::*;
+    #[test]
+    fn copy_review_chinese_usage_windows_use_the_actual_duration() {
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::SimplifiedChinese);
+        for (minutes, duration) in [
+            (10_080, "周".to_string()),
+            (43_200, "月".to_string()),
+            (1_440, "1天".to_string()),
+            (300, format!("{}小时", crate::system_format::unsigned(5))),
+        ] {
+            let window = usage::Window {
+                used_percent: 50.,
+                minutes,
+                resets_at: None,
+            };
+            assert_eq!(window_label(&window), duration);
+            assert_eq!(reset_label(&window, 0), format!("限额周期：{duration}"));
+        }
+    }
+
+    #[test]
+    fn window_labels_and_reset_boundaries_preserve_meaning() {
+        for (minutes, expected) in [
+            (300, "5h"),
+            (1440, "1d"),
+            (10080, "wk"),
+            (43200, "mo"),
+            (60, "1h"),
+            (5, "5m"),
+        ] {
+            let window = usage::Window {
+                used_percent: 50.,
+                minutes,
+                resets_at: None,
+            };
+            assert_eq!(window_label(&window), expected);
+            assert_eq!(countdown(&window, 1), expected);
+            assert_eq!(reset_label(&window, 1), format!("{expected} window"));
+        }
+        let mut window = usage::Window {
+            used_percent: 50.,
+            minutes: 300,
+            resets_at: Some(60_000),
+        };
+        assert_eq!(reset_label(&window, 0), "Resets in 1m");
+        assert_eq!(countdown(&window, 60_000), "now");
+        window.resets_at = Some(0);
+        assert_eq!(reset_label(&window, 1), "Resets now");
     }
 }

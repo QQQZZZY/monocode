@@ -54,13 +54,13 @@ impl UsageFooter {
                         .items_center()
                         .justify_between()
                         .font_weight(FontWeight::MEDIUM)
-                        .child("Banked resets")
-                        .child(
-                            div()
-                                .text_size(px(10.))
-                                .text_color(content(0.5))
-                                .child(format!("{count} available")),
-                        ),
+                        .child(crate::i18n::text("usage-footer-banked-resets"))
+                        .child(div().text_size(px(10.)).text_color(content(0.5)).child(
+                            crate::i18n::format(
+                                "usage-footer-available",
+                                &[("count", crate::system_format::unsigned(count))],
+                            ),
+                        )),
                 )
                 .child(
                     div()
@@ -115,9 +115,12 @@ impl UsageFooter {
         let confirming = self.confirm_reset.as_ref() == Some(&row.key) && !disabled;
         let now = usage::now_ms();
         let expiry = match row.credit.as_ref().and_then(|c| c.expires_at) {
-            None => "Expiry not provided".into(),
-            Some(at) if at <= now => "Expires now".into(),
-            Some(at) => format!("Expires in {}", usage::duration(at - now)),
+            None => crate::i18n::text("usage-expiry-unknown"),
+            Some(at) if at <= now => crate::i18n::text("usage-expires-now"),
+            Some(at) => crate::i18n::format(
+                "usage-expires-in",
+                &[("duration", crate::i18n::duration(at - now))],
+            ),
         };
         div()
             .id(gpui::SharedString::from(format!(
@@ -170,12 +173,12 @@ impl UsageFooter {
                                 div()
                                     .text_size(px(10.))
                                     .text_color(content(0.45))
-                                    .child("Applying…"),
+                                    .child(crate::i18n::text("usage-footer-applying")),
                             )
                         } else {
                             d.child(self.reset_button(
                                 &row.key,
-                                "Use reset",
+                                &crate::i18n::text("usage-footer-use-reset"),
                                 Command::Confirm(row.key.clone()),
                                 disabled,
                                 cx,
@@ -194,7 +197,7 @@ impl UsageFooter {
                             div()
                                 .text_size(px(10.))
                                 .text_color(content(0.5))
-                                .child("Spend this reset now?"),
+                                .child(crate::i18n::text("usage-footer-spend-this-reset-now")),
                         )
                         .child(
                             div()
@@ -204,14 +207,14 @@ impl UsageFooter {
                                 .gap_1()
                                 .child(self.reset_button(
                                     &row.key,
-                                    "Cancel",
+                                    &crate::i18n::text("usage-footer-cancel"),
                                     Command::Cancel,
                                     false,
                                     cx,
                                 ))
                                 .child(self.reset_button(
                                     &row.key,
-                                    "Confirm",
+                                    &crate::i18n::text("usage-footer-confirm"),
                                     Command::Apply(row.key.clone()),
                                     false,
                                     cx,
@@ -225,15 +228,19 @@ impl UsageFooter {
     fn reset_button(
         &self,
         row: &str,
-        label: &'static str,
+        label: &str,
         command: Command,
         disabled: bool,
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
-        let id =
-            gpui::SharedString::from(format!("banked-reset-{}-{row}", label.replace(' ', "-")));
+        let action = match &command {
+            Command::Confirm(_) => "Use-reset",
+            Command::Cancel => "Cancel",
+            Command::Apply(_) => "Confirm",
+        };
+        let id = gpui::SharedString::from(format!("banked-reset-{action}-{row}"));
         let selector = id.clone();
-        let button = if label == "Confirm" {
+        let button = if matches!(&command, Command::Apply(_)) {
             primary_button(id, label, disabled)
         } else {
             secondary_button(id, label, false, disabled)
@@ -244,7 +251,7 @@ impl UsageFooter {
             .py_0()
             .px_2()
             .text_size(px(10.))
-            .child(label)
+            .child(label.to_owned())
             .when(!disabled, |d| {
                 let click = command.clone();
                 d.focusable()

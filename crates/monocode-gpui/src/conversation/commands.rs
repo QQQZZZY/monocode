@@ -41,7 +41,8 @@ impl Conversation {
             return;
         }
         if self.busy || self.stopping || !self.follow_ups.state.messages.is_empty() {
-            self.status = "Wait for the current turn and queued messages before /visualize.".into();
+            self.status =
+                crate::i18n::text("conversation-wait-for-the-current-turn-and-queued-messages");
             cx.notify();
             return;
         }
@@ -53,7 +54,7 @@ impl Conversation {
             || self.settings.mono.is_some()
             || self.settings.worktree_removed
         {
-            self.status = "/visualize is not available in this session.".into();
+            self.status = crate::i18n::text("conversation-visualize-unavailable");
             cx.notify();
             return;
         }
@@ -87,21 +88,22 @@ impl Conversation {
         }
         if self.busy || !self.follow_ups.state.messages.is_empty() {
             self.status =
-                "Wait for the current turn and queued messages before compacting context.".into();
+                crate::i18n::text("conversation-wait-for-the-current-turn-and-queued-messages-2");
             cx.notify();
             return;
         }
         let kind = Kind::from_id(&self.summary.provider);
         if !provider::supports_compact(kind) {
-            self.status = format!(
-                "Context compaction is not supported by the native {} transport.",
-                kind.label()
+            self.status = crate::i18n::format(
+                "conversation-context-compaction-is-not-supported-by-the",
+                &[("name", (kind.label()).to_string())],
             );
             cx.notify();
             return;
         }
         if self.summary.provider_id.is_none() {
-            self.status = "Send a message before compacting this chat.".into();
+            self.status =
+                crate::i18n::text("conversation-send-a-message-before-compacting-this-chat");
             cx.notify();
             return;
         }
@@ -136,7 +138,7 @@ impl Conversation {
         self.busy = true;
         self.submission_generation = self.submission_generation.wrapping_add(1);
         let generation = self.submission_generation;
-        self.status = "Compacting context…".into();
+        self.status = crate::i18n::text("conversation-compacting-context");
         let compact_start = self.transcript.read(cx).source_rows().len();
         let mut compact_tool = ToolCall::new(
             &format!(

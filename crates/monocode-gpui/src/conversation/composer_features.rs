@@ -67,7 +67,8 @@ impl Conversation {
     }
     pub(crate) fn toggle_mode(&mut self, id: &str, cx: &mut Context<Self>) {
         if self.is_remote() && matches!(id, "operator" | "orchestrator") {
-            self.status = "This mode is not available on remote projects.".into();
+            self.status =
+                crate::i18n::text("conversation-this-mode-is-not-available-on-remote-projects");
             cx.notify();
             return;
         }
@@ -150,7 +151,7 @@ impl Conversation {
                 }
                 self.save_settings(cx);
                 text = if rest.is_empty() && mode == "operator" {
-                    "Explain what you can do in MonoCode with the app CLI.".into()
+                    crate::i18n::text("conversation-explain-what-you-can-do-in-monocode-with")
                 } else {
                     rest
                 };
@@ -164,7 +165,7 @@ impl Conversation {
             files: true,
             directories: false,
             multiple: true,
-            prompt: Some("Attach files".into()),
+            prompt: Some(crate::i18n::text("conversation-attach-files").into()),
         });
         cx.spawn(async move |this, cx| {
             if let Ok(Ok(Some(paths))) = paths.await {
@@ -209,12 +210,14 @@ impl Conversation {
         let id = self.summary.id;
         let mut all = self.attachments.clone();
         let existing = all.len();
+        // Resolved on the UI thread; the background read reports the key back.
+        let too_many = crate::i18n::text("conversation-attachment-limit");
         let work = cx.background_executor().spawn(async move {
             if all.len() + images.len() > monocode_core::composer::MAX_ATTACHMENTS
                 || images.iter().map(|i| i.bytes().len() as u64).sum::<u64>()
                     > monocode_core::composer::MAX_EMBED_BYTES
             {
-                return Err("Attach up to 20 files totalling 20 MB.".to_owned());
+                return Err(too_many);
             }
             // Kept with the conversation so deleting it removes them.
             let root = locked(&store)?
@@ -329,7 +332,10 @@ impl Conversation {
                     let remove = div()
                         .id(("remove-attachment", ix))
                         .role(Role::Button)
-                        .aria_label(format!("Remove {label}"))
+                        .aria_label(crate::i18n::format(
+                            "conversation-remove",
+                            &[("label", label.to_string())],
+                        ))
                         .cursor_pointer()
                         .flex_shrink_0()
                         .flex()
@@ -375,7 +381,10 @@ impl Conversation {
                             .role(Role::Button)
                             .focusable()
                             .debug_selector(move || format!("composer-image-{ix}"))
-                            .aria_label(format!("Open {label} full screen"))
+                            .aria_label(crate::i18n::format(
+                                "conversation-open-full-screen",
+                                &[("label", label.to_string())],
+                            ))
                             .cursor(CursorStyle::PointingHand)
                             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                             .on_click(move |_, window, cx| {
@@ -406,7 +415,7 @@ impl Conversation {
                         div()
                             .text_size(px(11.))
                             .text_color(content(0.5))
-                            .child("Attaching…"),
+                            .child(crate::i18n::text("conversation-attaching")),
                     )
                 })
                 .when_some(self.attachment_error.clone(), |d, error| {
@@ -535,7 +544,7 @@ impl Conversation {
                         self.orchestration_plan
                             .as_ref()
                             .map(|p| p.title.clone())
-                            .unwrap_or_else(|| "Orchestrator".into()),
+                            .unwrap_or_else(|| crate::i18n::text("conversation-orchestrator")),
                     ),
             );
         if let Some(plan) = &self.orchestration_plan {
@@ -561,7 +570,13 @@ impl Conversation {
                                         if task.depends_on.is_empty() {
                                             String::new()
                                         } else {
-                                            format!(" · after {}", task.depends_on.join(", "))
+                                            crate::i18n::format(
+                                                "conversation-task-dependencies",
+                                                &[(
+                                                    "value1",
+                                                    (task.depends_on.join(", ")).to_string(),
+                                                )],
+                                            )
                                         }
                                     ),
                                 ))
@@ -573,22 +588,28 @@ impl Conversation {
                         .flex()
                         .gap_2()
                         .child(
-                            tool_pill("start-orchestration", "Start agents")
-                                .bg(content(0.1))
-                                .child("Start agents")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    if let Some(plan) = this.orchestration_plan.clone() {
-                                        cx.emit(StartOrchestration(plan));
-                                    }
-                                })),
+                            tool_pill(
+                                "start-orchestration",
+                                crate::i18n::text("conversation-start-agents"),
+                            )
+                            .bg(content(0.1))
+                            .child(crate::i18n::text("conversation-start-agents"))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if let Some(plan) = this.orchestration_plan.clone() {
+                                    cx.emit(StartOrchestration(plan));
+                                }
+                            })),
                         )
                         .child(
-                            tool_pill("dismiss-orchestration", "Dismiss plan")
-                                .child("Dismiss")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.orchestration_plan = None;
-                                    cx.notify();
-                                })),
+                            tool_pill(
+                                "dismiss-orchestration",
+                                crate::i18n::text("conversation-dismiss-plan"),
+                            )
+                            .child(crate::i18n::text("conversation-dismiss"))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.orchestration_plan = None;
+                                cx.notify();
+                            })),
                         ),
                 );
             }
@@ -597,21 +618,27 @@ impl Conversation {
             card = card
                 .child(div().text_color(tint(AMBER_400, 0.9)).child(error.clone()))
                 .child(
-                    tool_pill("dismiss-plan-error", "Dismiss")
-                        .child("Dismiss")
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.orchestration_error = None;
-                            cx.notify();
-                        })),
+                    tool_pill(
+                        "dismiss-plan-error",
+                        crate::i18n::text("conversation-dismiss"),
+                    )
+                    .child(crate::i18n::text("conversation-dismiss"))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.orchestration_error = None;
+                        cx.notify();
+                    })),
                 );
         }
         if let Some(progress) = &self.orchestration_progress {
             card = card
                 .child(div().text_color(content(0.6)).child(progress.clone()))
                 .child(
-                    tool_pill("stop-orchestration", "Stop agents")
-                        .child("Stop agents")
-                        .on_click(cx.listener(|_, _, _, cx| cx.emit(StopOrchestration))),
+                    tool_pill(
+                        "stop-orchestration",
+                        crate::i18n::text("conversation-stop-agents"),
+                    )
+                    .child(crate::i18n::text("conversation-stop-agents"))
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(StopOrchestration))),
                 );
         }
         Some(card.into_any_element())
