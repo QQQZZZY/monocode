@@ -61,6 +61,8 @@ cat > "$native_bundle/Contents/Info.plist" <<PLIST
 <key>CFBundleExecutable</key><string>$native_executable</string>
 <key>MonocodeDataMode</key><string>$native_data_mode</string>
 <key>CFBundleIdentifier</key><string>dev.usemono.gpui</string>
+<key>CFBundleDevelopmentRegion</key><string>en</string>
+<key>CFBundleLocalizations</key><array><string>en</string><string>zh-Hans</string></array>
 <key>CFBundleName</key><string>Monocode Native</string>
 <key>CFBundleDisplayName</key><string>Monocode Native</string>
 <key>CFBundlePackageType</key><string>APPL</string>

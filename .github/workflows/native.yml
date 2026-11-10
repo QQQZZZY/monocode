@@ -57,6 +57,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - run: python3 scripts/check-native-i18n.test.py
+      - run: python3 scripts/check-native-i18n.py
       - run: cargo fmt --manifest-path crates/monocode-gpui/Cargo.toml --all --check
       - run: cargo clippy --manifest-path crates/monocode-gpui/Cargo.toml --locked -p monocode-core -p monocode-gpui --all-targets --profile native-dev -- -D warnings
       - run: cargo test --manifest-path crates/monocode-gpui/Cargo.toml --locked -p monocode-core --profile native-dev
