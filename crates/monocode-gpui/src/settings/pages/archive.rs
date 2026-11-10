@@ -8,33 +8,39 @@ use crate::{
 use gpui::{AnyElement, Context, Role, SharedString, div, prelude::*, px};
 impl SettingsView {
     pub(super) fn archive_page(&mut self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let mut rows = vec![self.row(
-            Some("show-archived"),
-            true,
-            "Show archived in the sidebar",
-            Some("Keep archived conversations listed alongside the active ones.".into()),
-            vec![self.toggle(
-                "show-archived",
-                "Show archived in the sidebar",
-                self.prefs.show_archived,
-                false,
-                cx,
-                |this, on, cx| this.update(cx, |p| p.show_archived = on),
-            )],
-        )];
+        let mut rows = vec![
+            self.row(
+                Some("show-archived"),
+                true,
+                crate::i18n::text("settings-show-archived-in-the-sidebar"),
+                Some(
+                    crate::i18n::text(
+                        "settings-keep-archived-conversations-listed-alongside-the-active",
+                    )
+                    .into(),
+                ),
+                vec![self.toggle(
+                    "show-archived",
+                    crate::i18n::text("settings-show-archived-in-the-sidebar"),
+                    self.prefs.show_archived,
+                    false,
+                    cx,
+                    |this, on, cx| this.update(cx, |p| p.show_archived = on),
+                )],
+            ),
+        ];
         if self.ctx.cwd.is_empty() {
-            rows.push(note("Open a project to see its archived conversations."));
+            rows.push(note(crate::i18n::text(
+                "settings-open-a-project-to-see-its-archived",
+            )));
         } else if self.ctx.archived.is_empty() {
-            rows.push(note("No archived conversations in this project."));
+            rows.push(note(crate::i18n::text(
+                "settings-no-archived-conversations-in-this-project",
+            )));
         }
         for session in &self.ctx.archived {
             let id = session.id;
-            let date = chrono::DateTime::from_timestamp_millis(
-                session.updated_at.min(i64::MAX as u64) as i64,
-            )
-            .filter(|_| session.updated_at > 0)
-            .map(|d| d.format("%b %-d").to_string())
-            .unwrap_or_default();
+            let date = archive_date(session.updated_at);
             rows.push(
                 div()
                     .flex()
@@ -69,11 +75,11 @@ impl SettingsView {
                     .child(
                         secondary_button(
                             SharedString::from(format!("unarchive-{id}")),
-                            "Unarchive",
+                            crate::i18n::text("settings-unarchive"),
                             false,
                             false,
                         )
-                        .child("Unarchive")
+                        .child(crate::i18n::text("settings-unarchive"))
                         .on_click(cx.listener(move |_, _, _, cx| {
                             cx.emit(SettingsEvent::Archive(id, false))
                         })),
@@ -81,11 +87,11 @@ impl SettingsView {
                     .child(
                         secondary_button(
                             SharedString::from(format!("delete-{id}")),
-                            "Delete",
+                            crate::i18n::text("settings-delete"),
                             true,
                             false,
                         )
-                        .child("Delete")
+                        .child(crate::i18n::text("settings-delete"))
                         .on_click(
                             cx.listener(move |_, _, _, cx| cx.emit(SettingsEvent::Delete(id))),
                         ),
@@ -94,9 +100,12 @@ impl SettingsView {
             );
         }
         let title = if self.ctx.cwd.is_empty() {
-            "Archived conversations".into()
+            crate::i18n::text("settings-archived-conversations")
         } else {
-            format!("Archived in {}", self.ctx.project_label)
+            crate::i18n::format(
+                "settings-archived-in",
+                &[("value", (self.ctx.project_label).to_string())],
+            )
         };
         let mut projects: Vec<AnyElement> = self
             .ctx
@@ -130,11 +139,11 @@ impl SettingsView {
                     .child(
                         secondary_button(
                             SharedString::from(format!("unarchive-project-{ix}")),
-                            "Unarchive",
+                            crate::i18n::text("settings-unarchive"),
                             false,
                             false,
                         )
-                        .child("Unarchive")
+                        .child(crate::i18n::text("settings-unarchive"))
                         .on_click(cx.listener(move |_, _, _, cx| {
                             cx.emit(SettingsEvent::UnarchiveProject(unarchive.clone()))
                         })),
@@ -142,11 +151,11 @@ impl SettingsView {
                     .child(
                         secondary_button(
                             SharedString::from(format!("delete-project-{ix}")),
-                            "Delete",
+                            crate::i18n::text("settings-delete"),
                             true,
                             false,
                         )
-                        .child("Delete")
+                        .child(crate::i18n::text("settings-delete"))
                         .on_click(cx.listener(move |_, _, _, cx| {
                             cx.emit(SettingsEvent::DeleteProject(delete.clone()))
                         })),
@@ -155,18 +164,37 @@ impl SettingsView {
             })
             .collect();
         if projects.is_empty() {
-            projects.push(note("No archived projects."));
+            projects.push(note(crate::i18n::text("settings-no-archived-projects")));
         }
         vec![
             self.group(
                 None,
                 true,
-                "Archived projects",
-                Some("Archive a project from the rail to keep its chats without listing it in the sidebar.".into()),
+                crate::i18n::text("settings-archived-projects"),
+                Some(crate::i18n::text("settings-archive-a-project-from-the-rail-to").into()),
                 None,
                 projects,
             ),
             self.group(None, false, SharedString::from(title), None, None, rows),
         ]
     }
+}
+
+fn archive_date(updated_at: u64) -> String {
+    chrono::DateTime::from_timestamp_millis(updated_at.min(i64::MAX as u64) as i64)
+        .filter(|_| updated_at > 0)
+        .map(|d| crate::system_format::date(d.timestamp_millis(), "MMMd", "%b %-d"))
+        .unwrap_or_default()
+}
+
+#[cfg(all(test, target_os = "macos"))]
+#[test]
+fn archive_timestamp_date_follows_local_day() {
+    for at in [1767310200000_u64, 1767313800000] {
+        assert_eq!(
+            archive_date(at),
+            crate::system_format::local_date_reference(at as i64, "MMMd")
+        );
+    }
+    assert_eq!(archive_date(0), "");
 }

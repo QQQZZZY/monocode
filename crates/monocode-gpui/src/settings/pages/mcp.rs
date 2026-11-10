@@ -32,7 +32,7 @@ impl SettingsView {
                                     div()
                                         .text_size(px(14.))
                                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                                        .child("MCP connections"),
+                                        .child(crate::i18n::text("settings-mcp-connections")),
                                 )
                                 .child(project),
                         )
@@ -41,7 +41,9 @@ impl SettingsView {
                                 .mt_1()
                                 .text_size(px(12.))
                                 .text_color(content(0.55))
-                                .child("Servers for this project and your accounts."),
+                                .child(crate::i18n::text(
+                                    "settings-servers-for-this-project-and-your",
+                                )),
                         ),
                 )
                 .child(
@@ -49,14 +51,18 @@ impl SettingsView {
                         .flex()
                         .items_center()
                         .gap_2()
-                        .child(self.refresh_button("refresh-mcp", "Refresh", cx))
+                        .child(self.refresh_button(
+                            "refresh-mcp",
+                            crate::i18n::text("settings-refresh"),
+                            cx,
+                        ))
                         .child(
                             secondary_button(
                                 "mcp-show-all",
                                 if self.mcp_show_all {
-                                    "Show available providers"
+                                    crate::i18n::text("settings-show-available-providers")
                                 } else {
-                                    "Show all providers"
+                                    crate::i18n::text("settings-show-all-providers")
                                 },
                                 false,
                                 false,
@@ -68,14 +74,21 @@ impl SettingsView {
                             })),
                         )
                         .child(
-                            secondary_button("add-mcp", "Add MCP server", false, busy)
-                                .debug_selector(|| "settings-add-mcp".into())
-                                .child(icon("plus", 14.))
-                                .on_click(cx.listener(move |this, _, window, cx| {
+                            secondary_button(
+                                "add-mcp",
+                                crate::i18n::text("settings-add-mcp-server"),
+                                false,
+                                busy,
+                            )
+                            .debug_selector(|| "settings-add-mcp".into())
+                            .child(icon("plus", 14.))
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
                                     if !busy {
                                         this.open_management(Target::Mcp, window, cx);
                                     }
-                                })),
+                                },
+                            )),
                         ),
                 )
                 .into_any_element(),
@@ -102,7 +115,10 @@ impl SettingsView {
                     .iter()
                     .filter(|s| id == "all" || s.provider == id)
                     .count();
-                (id, format!("{label} {count}"))
+                (
+                    id,
+                    format!("{label} {}", crate::system_format::unsigned(count as u64)),
+                )
             })
             .collect::<Vec<_>>();
         let options = counts
@@ -114,7 +130,7 @@ impl SettingsView {
                 .mt_6()
                 .child(self.segmented(
                     "mcp-filter",
-                    "Filter MCP servers by provider",
+                    crate::i18n::text("settings-filter-mcp-servers-by-provider"),
                     &filter,
                     &options,
                     cx,
@@ -138,7 +154,7 @@ impl SettingsView {
             );
         }
         if self.discovery_loading {
-            page.push(note("Checking servers…"));
+            page.push(note(crate::i18n::text("settings-checking-servers")));
             return page;
         }
         let servers = self
@@ -149,7 +165,9 @@ impl SettingsView {
             .cloned()
             .collect::<Vec<_>>();
         if servers.is_empty() {
-            page.push(note("No MCP servers configured for this provider."));
+            page.push(note(crate::i18n::text(
+                "settings-no-mcp-servers-configured-for-this-provider",
+            )));
         } else {
             page.push(
                 div()
@@ -205,7 +223,14 @@ impl SettingsView {
                                                 },
                                                 server.scope,
                                                 server.transport,
-                                                server.status
+                                                match server.status.as_str() {
+                                                    "Connected" => crate::i18n::text("settings-mcp-connected"),
+                                                    "Needs authentication" => crate::i18n::text("settings-mcp-needs-authentication"),
+                                                    "Failed" => crate::i18n::text("settings-mcp-failed"),
+                                                    "Disabled" => crate::i18n::text("settings-mcp-disabled"),
+                                                    "Configured" => crate::i18n::text("settings-mcp-configured"),
+                                                    _ => server.status.clone(),
+                                                }
                                             )),
                                     )
                                     .child(
@@ -224,11 +249,11 @@ impl SettingsView {
                             row = row.child(
                                 secondary_button(
                                     SharedString::from(format!("mcp-login-{ix}")),
-                                    "Sign in",
+                                    crate::i18n::text("settings-sign-in"),
                                     false,
                                     busy,
                                 )
-                                .child("Sign in")
+                                .child(crate::i18n::text("settings-sign-in"))
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| this.mcp_action(login.clone(), false, cx),
                                 )),
@@ -246,9 +271,13 @@ impl SettingsView {
                                 remove.scope = scope.clone();
                                 row = row.child(self.segmented(
                                     "mcp-remove-scope",
-                                    "Scope to remove this server from",
+                                    crate::i18n::text("settings-scope-to-remove-this-server-from"),
                                     &scope,
-                                    &[("local", "Local"), ("project", "Project"), ("user", "User")],
+                                    &[
+                                        ("local", &crate::i18n::text("settings-local")),
+                                        ("project", &crate::i18n::text("settings-project")),
+                                        ("user", &crate::i18n::text("settings-user")),
+                                    ],
                                     cx,
                                     move |this, value, cx| {
                                         this.mcp_remove_scopes.insert(name.clone(), value.into());
@@ -259,21 +288,30 @@ impl SettingsView {
                             row = row.child(
                                 secondary_button(
                                     SharedString::from(format!("mcp-remove-{ix}")),
-                                    "Remove",
+                                    crate::i18n::text("settings-remove"),
                                     false,
                                     busy,
                                 )
-                                .child("Remove")
+                                .child(crate::i18n::text("settings-remove"))
                                 .on_click(cx.listener(
                                     move |_, _, window, cx| {
                                         let prompt = window.prompt(
                                             gpui::PromptLevel::Warning,
-                                            "Remove MCP server",
-                                            Some(&format!(
-                                                "Remove {} from {} scope?",
-                                                remove.name, remove.scope
+                                            crate::i18n::text("settings-prompt-remove-mcp-server")
+                                                .as_str(),
+                                            Some(&crate::i18n::format(
+                                                "settings-remove-from-scope",
+                                                &[
+                                                    ("value", (remove.name).to_string()),
+                                                    ("value2", (remove.scope).to_string()),
+                                                ],
                                             )),
-                                            &["Remove", "Cancel"],
+                                            &[
+                                                crate::i18n::text("settings-prompt-remove")
+                                                    .as_str(),
+                                                crate::i18n::text("settings-prompt-cancel")
+                                                    .as_str(),
+                                            ],
                                             cx,
                                         );
                                         let server = remove.clone();
@@ -293,11 +331,11 @@ impl SettingsView {
                             row = row.child(
                                 secondary_button(
                                     SharedString::from(format!("mcp-show-{ix}")),
-                                    "Show config",
+                                    crate::i18n::text("settings-show-config"),
                                     false,
                                     false,
                                 )
-                                .child("Show config")
+                                .child(crate::i18n::text("settings-show-config"))
                                 .on_click(move |_, _, cx| cx.reveal_path(&path)),
                             );
                         }
@@ -306,7 +344,9 @@ impl SettingsView {
                     .into_any_element(),
             );
         }
-        page.push(note("Live connection status is available for Claude Code."));
+        page.push(note(crate::i18n::text(
+            "settings-live-connection-status-is-available-for-claude",
+        )));
         page
     }
     pub(crate) fn refresh_mcp_health(&mut self, cx: &mut Context<Self>) {
@@ -372,8 +412,10 @@ impl SettingsView {
                         }
                     }
                     Err(e) => {
-                        this.discovery.mcp_error =
-                            Some(format!("Claude connection status unavailable: {e}"))
+                        this.discovery.mcp_error = Some(crate::i18n::format(
+                            "settings-claude-connection-status-unavailable",
+                            &[("e", (e).to_string())],
+                        ))
                     }
                 }
                 cx.notify();

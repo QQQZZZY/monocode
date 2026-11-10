@@ -9,7 +9,7 @@ use crate::{
     popover::{Align, Anchor, AnchorSlot, Menu, MenuAction, MenuEvent, menu_popover, popover},
     theme::*,
 };
-use chrono::{Datelike, Local, NaiveDate, NaiveDateTime, TimeZone};
+use chrono::{Datelike, Local, NaiveDate, TimeZone};
 use gpui::{AnyElement, Context, Entity, Role, Subscription, Task, Window, div, prelude::*, px};
 use serde_json::{Value, json};
 use std::{
@@ -19,12 +19,23 @@ use std::{
 };
 
 pub(crate) const CATEGORIES: [(&str, &str); 5] = [
-    ("pullRequests", "Pull requests / Merge requests"),
-    ("issues", "Issues and Linear tasks"),
-    ("agentFinished", "Agent finished"),
-    ("agentInput", "Agent approvals and questions"),
-    ("reminders", "Reminders"),
+    ("pullRequests", "notification-category-pullRequests"),
+    ("issues", "notification-category-issues"),
+    ("agentFinished", "notification-category-agentFinished"),
+    ("agentInput", "notification-category-agentInput"),
+    ("reminders", "notification-category-reminders"),
 ];
+fn mute_until(date: NaiveDate, text: &str) -> Option<u64> {
+    crate::system_format::parse_wall_time(text)
+        .and_then(|time| Local.from_local_datetime(&date.and_time(time)).earliest())
+        .map(|at| at.timestamp_millis().max(0) as u64)
+}
+fn mute_calendar_cell(month: NaiveDate, next: NaiveDate, cell: usize) -> Option<NaiveDate> {
+    let offset = month.weekday().num_days_from_monday() as usize;
+    cell.checked_sub(offset)
+        .filter(|index| *index < (next - month).num_days() as usize)
+        .map(|index| month + chrono::Duration::days(index as i64))
+}
 fn path_key(path: &str) -> String {
     let windows =
         path.as_bytes().get(1) == Some(&b':') || path.starts_with("\\\\") || path.starts_with("//");
@@ -354,15 +365,15 @@ impl SettingsView {
                     .gap_2()
                     .text_size(px(12.))
                     .text_color(content(0.45))
-                    .child("Permission needed")
+                    .child(crate::i18n::text("settings-permission-needed"))
                     .child(
                         secondary_button(
                             "notifications-system-settings",
-                            "Open System Settings",
+                            crate::i18n::text("settings-open-system-settings"),
                             false,
                             false,
                         )
-                        .child("Open System Settings")
+                        .child(crate::i18n::text("settings-open-system-settings"))
                         .on_click(cx.listener(|this, _, _, cx| {
                             let _ = platform::open_settings();
                             this.probe_notification_permission(false, cx);
@@ -374,7 +385,7 @@ impl SettingsView {
                 div()
                     .text_size(px(12.))
                     .text_color(content(0.45))
-                    .child("Not available on this platform")
+                    .child(crate::i18n::text("settings-not-available-on-this-platform"))
                     .into_any_element(),
             ],
             _ => Vec::new(),
@@ -451,25 +462,55 @@ impl SettingsView {
         for hours in [1, 4, 8] {
             let at = now + chrono::Duration::hours(hours);
             let day = if at.date_naive() == now.date_naive() {
-                ""
+                String::new()
             } else {
-                "Tomorrow, "
+                crate::i18n::text("settings-tomorrow")
             };
             items.push(
                 MenuAction::new(
                     format!("mute:{hours}"),
-                    format!(
-                        "{hours} {} ({day}{})",
-                        if hours == 1 { "hour" } else { "hours" },
-                        at.format("%-H:%M")
+                    crate::i18n::format(
+                        if hours == 1 {
+                            "settings-mute-for-hour"
+                        } else {
+                            "settings-mute-for-hours"
+                        },
+                        &[
+                            ("hours", crate::system_format::integer(hours)),
+                            ("day", day),
+                            (
+                                "time",
+                                crate::system_format::date(at.timestamp_millis(), "jm", "%-H:%M"),
+                            ),
+                        ],
                     ),
                 )
                 .into(),
             );
         }
-        items.push(MenuAction::new("mute:indefinite", "Until resumed").into());
-        items.push(MenuAction::new("mute:custom", "Choose date and time").into());
-        let menu = cx.new(|cx| Menu::new("Mute notifications", items, window, cx).width(244.));
+        items.push(
+            MenuAction::new(
+                "mute:indefinite",
+                crate::i18n::text("settings-until-resumed"),
+            )
+            .into(),
+        );
+        items.push(
+            MenuAction::new(
+                "mute:custom",
+                crate::i18n::text("settings-choose-date-and-time"),
+            )
+            .into(),
+        );
+        let menu = cx.new(|cx| {
+            Menu::new(
+                crate::i18n::text("settings-menu-mute-notifications"),
+                items,
+                window,
+                cx,
+            )
+            .width(244.)
+        });
         let targets = ids.clone();
         let events = cx.subscribe(&menu, move |this, _, event: &MenuEvent, cx| {
             if let MenuEvent::Picked(id, _) = event {
@@ -485,10 +526,21 @@ impl SettingsView {
                     };
                     let rounded = initial.div_ceil(60_000) * 60_000;
                     let text = chrono::DateTime::from_timestamp_millis(rounded as i64)
-                        .map(|at| at.with_timezone(&Local).format("%H:%M").to_string())
+                        .map(|at| {
+                            crate::system_format::date(
+                                at.with_timezone(&Local).timestamp_millis(),
+                                "jm",
+                                "%H:%M",
+                            )
+                        })
                         .unwrap_or_default();
                     let field = cx.new(|cx| {
-                        let mut field = input::Input::field("Time", "HH:mm", content(0.4), cx);
+                        let mut field = input::Input::field(
+                            crate::i18n::text("settings-time"),
+                            crate::system_format::wall_time("09:00"),
+                            content(0.4),
+                            cx,
+                        );
                         field.set_text(text, cx);
                         field
                     });
@@ -508,7 +560,7 @@ impl SettingsView {
                             .as_ref()
                             .map(|menu| menu.anchor.clone())
                             .unwrap_or_default(),
-                        month: date.with_day(1).unwrap(),
+                        month: date,
                         error: None,
                     });
                 } else {
@@ -543,18 +595,32 @@ impl SettingsView {
         let status = if muted.is_empty() {
             String::new()
         } else if ids.len() > 1 {
-            format!("{} of {} projects muted", muted.len(), ids.len())
+            crate::i18n::format(
+                "settings-of-projects-muted",
+                &[
+                    ("count", crate::system_format::unsigned(muted.len() as u64)),
+                    ("count2", (ids.len()).to_string()),
+                ],
+            )
         } else {
             match self.prefs.project_notifications[&ids[0]]["mutedUntil"].as_u64() {
                 Some(at) => chrono::DateTime::from_timestamp_millis(at as i64)
                     .map(|at| {
-                        format!(
-                            "Muted until {}",
-                            at.with_timezone(&Local).format("%b %-d, %Y, %-H:%M")
+                        crate::i18n::format(
+                            "settings-muted-until",
+                            &[(
+                                "value",
+                                (crate::system_format::date(
+                                    at.with_timezone(&Local).timestamp_millis(),
+                                    "yMMMdjm",
+                                    "%b %-d, %Y, %-H:%M",
+                                ))
+                                .to_string(),
+                            )],
                         )
                     })
                     .unwrap_or_default(),
-                None => "Muted until resumed".into(),
+                None => crate::i18n::text("settings-muted-until-resumed"),
             }
         };
         let anchor = AnchorSlot::default();
@@ -579,11 +645,11 @@ impl SettingsView {
                 d.child(
                     secondary_button(
                         format!("resume-{key}"),
-                        "Resume notifications",
+                        crate::i18n::text("settings-resume-notifications"),
                         false,
                         false,
                     )
-                    .child("Resume notifications")
+                    .child(crate::i18n::text("settings-resume-notifications"))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.update(cx, |p| {
                             p.mute_projects(&resume_ids, None, monocode_core::time::now_ms())
@@ -595,9 +661,9 @@ impl SettingsView {
                 secondary_button(
                     format!("mute-{key}"),
                     if muted.is_empty() {
-                        "Mute notifications"
+                        crate::i18n::text("settings-mute-notifications")
                     } else {
-                        "Change mute duration"
+                        crate::i18n::text("settings-change-mute-duration")
                     },
                     false,
                     ids.is_empty(),
@@ -605,7 +671,11 @@ impl SettingsView {
                 .relative()
                 .child(anchor.probe())
                 .child(icon("bell-off", 14.))
-                .child(if muted.is_empty() { "Mute" } else { "Muted" })
+                .child(if muted.is_empty() {
+                    crate::i18n::text("settings-mute")
+                } else {
+                    crate::i18n::text("settings-muted")
+                })
                 .child(icon("chevron-down", 12.))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.open_notification_mute(ids.clone(), trigger.clone(), window, cx)
@@ -642,14 +712,20 @@ impl SettingsView {
                     .child(
                         secondary_button(
                             "notification-select-all",
-                            "Select all projects",
+                            crate::i18n::text("settings-select-all-projects"),
                             false,
                             false,
                         )
                         .child(if selected.is_empty() {
-                            "Select all projects".into()
+                            crate::i18n::text("settings-select-all-projects")
                         } else {
-                            format!("{} selected", selected.len())
+                            crate::i18n::format(
+                                "settings-selected",
+                                &[(
+                                    "count",
+                                    crate::system_format::unsigned(selected.len() as u64),
+                                )],
+                            )
                         })
                         .on_click(cx.listener(move |this, _, _, cx| {
                             if all_selected {
@@ -691,17 +767,41 @@ impl SettingsView {
                 })
                 .count();
             let status = if muted {
-                "All notifications paused".into()
+                crate::i18n::text("settings-all-notifications-paused")
             } else if enabled_count == categories.len() {
-                "All categories enabled".into()
+                crate::i18n::text("settings-all-categories-enabled")
             } else {
-                format!("{enabled_count} of {} enabled", categories.len())
+                crate::i18n::format(
+                    "settings-of-enabled",
+                    &[
+                        (
+                            "enabled_count",
+                            crate::system_format::unsigned(enabled_count as u64),
+                        ),
+                        (
+                            "count",
+                            crate::system_format::unsigned(categories.len() as u64),
+                        ),
+                    ],
+                )
             };
             let mut category_rows = Vec::new();
             if muted {
-                category_rows.push(div().id("project-notification-accessible-2").role(Role::Status).py_3().text_size(px(12.)).text_color(content(0.45)).child("Your category choices apply when notifications resume. You can edit them while muted.").into_any_element());
+                category_rows.push(
+                    div()
+                        .id("project-notification-accessible-2")
+                        .role(Role::Status)
+                        .py_3()
+                        .text_size(px(12.))
+                        .text_color(content(0.45))
+                        .child(crate::i18n::text(
+                            "settings-your-category-choices-apply-when-notifications",
+                        ))
+                        .into_any_element(),
+                );
             }
             for (cat, label) in categories {
+                let label = crate::i18n::text(label);
                 let category = (*cat).to_owned();
                 let project_id = id.clone();
                 let enabled = !self.prefs.project_notifications[&id]["disabled"]
@@ -716,14 +816,20 @@ impl SettingsView {
                         .py_3()
                         .text_size(px(12.))
                         .text_color(content(0.7))
-                        .child(*label)
+                        .child(label.clone())
                         .child(
                             div()
                                 .id(gpui::SharedString::from(format!(
                                     "notification-category-{id}-{cat}"
                                 )))
                                 .role(Role::Switch)
-                                .aria_label(format!("{label} for {}", project.name))
+                                .aria_label(crate::i18n::format(
+                                    "settings-for",
+                                    &[
+                                        ("label", label.to_string()),
+                                        ("value", project.name.to_string()),
+                                    ],
+                                ))
                                 .aria_toggled(if enabled {
                                     gpui::Toggled::True
                                 } else {
@@ -779,7 +885,10 @@ impl SettingsView {
                                 d.child(
                                     secondary_button(
                                         format!("select-notification-{id}"),
-                                        format!("Select {}", project.name),
+                                        crate::i18n::format(
+                                            "settings-select",
+                                            &[("value", (project.name).to_string())],
+                                        ),
                                         false,
                                         false,
                                     )
@@ -807,9 +916,12 @@ impl SettingsView {
                                         "expand-notification-{id}"
                                     )))
                                     .role(Role::Button)
-                                    .aria_label(format!(
-                                        "Notification categories for {} ({})",
-                                        project.name, project.detail
+                                    .aria_label(crate::i18n::format(
+                                        "settings-notification-categories-for",
+                                        &[
+                                            ("value", project.name.to_string()),
+                                            ("value2", project.detail.to_string()),
+                                        ],
                                     ))
                                     .cursor_pointer()
                                     .flex_1()
@@ -837,9 +949,11 @@ impl SettingsView {
                                                     .child(format!(
                                                         "{}{status}",
                                                         if project.kind == "local" {
-                                                            "Local project · "
+                                                            crate::i18n::text(
+                                                                "settings-local-project-prefix",
+                                                            )
                                                         } else {
-                                                            ""
+                                                            String::new()
                                                         }
                                                     )),
                                             ),
@@ -876,11 +990,51 @@ impl SettingsView {
             );
         }
         if projects.is_empty() {
-            rows.push(div().id("project-notification-accessible-3").role(Role::Status).px_4().py(px(14.)).text_size(px(12.)).text_color(content(0.45)).child("Open a project or connect an Inbox provider to configure its notifications.").into_any_element());
+            rows.push(
+                div()
+                    .id("project-notification-accessible-3")
+                    .role(Role::Status)
+                    .px_4()
+                    .py(px(14.))
+                    .text_size(px(12.))
+                    .text_color(content(0.45))
+                    .child(crate::i18n::text("settings-open-a-project-or-connect-an"))
+                    .into_any_element(),
+            );
         }
-        self.group(Some("project-notifications"),true,"Project notifications",Some("Choose sounds, banners and sidebar indicators by category. Mute pauses them without changing your choices. Unread items stay marked in Inbox.".into()),
-            Some(secondary_button("notification-select-projects",if selecting {"Done"} else {"Select projects"},false,projects.is_empty()).child(if selecting {"Done"} else {"Select projects"})
-                .on_click(cx.listener(|this,_,_,cx| {this.notification_state.selecting = !this.notification_state.selecting;this.notification_state.selected.clear();cx.notify();})).into_any_element()),rows)
+        self.group(
+            Some("project-notifications"),
+            true,
+            crate::i18n::text("settings-project-notifications"),
+            Some(
+                crate::i18n::text("settings-choose-sounds-banners-and-sidebar-indicators-by")
+                    .into(),
+            ),
+            Some(
+                secondary_button(
+                    "notification-select-projects",
+                    if selecting {
+                        crate::i18n::text("settings-done")
+                    } else {
+                        crate::i18n::text("settings-select-projects")
+                    },
+                    false,
+                    projects.is_empty(),
+                )
+                .child(if selecting {
+                    crate::i18n::text("settings-done")
+                } else {
+                    crate::i18n::text("settings-select-projects")
+                })
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.notification_state.selecting = !this.notification_state.selecting;
+                    this.notification_state.selected.clear();
+                    cx.notify();
+                }))
+                .into_any_element(),
+            ),
+            rows,
+        )
     }
     pub(super) fn notification_overlay(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let mut overlays = Vec::new();
@@ -913,7 +1067,7 @@ impl SettingsView {
                     div()
                         .id("project-notification-accessible-4")
                         .role(Role::Dialog)
-                        .aria_label("Mute project notifications")
+                        .aria_label(crate::i18n::text("settings-mute-project-notifications"))
                         .w(px(280.))
                         .p_3()
                         .rounded_lg()
@@ -926,7 +1080,7 @@ impl SettingsView {
                                 .mb_3()
                                 .text_size(px(11.))
                                 .text_color(content(0.45))
-                                .child("Mute all notifications until"),
+                                .child(crate::i18n::text("settings-mute-all-notifications-until")),
                         )
                         .child(self.mute_calendar(custom, cx))
                         .child(
@@ -934,7 +1088,7 @@ impl SettingsView {
                                 .mt_3()
                                 .text_size(px(10.))
                                 .text_color(content(0.4))
-                                .child("Time · Local time, 24-hour"),
+                                .child(crate::i18n::text("settings-time")),
                         )
                         .child(
                             div()
@@ -967,11 +1121,11 @@ impl SettingsView {
                                 .child(
                                     secondary_button(
                                         "cancel-custom-notification-mute",
-                                        "Cancel",
+                                        crate::i18n::text("settings-cancel"),
                                         false,
                                         false,
                                     )
-                                    .child("Cancel")
+                                    .child(crate::i18n::text("settings-cancel"))
                                     .on_click(cx.listener(
                                         |this, _, _, cx| {
                                             this.notification_state.custom = None;
@@ -982,30 +1136,22 @@ impl SettingsView {
                                 .child(
                                     secondary_button(
                                         "save-custom-notification-mute",
-                                        "Mute until then",
+                                        crate::i18n::text("settings-mute-until-then"),
                                         false,
                                         false,
                                     )
-                                    .child("Mute until then")
+                                    .debug_selector(|| "save-custom-notification-mute".into())
+                                    .child(crate::i18n::text("settings-mute-until-then"))
                                     .on_click(cx.listener(
                                         |this, _, _, cx| {
                                             let Some(custom) = &this.notification_state.custom
                                             else {
                                                 return;
                                             };
-                                            let parsed = NaiveDateTime::parse_from_str(
-                                                &format!(
-                                                    "{} {}",
-                                                    custom.date,
-                                                    custom.input.read(cx).content.trim()
-                                                ),
-                                                "%Y-%m-%d %H:%M",
-                                            )
-                                            .ok()
-                                            .and_then(|at| {
-                                                Local.from_local_datetime(&at).earliest()
-                                            })
-                                            .map(|at| at.timestamp_millis().max(0) as u64);
+                                            let parsed = mute_until(
+                                                custom.date,
+                                                custom.input.read(cx).content.trim(),
+                                            );
                                             let now = monocode_core::time::now_ms();
                                             match parsed {
                                                 Some(at) if at > now => {
@@ -1022,11 +1168,10 @@ impl SettingsView {
                                                         .unwrap()
                                                         .error = Some(
                                                         if parsed.is_some() {
-                                                            "Choose a date and time in the future."
+                                                            crate::i18n::text("settings-choose-a-date-and-time-in-the-future")
                                                         } else {
-                                                            "Choose a valid date and time."
-                                                        }
-                                                        .into(),
+                                                            crate::i18n::text("settings-choose-a-valid-date-and-time")
+                                                        },
                                                     );
                                                 }
                                             }
@@ -1045,15 +1190,12 @@ impl SettingsView {
 impl SettingsView {
     fn mute_calendar(&self, custom: &CustomMute, cx: &mut Context<Self>) -> AnyElement {
         let today = Local::now().date_naive();
-        let month = custom.month;
-        let previous_disabled = month <= today.with_day(1).unwrap();
-        let shift = |date: NaiveDate, amount: i32| {
-            let total = date.year() * 12 + date.month0() as i32 + amount;
-            NaiveDate::from_ymd_opt(total.div_euclid(12), total.rem_euclid(12) as u32 + 1, 1)
-                .unwrap_or(date)
+        let Some((month, next)) = crate::system_format::month_bounds(custom.month) else {
+            return div().into_any_element();
         };
-        let previous = shift(month, -1);
-        let next = shift(month, 1);
+        let previous_disabled =
+            crate::system_format::month_bounds(today).is_none_or(|(start, _)| month <= start);
+        let previous = month - chrono::Duration::days(1);
         let count = (next - month).num_days() as usize;
         let offset = month.weekday().num_days_from_monday() as usize;
         let cells = (offset + count).div_ceil(7) * 7;
@@ -1062,10 +1204,7 @@ impl SettingsView {
             let mut days = Vec::new();
             for column in 0..7 {
                 let cell = week * 7 + column;
-                let date = cell
-                    .checked_sub(offset)
-                    .filter(|index| *index < count)
-                    .map(|index| month + chrono::Duration::days(index as i64));
+                let date = mute_calendar_cell(month, next, cell);
                 let Some(date) = date else {
                     days.push(div().w(px(36.)).h(px(32.)).into_any_element());
                     continue;
@@ -1082,7 +1221,7 @@ impl SettingsView {
                             div()
                                 .id(("mute-calendar-day", cell))
                                 .role(Role::Button)
-                                .aria_label(date.to_string())
+                                .aria_label(crate::system_format::day(date, "yMMMMd", "%F"))
                                 .aria_selected(selected)
                                 .size(px(32.))
                                 .rounded_md()
@@ -1098,7 +1237,7 @@ impl SettingsView {
                                 .when(!disabled, |d| {
                                     d.cursor_pointer().hover(|s| s.bg(content(0.05)))
                                 })
-                                .child(date.day().to_string())
+                                .child(crate::system_format::calendar_day(date))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     if !disabled {
                                         if let Some(custom) = &mut this.notification_state.custom {
@@ -1127,7 +1266,7 @@ impl SettingsView {
                     .child(
                         div()
                             .text_size(px(12.))
-                            .child(month.format("%B %Y").to_string()),
+                            .child(crate::system_format::day(month, "yMMMM", "%B %Y")),
                     )
                     .child(
                         div()
@@ -1136,7 +1275,7 @@ impl SettingsView {
                             .child(
                                 secondary_button(
                                     "mute-previous-month",
-                                    "Previous month",
+                                    crate::i18n::text("settings-previous-month"),
                                     false,
                                     previous_disabled,
                                 )
@@ -1155,14 +1294,21 @@ impl SettingsView {
                                 )),
                             )
                             .child(
-                                secondary_button("mute-next-month", "Next month", false, false)
-                                    .child(icon("chevron-right", 14.))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                secondary_button(
+                                    "mute-next-month",
+                                    crate::i18n::text("settings-next-month"),
+                                    false,
+                                    false,
+                                )
+                                .child(icon("chevron-right", 14.))
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
                                         if let Some(custom) = &mut this.notification_state.custom {
                                             custom.month = next;
                                         }
                                         cx.notify();
-                                    })),
+                                    },
+                                )),
                             ),
                     ),
             )
@@ -1170,7 +1316,7 @@ impl SettingsView {
                 div()
                     .id("notification-mute-calendar")
                     .role(Role::Grid)
-                    .aria_label("Choose date")
+                    .aria_label(crate::i18n::text("settings-choose-date"))
                     .track_focus(&custom.focus)
                     .tab_index(0)
                     .on_mouse_down(
@@ -1199,37 +1345,247 @@ impl SettingsView {
                             "down" => Some(day + chrono::Duration::days(7)),
                             "home" => Some(day - chrono::Duration::days(offset)),
                             "end" => Some(day + chrono::Duration::days(6 - offset)),
-                            "pageup" => day.checked_sub_months(chrono::Months::new(1)),
-                            "pagedown" => day.checked_add_months(chrono::Months::new(1)),
+                            "pageup" => crate::system_format::shift_month(day, -1),
+                            "pagedown" => crate::system_format::shift_month(day, 1),
                             _ => None,
                         };
                         if let Some(next) = next {
                             let next = next.max(Local::now().date_naive());
                             custom.focused_date = next;
-                            custom.month = next.with_day(1).unwrap();
+                            custom.month = next;
                             cx.stop_propagation();
                             cx.notify();
                         }
                     }))
                     .flex()
                     .flex_col()
-                    .child(
-                        div().flex().children(
-                            ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
-                                .into_iter()
-                                .map(|day| {
-                                    div()
-                                        .w(px(36.))
-                                        .text_center()
-                                        .pb(px(6.))
-                                        .text_size(px(10.))
-                                        .text_color(content(0.4))
-                                        .child(day)
-                                }),
-                        ),
-                    )
+                    .child(div().flex().children((0..7).map(|column| {
+                        let day = crate::system_format::day(
+                            month + chrono::Duration::days(column - offset as i64),
+                            "EEEEEE",
+                            "%a",
+                        );
+                        div()
+                            .w(px(36.))
+                            .text_center()
+                            .pb(px(6.))
+                            .text_size(px(10.))
+                            .text_color(content(0.4))
+                            .child(day)
+                    })))
                     .children(weeks),
             )
             .into_any_element()
     }
+}
+
+#[cfg(test)]
+#[test]
+fn notification_category_keys_resolve_without_changing_ids() {
+    assert_eq!(
+        CATEGORIES.map(|(id, _)| id),
+        [
+            "pullRequests",
+            "issues",
+            "agentFinished",
+            "agentInput",
+            "reminders"
+        ]
+    );
+    for (_, key) in CATEGORIES {
+        let text = crate::i18n::text(key);
+        assert!(!text.is_empty());
+        assert_ne!(text, key, "fallback is not a translated category");
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+#[test]
+fn mute_until_accepts_the_displayed_system_time() {
+    let controlled = crate::system_format::controlled_test_locale();
+    use objc2_foundation::{NSDate, NSDateFormatter, NSLocale, NSString};
+    let date = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
+    let at = Local
+        .from_local_datetime(&date.and_hms_opt(9, 30, 0).unwrap())
+        .single()
+        .unwrap();
+    let formatter = NSDateFormatter::new();
+    formatter.setLocale(Some(&NSLocale::currentLocale()));
+    formatter.setLocalizedDateFormatFromTemplate(&NSString::from_str("jm"));
+    let text = formatter
+        .stringFromDate(&NSDate::dateWithTimeIntervalSince1970(at.timestamp() as f64))
+        .to_string();
+    assert_eq!(mute_until(date, &text), Some(at.timestamp_millis() as u64));
+    if controlled {
+        for (text, hour) in [("12:30 AM", 0), ("12:30 PM", 12)] {
+            let expected = Local
+                .from_local_datetime(&date.and_hms_opt(hour, 30, 0).unwrap())
+                .earliest()
+                .unwrap();
+            assert_eq!(
+                mute_until(date, text),
+                Some(expected.timestamp_millis() as u64)
+            );
+        }
+    }
+    for value in ["25:00", "0:30 PM", "00:30 AM", "9:30 PM junk"] {
+        assert_eq!(mute_until(date, value), None, "{value}");
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+#[test]
+fn islamic_mute_grid_selection_and_month_switch() {
+    if std::env::var_os("MONOCODE_TEST_ISLAMIC").is_none() {
+        return;
+    }
+    crate::system_format::controlled_test_locale();
+    let date = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+    let (month, next) = crate::system_format::month_bounds(date).unwrap();
+    assert_eq!(month, NaiveDate::from_ymd_opt(2025, 12, 21).unwrap());
+    assert_eq!(next, NaiveDate::from_ymd_opt(2026, 1, 19).unwrap());
+    let cell = month.weekday().num_days_from_monday() as usize + 11;
+    let selected = mute_calendar_cell(month, next, cell).unwrap();
+    assert_eq!(selected, date);
+    assert_eq!(crate::system_format::calendar_day(selected), "12");
+    let expected = Local
+        .from_local_datetime(&date.and_hms_opt(9, 30, 0).unwrap())
+        .earliest()
+        .unwrap();
+    assert_eq!(
+        mute_until(selected, "09:30"),
+        Some(expected.timestamp_millis() as u64)
+    );
+    assert_eq!(crate::system_format::month_bounds(next).unwrap().0, next);
+    assert_eq!(
+        crate::system_format::month_bounds(month - chrono::Duration::days(1))
+            .unwrap()
+            .1,
+        month
+    );
+    assert_eq!(
+        crate::system_format::shift_month(date, 1).unwrap(),
+        NaiveDate::from_ymd_opt(2026, 1, 30).unwrap()
+    );
+}
+
+#[cfg(all(test, target_os = "macos"))]
+#[gpui::test]
+fn mute_save_rejects_bad_hours_and_preserves_valid_clock(cx: &mut gpui::TestAppContext) {
+    if !crate::system_format::controlled_test_locale() {
+        return;
+    }
+    use gpui::{Bounds, VisualTestContext, WindowBounds, WindowOptions, point, size};
+    let date = Local::now().date_naive() + chrono::Duration::days(2);
+    let window = cx.update(|cx| {
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                    point(px(0.), px(0.)),
+                    size(px(900.), px(800.)),
+                ))),
+                ..Default::default()
+            },
+            |_, cx| {
+                cx.new(|cx| {
+                    let mut view = SettingsView::new(
+                        super::model::Section::General,
+                        Preferences::default(),
+                        super::SettingsContext::default(),
+                        cx,
+                    );
+                    let input = cx.new(|cx| input::Input::field("Time", "Time", content(0.4), cx));
+                    let anchor = AnchorSlot::default();
+                    anchor.set(Some(Bounds::new(
+                        point(px(500.), px(100.)),
+                        size(px(20.), px(20.)),
+                    )));
+                    view.notification_state.custom = Some(CustomMute {
+                        ids: vec!["local:test".into()],
+                        input,
+                        date,
+                        focused_date: date,
+                        focus_pending: false,
+                        focus: cx.focus_handle(),
+                        anchor,
+                        month: date,
+                        error: None,
+                    });
+                    view
+                })
+            },
+        )
+        .unwrap()
+    });
+    cx.refresh().unwrap();
+    let visual = &mut VisualTestContext::from_window(window.into(), cx);
+    visual.run_until_parked();
+    for text in ["0:30 PM", "00:30 AM", "9:30 PM junk"] {
+        window
+            .update(visual, |view, _, cx| {
+                view.notification_state
+                    .custom
+                    .as_ref()
+                    .unwrap()
+                    .input
+                    .update(cx, |input, cx| input.set_text(text.into(), cx));
+            })
+            .unwrap();
+        visual.run_until_parked();
+        let save = visual
+            .debug_bounds("save-custom-notification-mute")
+            .unwrap();
+        visual.simulate_click(save.center(), Default::default());
+        visual.run_until_parked();
+        assert!(
+            window
+                .update(visual, |view, _, _| view
+                    .notification_state
+                    .custom
+                    .as_ref()
+                    .is_some_and(|c| c.error.is_some()))
+                .unwrap()
+        );
+        assert!(
+            window
+                .update(visual, |view, _, _| {
+                    view.prefs.project_notifications["local:test"].is_null()
+                })
+                .unwrap()
+        );
+    }
+    let (text, hour) = if std::env::var("MONOCODE_TEST_12H").as_deref() == Ok("AM") {
+        ("12:30 AM", 0)
+    } else {
+        ("12:30 PM", 12)
+    };
+    window
+        .update(visual, |view, _, cx| {
+            view.notification_state
+                .custom
+                .as_ref()
+                .unwrap()
+                .input
+                .update(cx, |input, cx| input.set_text(text.into(), cx));
+        })
+        .unwrap();
+    visual.run_until_parked();
+    let save = visual
+        .debug_bounds("save-custom-notification-mute")
+        .unwrap();
+    visual.simulate_click(save.center(), Default::default());
+    visual.run_until_parked();
+    let expected = Local
+        .from_local_datetime(&date.and_hms_opt(hour, 30, 0).unwrap())
+        .earliest()
+        .unwrap()
+        .timestamp_millis() as u64;
+    assert_eq!(
+        window
+            .update(visual, |view, _, _| {
+                view.prefs.project_notifications["local:test"]["mutedUntil"].as_u64()
+            })
+            .unwrap(),
+        Some(expected)
+    );
 }

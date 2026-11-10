@@ -10,28 +10,73 @@ use gpui::{AnyElement, Context, FontWeight, div, prelude::*, px};
 impl SettingsView {
     pub(super) fn general_page(&mut self, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let p = self.prefs.clone();
+        let application = vec![
+            self.row(
+                Some("language"),
+                true,
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(crate::i18n::text("settings-language"))
+                    .when(crate::i18n::needs_restart(p.language()), |d| {
+                        d.child(
+                            div()
+                                .debug_selector(|| "settings-language-restart-required".into())
+                                .text_size(px(11.))
+                                .font_weight(FontWeight::NORMAL)
+                                .text_color(content(0.5))
+                                .child(crate::i18n::text("settings-restart-required")),
+                        )
+                    }),
+                Some(crate::i18n::text("settings-language-description").into()),
+                vec![self.select(
+                    "language",
+                    crate::i18n::text("settings-language"),
+                    p.language(),
+                    vec![
+                        (
+                            "system".into(),
+                            crate::i18n::text("settings-system").into(),
+                            None,
+                        ),
+                        ("en".into(), "English".into(), None),
+                        ("zh-CN".into(), "简体中文".into(), None),
+                    ],
+                    Some(160.),
+                    cx,
+                    |this, value, cx| this.update(cx, |p| p.language = value),
+                )],
+            ),
+        ];
         let alerts = vec![
             self.row(
                 Some("sounds"),
                 true,
-                "Sounds",
-                Some("Play sounds for activity, completed turns, and updates.".into()),
-                vec![
-                    self.toggle("sounds", "Sounds", p.sounds, false, cx, |this, on, cx| {
-                        this.update(cx, |p| p.sounds = on)
-                    }),
-                ],
+                crate::i18n::text("settings-sounds"),
+                Some(
+                    crate::i18n::text("settings-play-sounds-for-activity-completed-turns-and")
+                        .into(),
+                ),
+                vec![self.toggle(
+                    "sounds",
+                    crate::i18n::text("settings-sounds"),
+                    p.sounds,
+                    false,
+                    cx,
+                    |this, on, cx| this.update(cx, |p| p.sounds = on),
+                )],
             ),
             self.row(
                 Some("notifications"),
                 false,
-                "Notifications",
-                Some("Alert when reminders are due or agents finish or need input.".into()),
+                crate::i18n::text("settings-notifications"),
+                Some(crate::i18n::text("settings-alert-when-reminders-are-due-or-agents").into()),
                 {
                     let mut controls = self.notification_permission_controls(cx);
                     controls.push(self.toggle(
                         "notifications",
-                        "Notifications",
+                        crate::i18n::text("settings-notifications"),
                         p.notifications,
                         false,
                         cx,
@@ -50,13 +95,16 @@ impl SettingsView {
             self.row(
                 Some("file-tabs"),
                 true,
-                "File tabs",
-                Some("Choose where files open.".into()),
+                crate::i18n::text("settings-file-tabs"),
+                Some(crate::i18n::text("settings-choose-where-files-open").into()),
                 vec![self.segmented(
                     "file-tabs",
-                    "File tabs",
+                    crate::i18n::text("settings-file-tabs"),
                     &p.file_tabs,
-                    &[("pane", "Beside chat"), ("workspace", "Top bar")],
+                    &[
+                        ("pane", &crate::i18n::text("settings-beside-chat")),
+                        ("workspace", &crate::i18n::text("settings-top-bar")),
+                    ],
                     cx,
                     |this, v, cx| this.update(cx, |p| p.file_tabs = v.into()),
                 )],
@@ -64,11 +112,11 @@ impl SettingsView {
             self.row(
                 Some("file-word-wrap"),
                 false,
-                "Word wrap",
-                Some("Wrap long lines to fit the editor.".into()),
+                crate::i18n::text("settings-word-wrap"),
+                Some(crate::i18n::text("settings-wrap-long-lines-to-fit-the-editor").into()),
                 vec![self.toggle(
                     "file-word-wrap",
-                    "Word wrap",
+                    crate::i18n::text("settings-word-wrap"),
                     p.file_word_wrap,
                     false,
                     cx,
@@ -78,11 +126,11 @@ impl SettingsView {
             self.row(
                 Some("tab-animations"),
                 false,
-                "Tab animations",
-                Some("Animate tabs as they open and close.".into()),
+                crate::i18n::text("settings-tab-animations"),
+                Some(crate::i18n::text("settings-animate-tabs-as-they-open-and-close").into()),
                 vec![self.toggle(
                     "tab-animations",
-                    "Tab animations",
+                    crate::i18n::text("settings-tab-animations"),
                     p.tab_animations,
                     false,
                     cx,
@@ -92,75 +140,98 @@ impl SettingsView {
             self.row(
                 Some("notes"),
                 false,
-                "Notes",
-                Some("Show Notes in project navigation. Mention saved notes with @note.".into()),
-                vec![
-                    self.toggle("notes", "Notes", p.notes, false, cx, |this, on, cx| {
-                        this.update(cx, |p| p.notes = on)
-                    }),
-                ],
+                crate::i18n::text("settings-notes"),
+                Some(
+                    crate::i18n::text("settings-show-notes-in-project-navigation-mention-saved")
+                        .into(),
+                ),
+                vec![self.toggle(
+                    "notes",
+                    crate::i18n::text("settings-notes"),
+                    p.notes,
+                    false,
+                    cx,
+                    |this, on, cx| this.update(cx, |p| p.notes = on),
+                )],
             ),
         ];
         if cfg!(target_os = "macos") {
-            workspace.push(self.row(
-                Some("quick-composer"),
-                false,
-                "Quick composer",
-                Some(format!(
-                    "Press {} from any app. Return starts a session in the background; ⌘Return opens it. Change the shortcut in Keybindings.",
-                    super::keybindings::quick_composer_label(&p)
-                ).into()),
-                {let mut controls=Vec::new();if let Some(error)=&self.ctx.quick_error{controls.push(super::super::widgets::note(error.clone()));}controls.push(self.toggle(
-                    "quick-composer",
-                    "Quick composer",
-                    p.quick_composer,
+            workspace.push(
+                self.row(
+                    Some("quick-composer"),
                     false,
-                    cx,
-                    |this, on, cx| this.update(cx, |p| p.quick_composer = on),
-                ));controls},
-            ));
+                    crate::i18n::text("settings-quick-composer"),
+                    Some(
+                        crate::i18n::format(
+                            "settings-press-from-any-app-return-starts-a",
+                            &[(
+                                "value",
+                                (super::keybindings::quick_composer_label(&p)).to_string(),
+                            )],
+                        )
+                        .into(),
+                    ),
+                    {
+                        let mut controls = Vec::new();
+                        if let Some(error) = &self.ctx.quick_error {
+                            controls.push(super::super::widgets::note(error.clone()));
+                        }
+                        controls.push(self.toggle(
+                            "quick-composer",
+                            crate::i18n::text("settings-quick-composer"),
+                            p.quick_composer,
+                            false,
+                            cx,
+                            |this, on, cx| this.update(cx, |p| p.quick_composer = on),
+                        ));
+                        controls
+                    },
+                ),
+            );
         }
         workspace.push(self.row(
             Some("search-panel"),
             false,
-            "Search as command panel",
+            crate::i18n::text("settings-search-as-command-panel"),
             Some(
-                "Open search as a floating panel over your work instead of a page with its own tab."
-                    .into(),
+                crate::i18n::text("settings-open-search-as-a-floating-panel-over-your-work").into(),
             ),
             vec![self.toggle(
                 "search-panel",
-                "Search as command panel",
+                crate::i18n::text("settings-search-as-command-panel"),
                 p.search_panel,
                 false,
                 cx,
                 |this, on, cx| this.update(cx, |p| p.search_panel = on),
             )],
         ));
-        workspace.push(self.row(
-            Some("working-agents"),
-            false,
-            "Working agents",
-            Some("Show active chats across projects. Finished chats stay until opened.".into()),
-            vec![self.toggle(
-                "working-agents",
-                "Working agents",
-                p.working_agents,
+        workspace.push(
+            self.row(
+                Some("working-agents"),
                 false,
-                cx,
-                |this, on, cx| this.update(cx, |p| p.working_agents = on),
-            )],
-        ));
+                crate::i18n::text("settings-working-agents"),
+                Some(
+                    crate::i18n::text("settings-show-active-chats-across-projects-finished-chats")
+                        .into(),
+                ),
+                vec![self.toggle(
+                    "working-agents",
+                    crate::i18n::text("settings-working-agents"),
+                    p.working_agents,
+                    false,
+                    cx,
+                    |this, on, cx| this.update(cx, |p| p.working_agents = on),
+                )],
+            ),
+        );
         workspace.push(self.row(
             Some("action-opens-terminal"),
             false,
-            "Show terminal for actions",
-            Some(
-                "Open the terminal when an action runs. Off, actions run in the background.".into(),
-            ),
+            crate::i18n::text("settings-show-terminal-for-actions"),
+            Some(crate::i18n::text("settings-open-the-terminal-when-an-action-runs-off").into()),
             vec![self.toggle(
                 "action-opens-terminal",
-                "Show terminal for actions",
+                crate::i18n::text("settings-show-terminal-for-actions"),
                 p.action_opens_terminal,
                 false,
                 cx,
@@ -170,13 +241,17 @@ impl SettingsView {
         workspace.push(self.row(
             Some("terminal-placement"),
             false,
-            "Terminal",
-            Some("Where new terminals open: docked below the chat, as a tab in the right panel (Focused layout), or as their own tabs in the title bar.".into()),
+            crate::i18n::text("settings-terminal"),
+            Some(crate::i18n::text("settings-where-new-terminals-open-docked-below-the").into()),
             vec![self.segmented(
                 "terminal-placement",
-                "Terminal",
+                crate::i18n::text("settings-terminal"),
                 p.terminal_placement(),
-                &[("bottom", "Bottom"), ("panel", "Side panel"), ("title", "Title bar")],
+                &[
+                    ("bottom", &crate::i18n::text("settings-bottom")),
+                    ("panel", &crate::i18n::text("settings-side-panel")),
+                    ("title", &crate::i18n::text("settings-title-bar")),
+                ],
                 cx,
                 |this, v, cx| this.update(cx, |p| p.set_terminal_placement(v)),
             )],
@@ -185,11 +260,11 @@ impl SettingsView {
             workspace.push(self.row(
                 Some("close-to-tray"),
                 false,
-                "Close to tray",
-                Some("Closing a window hides it to the system tray instead of quitting, so running agents keep going. Reopen from the tray icon, and quit for real from its menu. Turn this off to have close end the window.".into()),
+                crate::i18n::text("settings-close-to-tray"),
+                Some(crate::i18n::text("settings-closing-a-window-hides-it-to-the").into()),
                 vec![self.toggle(
                     "close-to-tray",
-                    "Close to tray",
+                    crate::i18n::text("settings-close-to-tray"),
                     p.close_to_tray,
                     false,
                     cx,
@@ -206,7 +281,7 @@ impl SettingsView {
                     .flex()
                     .items_baseline()
                     .gap_2()
-                    .child("Version")
+                    .child(crate::i18n::text("settings-version"))
                     .child(
                         div()
                             .font_family(crate::fonts::mono())
@@ -219,7 +294,7 @@ impl SettingsView {
                     cx.try_global::<updater::Shared>()
                         .and_then(|shared| updater::status(&shared.0, cx))
                         .unwrap_or_else(|| {
-                            "View release notes and check for app and agent updates.".into()
+                            crate::i18n::text("settings-view-release-notes-and-check-for-app-and")
                         })
                         .into(),
                 ),
@@ -229,20 +304,25 @@ impl SettingsView {
                         .items_center()
                         .gap_2()
                         .child(
-                            secondary_button("whats-new", "What's new", false, false)
-                                .child("What's new")
-                                .on_click(cx.listener(|_, _, _, cx| {
-                                    cx.emit(crate::settings::SettingsEvent::WhatsNew)
-                                })),
+                            secondary_button(
+                                "whats-new",
+                                crate::i18n::text("settings-what-s-new"),
+                                false,
+                                false,
+                            )
+                            .child(crate::i18n::text("settings-what-s-new"))
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.emit(crate::settings::SettingsEvent::WhatsNew)
+                            })),
                         )
                         .child(
                             secondary_button(
                                 "check-harness-updates",
-                                "Check harness updates",
+                                crate::i18n::text("settings-check-harness-updates"),
                                 false,
                                 false,
                             )
-                            .child("Check harness updates")
+                            .child(crate::i18n::text("settings-check-harness-updates"))
                             .on_click(cx.listener(|_, _, _, cx| {
                                 cx.emit(crate::settings::SettingsEvent::CheckHarnessUpdates)
                             })),
@@ -253,9 +333,38 @@ impl SettingsView {
             ),
         ];
         vec![
-            self.group(None, true, "Alerts", None, None, alerts),
-            self.group(None, false, "Workspace", None, None, workspace),
-            self.group(None, false, "About", None, None, about),
+            self.group(
+                None,
+                true,
+                crate::i18n::text("settings-application"),
+                None,
+                None,
+                application,
+            ),
+            self.group(
+                None,
+                false,
+                crate::i18n::text("settings-alerts"),
+                None,
+                None,
+                alerts,
+            ),
+            self.group(
+                None,
+                false,
+                crate::i18n::text("settings-workspace"),
+                None,
+                None,
+                workspace,
+            ),
+            self.group(
+                None,
+                false,
+                crate::i18n::text("settings-about"),
+                None,
+                None,
+                about,
+            ),
         ]
     }
 }
@@ -267,7 +376,10 @@ impl SettingsView {
             .map(|shared| shared.0.clone());
         match updater.as_ref().map(|u| updater::action(u, cx)) {
             Some(Action::Install(version)) => {
-                let label = format!("Update to {version}");
+                let label = crate::i18n::format(
+                    "settings-update-to",
+                    &[("version", (version).to_string())],
+                );
                 let mut ink = shell_fill();
                 ink.a = 1.;
                 primary_button("check-updates", label.clone(), false)
@@ -286,15 +398,18 @@ impl SettingsView {
                     .child(label)
                     .into_any_element()
             }
-            Some(Action::Check) | None => {
-                secondary_button("check-updates", "Check for updates", false, false)
-                    .child(icon("refresh-cw", 14.).text_color(content(0.7)))
-                    .child("Check for updates")
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.emit(crate::settings::SettingsEvent::CheckAppUpdates)
-                    }))
-                    .into_any_element()
-            }
+            Some(Action::Check) | None => secondary_button(
+                "check-updates",
+                crate::i18n::text("settings-check-for-updates"),
+                false,
+                false,
+            )
+            .child(icon("refresh-cw", 14.).text_color(content(0.7)))
+            .child(crate::i18n::text("settings-check-for-updates"))
+            .on_click(
+                cx.listener(|_, _, _, cx| cx.emit(crate::settings::SettingsEvent::CheckAppUpdates)),
+            )
+            .into_any_element(),
         }
     }
 }

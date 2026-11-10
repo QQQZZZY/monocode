@@ -106,7 +106,7 @@ impl SkillDocument {
                                 .id("skill-metadata")
                                 .debug_selector(|| "skill-metadata".into())
                                 .role(Role::Button)
-                                .aria_label("Skill metadata")
+                                .aria_label(crate::i18n::text("settings-skill-metadata"))
                                 .flex()
                                 .items_center()
                                 .gap(px(6.))
@@ -124,7 +124,7 @@ impl SkillDocument {
                                     },
                                     14.,
                                 ))
-                                .child("Skill metadata")
+                                .child(crate::i18n::text("settings-skill-metadata"))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.metadata_open = !this.metadata_open;
                                     this.list.remeasure_items(0..1);
@@ -198,9 +198,9 @@ impl Render for SkillDocument {
             .debug_selector(|| "skill-document".into())
             .role(Role::Region)
             .aria_label(if self.source {
-                "Skill source"
+                crate::i18n::text("settings-skill-source")
             } else {
-                "Skill preview document"
+                crate::i18n::text("settings-skill-preview-document")
             })
             .size_full()
             .min_h_0()

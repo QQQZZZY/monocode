@@ -156,14 +156,18 @@ impl SliderKind {
             SliderKind::BackgroundSession => "background-session",
         }
     }
-    fn label(self) -> &'static str {
+    fn label(self) -> String {
         match self {
-            SliderKind::Hue => "Hue",
-            SliderKind::Saturation => "Saturation",
-            SliderKind::DarkLightness => "Dark-mode lightness",
-            SliderKind::SidebarOpacity => "Sidebar opacity",
-            SliderKind::BackgroundEmpty => "Empty chat background visibility",
-            SliderKind::BackgroundSession => "Session background visibility",
+            SliderKind::Hue => crate::i18n::text("settings-hue"),
+            SliderKind::Saturation => crate::i18n::text("settings-saturation"),
+            SliderKind::DarkLightness => crate::i18n::text("settings-dark-mode-lightness"),
+            SliderKind::SidebarOpacity => crate::i18n::text("settings-sidebar-opacity"),
+            SliderKind::BackgroundEmpty => {
+                crate::i18n::text("settings-empty-chat-background-visibility")
+            }
+            SliderKind::BackgroundSession => {
+                crate::i18n::text("settings-session-background-visibility")
+            }
         }
     }
     fn range(self) -> (u32, u32) {
@@ -219,6 +223,7 @@ pub(crate) struct SettingsView {
     select_query: String,
     select_scroll: ScrollHandle,
     select_anchors: RefCell<HashMap<&'static str, AnchorSlot>>,
+    select_triggers: RefCell<HashMap<&'static str, FocusHandle>>,
     search: Entity<Input>,
     search_query: String,
     search_active: usize,
@@ -279,36 +284,64 @@ impl SettingsView {
             center.update(cx, |center, _| center.hide_emails());
         }
         let search = cx.new(|cx| {
-            let mut input = Input::field("Search settings", "Search settings", content(0.35), cx);
+            let mut input = Input::field(
+                crate::i18n::text("settings-search-settings"),
+                crate::i18n::text("settings-search-settings"),
+                content(0.35),
+                cx,
+            );
             input.set_font_size(12.);
             input
         });
         let keybinding_filter = cx.new(|cx| {
-            let mut input = Input::field("Filter keybindings", "Filter", content(0.35), cx);
+            let mut input = Input::field(
+                crate::i18n::text("settings-filter-keybindings"),
+                crate::i18n::text("settings-filter"),
+                content(0.35),
+                cx,
+            );
             input.set_font_size(12.);
             input
         });
         let accent_custom = cx.new(|cx| {
-            let mut input = Input::field("Custom accent color", "#4da3f5", content(0.35), cx);
+            let mut input = Input::field(
+                crate::i18n::text("settings-custom-accent-color"),
+                crate::i18n::text("settings-4da3f5"),
+                content(0.35),
+                cx,
+            );
             input.set_font_size(12.);
             input
         });
         let skill_filter = cx.new(|cx| {
-            let mut input = Input::field("Filter skills", "Filter", content(0.35), cx);
+            let mut input = Input::field(
+                crate::i18n::text("settings-filter-skills"),
+                crate::i18n::text("settings-filter"),
+                content(0.35),
+                cx,
+            );
             input.set_font_size(12.);
             input
         });
         let select_filter = cx.new(|cx| {
-            let mut input = Input::field("Filter options", "Search", content(0.35), cx);
+            let mut input = Input::field(
+                crate::i18n::text("settings-filter-options"),
+                crate::i18n::text("settings-search"),
+                content(0.35),
+                cx,
+            );
             input.set_font_size(12.);
             input
         });
         let mut subscriptions = vec![
             cx.subscribe(&select_filter, |this, input, _: &input::Changed, cx| {
-                this.select_query = input.read(cx).content.to_string();
-                this.select_active = 0;
-                this.select_scroll.scroll_to_item(0);
-                cx.notify();
+                let query = input.read(cx).content.to_string();
+                if this.select_query != query {
+                    this.select_query = query;
+                    this.select_active = 0;
+                    this.select_scroll.scroll_to_item(0);
+                    cx.notify();
+                }
             }),
             cx.subscribe(&skill_filter, |this, input, _: &input::Changed, cx| {
                 this.skill_query = input.read(cx).content.to_string();
@@ -371,6 +404,7 @@ impl SettingsView {
             select_query: String::new(),
             select_scroll: ScrollHandle::new(),
             select_anchors: Default::default(),
+            select_triggers: Default::default(),
             search,
             search_query: String::new(),
             search_active: 0,
@@ -630,7 +664,7 @@ impl SettingsView {
                         div()
                             .flex_shrink_0()
                             .text_color(content(0.45))
-                            .child("Settings"),
+                            .child(crate::i18n::text("settings-settings")),
                     )
                     .child(div().flex_shrink_0().text_color(content(0.25)).child("/"))
                     .child(
@@ -653,7 +687,7 @@ impl SettingsView {
                             div()
                                 .id("restore-defaults")
                                 .role(Role::Button)
-                                .aria_label("Restore defaults")
+                                .aria_label(crate::i18n::text("settings-restore-defaults"))
                                 .flex()
                                 .flex_shrink_0()
                                 .items_center()
@@ -671,7 +705,7 @@ impl SettingsView {
                                         .text_color(gpui::transparent_black())
                                         .map(|i| i.text_color(content(0.5))),
                                 )
-                                .child("Restore defaults")
+                                .child(crate::i18n::text("settings-restore-defaults"))
                                 .on_click(cx.listener(|this, _, _, cx| this.restore_defaults(cx))),
                         )
                     })
@@ -746,7 +780,7 @@ impl SettingsView {
                             div()
                                 .id("clear-settings-search")
                                 .role(Role::Button)
-                                .aria_label("Clear settings search")
+                                .aria_label(crate::i18n::text("settings-clear-settings-search"))
                                 .size_4()
                                 .flex_shrink_0()
                                 .flex()
@@ -823,7 +857,7 @@ impl SettingsView {
                         div()
                             .id("settings-search-list")
                             .role(Role::ListBox)
-                            .aria_label("Settings search results")
+                            .aria_label(crate::i18n::text("settings-settings-search-results"))
                             .flex()
                             .flex_col()
                             .when(results.is_empty(), |d| {
@@ -834,21 +868,21 @@ impl SettingsView {
                                         .text_size(px(12.))
                                         .line_height(px(16.))
                                         .text_color(content(0.45))
-                                        .child("No matching settings"),
+                                        .child(crate::i18n::text("settings-no-matching-settings")),
                                 )
                             })
                             .children(results.into_iter().enumerate().map(|(ix, result)| {
                                 let tag = if result.setting.is_some() {
                                     result.section.label()
                                 } else {
-                                    "Page"
+                                    crate::i18n::text("settings-page")
                                 };
-                                let label = result.label;
+                                let label = result.label.clone();
                                 div()
                                     .id(("settings-result", ix))
                                     .debug_selector(move || format!("settings-result-{ix}"))
                                     .role(Role::ListBoxOption)
-                                    .aria_label(label)
+                                    .aria_label(label.clone())
                                     .aria_selected(ix == active)
                                     .flex()
                                     .items_center()
@@ -900,12 +934,12 @@ pub(crate) fn nav(
     select: impl Fn(Section, &mut Window, &mut App) + Clone + 'static,
     back: impl Fn(&mut Window, &mut App) + 'static,
 ) -> AnyElement {
-    let row = |id: SharedString, label: &'static str, path: &'static str, active: bool| {
+    let row = |id: SharedString, label: String, path: &'static str, active: bool| {
         div()
             .id(id.clone())
             .debug_selector(move || id.to_string())
             .role(Role::Button)
-            .aria_label(label)
+            .aria_label(label.clone())
             .aria_selected(active)
             .w_full()
             .flex()
@@ -946,7 +980,7 @@ pub(crate) fn nav(
         .id("settings-nav")
         .debug_selector(|| "settings-nav".into())
         .role(Role::Navigation)
-        .aria_label("Settings")
+        .aria_label(crate::i18n::text("settings-settings"))
         .size_full()
         .flex()
         .flex_col()
@@ -985,7 +1019,7 @@ pub(crate) fn nav(
                                 .line_height(px(16.))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .text_color(content(0.35))
-                                .child(*group),
+                                .child(crate::i18n::text(group)),
                         )
                         .children(sections.iter().map(|&item| {
                             let select = select.clone();
@@ -1015,7 +1049,7 @@ pub(crate) fn nav(
                         .debug_selector(|| "settings-nav-back".into())
                         .group("settings-nav-back")
                         .role(Role::Button)
-                        .aria_label("Back to app")
+                        .aria_label(crate::i18n::text("settings-back-to-app"))
                         .flex()
                         .items_center()
                         // The nav rows' inset, icon column and gap, so the
@@ -1048,7 +1082,7 @@ pub(crate) fn nav(
                                 .text_size(px(13.))
                                 .line_height(px(16.))
                                 .font_weight(gpui::FontWeight::MEDIUM)
-                                .child("Back to app"),
+                                .child(crate::i18n::text("settings-back-to-app")),
                         )
                         .on_click(move |_, window, cx| back(window, cx)),
                 ),
@@ -1081,7 +1115,7 @@ impl Render for SettingsView {
             .id("settings-view")
             .debug_selector(|| "settings-view".into())
             .role(Role::Region)
-            .aria_label("Settings")
+            .aria_label(crate::i18n::text("settings-settings"))
             .track_focus(if self.recording.is_some() {
                 &self.recorder_focus
             } else {

@@ -92,13 +92,12 @@ fn describe_health(environment: &str, host: &Value) -> Result<Health, String> {
     let needs_update = !supports("workspace.run") || !supports("git.worktreeCreate");
     Ok(Health {
         label: if needs_update {
-            "Connected · host update needed for Explorer and Changes"
+            crate::i18n::text("settings-host-health-update")
         } else if providers.is_empty() {
-            "Connected · install a supported provider on the host"
+            crate::i18n::text("settings-host-health-provider")
         } else {
-            "Connected"
-        }
-        .into(),
+            crate::i18n::text("settings-host-health-ready")
+        },
         needs_update,
     })
 }
@@ -113,7 +112,7 @@ fn parse_port(value: &str) -> Result<Option<u16>, String> {
         .ok()
         .filter(|port| *port != 0)
         .map(Some)
-        .ok_or_else(|| "SSH port must be between 1 and 65535.".into())
+        .ok_or_else(|| crate::i18n::text("settings-ssh-port-range"))
 }
 
 fn paragraph(text: impl Into<SharedString>) -> Div {
@@ -126,9 +125,17 @@ fn paragraph(text: impl Into<SharedString>) -> Div {
 
 fn remove_machine(remote: &Connections, machine: Machine, revoke: bool) -> Result<Machine, String> {
     if revoke {
-        remote.request(&machine.id, "devices.revokeSelf", json!({})).map_err(|reason| format!(
-            "Could not revoke access, so {} was not removed: {reason}. Reconnect and try again, or remove it from this desktop only and revoke it on the host with monocode-host devices and monocode-host revoke <device-id>.", machine.name
-        ))?;
+        remote
+            .request(&machine.id, "devices.revokeSelf", json!({}))
+            .map_err(|reason| {
+                crate::i18n::format(
+                    "settings-could-not-revoke-access-so-was-not",
+                    &[
+                        ("value", (machine.name).to_string()),
+                        ("reason", (reason).to_string()),
+                    ],
+                )
+            })?;
     }
     remote.disconnect(&machine.id)?;
     Ok(machine)
@@ -140,16 +147,47 @@ impl SettingsView {
             return;
         }
         self.connections.initialized = true;
-        for (key, placeholder, secret) in [
-            (TARGET, "user@my-mac-mini or an SSH alias", false),
-            (NAME, "Optional, e.g. Home Mac mini", false),
-            (PORT, "From SSH config", false),
-            (URL, "http://127.0.0.1:3774", false),
-            (TOKEN, "Device token", true),
-            (ANSWER, "Password or passphrase", true),
+        for (key, label, placeholder, secret) in [
+            (
+                TARGET,
+                "settings-ssh-target",
+                crate::i18n::text("settings-user-my-mac-mini-or-an-ssh-alias"),
+                false,
+            ),
+            (
+                NAME,
+                "settings-machine-name",
+                crate::i18n::text("settings-optional-e-g-home-mac-mini"),
+                false,
+            ),
+            (
+                PORT,
+                "settings-ssh-port",
+                crate::i18n::text("settings-from-ssh-config"),
+                false,
+            ),
+            (
+                URL,
+                "settings-host-url",
+                "http://127.0.0.1:3774".to_owned(),
+                false,
+            ),
+            (
+                TOKEN,
+                "settings-host-token",
+                crate::i18n::text("settings-device-token"),
+                true,
+            ),
+            (
+                ANSWER,
+                "settings-ssh-password-or-passphrase",
+                crate::i18n::text("settings-password-or-passphrase"),
+                true,
+            ),
         ] {
             let input = cx.new(|cx| {
-                let mut input = Input::field(key, placeholder, content(0.35), cx);
+                let mut input =
+                    Input::field(crate::i18n::text(label), placeholder, content(0.35), cx);
                 input.set_font_size(13.);
                 input.set_secret(secret);
                 if key == URL {
@@ -188,7 +226,7 @@ impl SettingsView {
     fn connection_field(
         &mut self,
         key: &'static str,
-        label: &'static str,
+        label: impl Into<SharedString>,
         disabled: bool,
         cx: &mut Context<Self>,
     ) -> Div {
@@ -200,7 +238,7 @@ impl SettingsView {
             .gap(px(6.))
             .text_size(px(12.))
             .text_color(content(0.65))
-            .child(label)
+            .child(label.into())
             .child(
                 div()
                     .h(px(36.))
@@ -365,9 +403,12 @@ impl SettingsView {
                                     }
                                 }
                                 Err(_) => {
-                                    this.connections
-                                        .status
-                                        .insert(id, "Offline · reconnect to check access".into());
+                                    this.connections.status.insert(
+                                        id,
+                                        crate::i18n::text(
+                                            "settings-offline-reconnect-to-check-access",
+                                        ),
+                                    );
                                 }
                             }
                         }
@@ -465,52 +506,85 @@ impl SettingsView {
             loop {
                 let poll_remote = remote.clone();
                 let poll_id = id.clone();
-                let next = cx.background_executor().spawn(async move { poll_remote.ssh_poll(&poll_id) }).await;
-                let keep_polling = this.update(cx, |this, cx| {
-                    if generation != this.connections.generation { return false; }
-                    match next {
-                        Ok(job) => {
-                            let old_prompt = this.connections.job.as_ref().and_then(|j| j.prompt.as_ref()).map(|p| p.id.as_str());
-                            let next_prompt = job.prompt.as_ref().map(|p| p.id.as_str());
-                            if old_prompt != next_prompt {
-                                this.connections.reveal_prompt = next_prompt.is_some();
-                                this.connections.answering = false;
-                                this.clear_connection_field(ANSWER, cx);
-                            }
-                            let done = job.done;
-                            if done {
-                                if let Some(lease) = this.connections.lease.as_mut() { lease.id = None; }
-                                this.connections.lease = None;
-                                this.connections.busy = false;
-                                this.clear_connection_field(ANSWER, cx);
-                                if let Some(error) = &job.error { this.connections.error = error.clone(); }
-                                else if let Some(machine) = &job.machine {
-                                    this.connections.adding = false;
-                                    this.connections.notice = if this.connections.updating.take().is_some() {
-                                        format!("{} was updated and reconnected.", machine.name)
-                                    } else {
-                                        format!("{} is connected. To work on it, click + next to Projects in the project rail and choose Open folder on a machine.", machine.name)
-                                    };
-                                    this.connections.status.insert(machine.id.clone(), "Connected".into());
-                                    for key in [TARGET, NAME, PORT] { this.clear_connection_field(key, cx); }
+                let next = cx
+                    .background_executor()
+                    .spawn(async move { poll_remote.ssh_poll(&poll_id) })
+                    .await;
+                let keep_polling = this
+                    .update(cx, |this, cx| {
+                        if generation != this.connections.generation {
+                            return false;
+                        }
+                        match next {
+                            Ok(job) => {
+                                let old_prompt = this
+                                    .connections
+                                    .job
+                                    .as_ref()
+                                    .and_then(|j| j.prompt.as_ref())
+                                    .map(|p| p.id.as_str());
+                                let next_prompt = job.prompt.as_ref().map(|p| p.id.as_str());
+                                if old_prompt != next_prompt {
+                                    this.connections.reveal_prompt = next_prompt.is_some();
+                                    this.connections.answering = false;
+                                    this.clear_connection_field(ANSWER, cx);
                                 }
+                                let done = job.done;
+                                if done {
+                                    if let Some(lease) = this.connections.lease.as_mut() {
+                                        lease.id = None;
+                                    }
+                                    this.connections.lease = None;
+                                    this.connections.busy = false;
+                                    this.clear_connection_field(ANSWER, cx);
+                                    if let Some(error) = &job.error {
+                                        this.connections.error = error.clone();
+                                    } else if let Some(machine) = &job.machine {
+                                        this.connections.adding = false;
+                                        this.connections.notice =
+                                            if this.connections.updating.take().is_some() {
+                                                crate::i18n::format(
+                                                    "settings-was-updated-and-reconnected",
+                                                    &[("value", (machine.name).to_string())],
+                                                )
+                                            } else {
+                                                crate::i18n::format(
+                                                    "settings-is-connected-to-work-on-it-click",
+                                                    &[("value", (machine.name).to_string())],
+                                                )
+                                            };
+                                        this.connections.status.insert(
+                                            machine.id.clone(),
+                                            crate::i18n::text("settings-connected"),
+                                        );
+                                        for key in [TARGET, NAME, PORT] {
+                                            this.clear_connection_field(key, cx);
+                                        }
+                                    }
+                                }
+                                this.connections.job = Some(job);
+                                if done {
+                                    this.refresh_connections(cx);
+                                }
+                                cx.notify();
+                                !done
                             }
-                            this.connections.job = Some(job);
-                            if done { this.refresh_connections(cx); }
-                            cx.notify();
-                            !done
+                            Err(error) => {
+                                this.connections.error = error;
+                                this.connections.busy = false;
+                                this.connections.lease = None;
+                                cx.notify();
+                                false
+                            }
                         }
-                        Err(error) => {
-                            this.connections.error = error;
-                            this.connections.busy = false;
-                            this.connections.lease = None;
-                            cx.notify();
-                            false
-                        }
-                    }
-                }).unwrap_or(false);
-                if !keep_polling { break; }
-                cx.background_executor().timer(Duration::from_millis(350)).await;
+                    })
+                    .unwrap_or(false);
+                if !keep_polling {
+                    break;
+                }
+                cx.background_executor()
+                    .timer(Duration::from_millis(350))
+                    .await;
             }
         }));
     }
@@ -606,7 +680,8 @@ impl SettingsView {
         let url = self.connection_value(URL, cx);
         let token = self.connection_value(TOKEN, cx);
         if url.trim().is_empty() || token.trim().is_empty() {
-            self.connections.error = "Enter a host URL and device token.".into();
+            self.connections.error =
+                crate::i18n::text("settings-enter-a-host-url-and-device-token");
             cx.notify();
             return;
         }
@@ -629,7 +704,10 @@ impl SettingsView {
                 match result {
                     Ok(machine) => {
                         this.clear_connection_field(TOKEN, cx);
-                        this.connections.notice = format!("{} is connected.", machine.name);
+                        this.connections.notice = crate::i18n::format(
+                            "settings-is-connected",
+                            &[("value", (machine.name).to_string())],
+                        );
                         this.refresh_connections(cx);
                     }
                     Err(error) => this.connections.error = error,
@@ -660,16 +738,24 @@ impl SettingsView {
         cx.spawn(async move |this, cx| {
             let result = work.await;
             let _ = this.update(cx, |this, cx| {
-                if generation != this.connections.generation { return; }
+                if generation != this.connections.generation {
+                    return;
+                }
                 this.connections.revoking = false;
                 match result {
                     Ok(machine) => {
                         this.connections.removing = None;
                         this.connections.machines.retain(|m| m.id != machine.id);
                         this.connections.notice = if revoke {
-                            format!("{} was removed and this desktop's access was revoked. The host and its sessions keep running.", machine.name)
+                            crate::i18n::format(
+                                "settings-was-removed-and-this-desktop-s-access",
+                                &[("value", (machine.name).to_string())],
+                            )
                         } else {
-                            format!("{} was removed from this desktop. The host and its sessions keep running, and it still accepts this desktop's credential.", machine.name)
+                            crate::i18n::format(
+                                "settings-was-removed-from-this-desktop-the-host",
+                                &[("value", (machine.name).to_string())],
+                            )
                         };
                         this.refresh_connections(cx);
                     }
@@ -677,7 +763,8 @@ impl SettingsView {
                 }
                 cx.notify();
             });
-        }).detach();
+        })
+        .detach();
         cx.notify();
     }
 
@@ -686,19 +773,60 @@ impl SettingsView {
         let busy = self.connections.busy;
         let unavailable = self.ctx.remote.is_none();
         let disabled = busy || unavailable || self.connections.revoking;
-        let mut page = vec![div().relative().child(self.reveal_probe("remote-machines"))
-            .flex().items_end().justify_between().gap_4()
-            .child(div().min_w_0().flex_1()
-                .child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).child("Your machines"))
-                .child(paragraph("Run agents on another computer and return to them from your laptop. The host keeps working when you close MonoCode here.").mt_1()))
-            .when(!self.connections.adding, |d| d.child(
-                secondary_button("add-machine", "Add machine", false, disabled).child(icon("plus", 16.)).child("Add machine")
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        if this.connections.busy || this.connections.revoking || this.ctx.remote.is_none() { return; }
-                        this.connections.adding = true;
-                        if let Some(input) = this.fields.get(TARGET) { window.focus(&input.focus_handle(cx), cx); }
-                        this.connections.error.clear(); this.connections.notice.clear(); cx.notify();
-                    })))).into_any_element()];
+        let mut page = vec![
+            div()
+                .relative()
+                .child(self.reveal_probe("remote-machines"))
+                .flex()
+                .items_end()
+                .justify_between()
+                .gap_4()
+                .child(
+                    div()
+                        .min_w_0()
+                        .flex_1()
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(crate::i18n::text("settings-your-machines")),
+                        )
+                        .child(
+                            paragraph(crate::i18n::text(
+                                "settings-run-agents-on-another-computer-and-return-to",
+                            ))
+                            .mt_1(),
+                        ),
+                )
+                .when(!self.connections.adding, |d| {
+                    d.child(
+                        secondary_button(
+                            "add-machine",
+                            crate::i18n::text("settings-add-machine"),
+                            false,
+                            disabled,
+                        )
+                        .child(icon("plus", 16.))
+                        .child(crate::i18n::text("settings-add-machine"))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            if this.connections.busy
+                                || this.connections.revoking
+                                || this.ctx.remote.is_none()
+                            {
+                                return;
+                            }
+                            this.connections.adding = true;
+                            if let Some(input) = this.fields.get(TARGET) {
+                                window.focus(&input.focus_handle(cx), cx);
+                            }
+                            this.connections.error.clear();
+                            this.connections.notice.clear();
+                            cx.notify();
+                        })),
+                    )
+                })
+                .into_any_element(),
+        ];
         if !self.connections.machines.is_empty() {
             let mut list = div()
                 .mt_5()
@@ -712,12 +840,23 @@ impl SettingsView {
                     .ssh
                     .as_ref()
                     .map(|ssh| {
-                        format!(
-                            "SSH · {}{}",
-                            ssh.target,
-                            ssh.port
-                                .map(|port| format!(" · port {port}"))
-                                .unwrap_or_default()
+                        crate::i18n::format(
+                            "settings-ssh-2",
+                            &[
+                                ("value", (ssh.target).to_string()),
+                                (
+                                    "value2",
+                                    (ssh.port
+                                        .map(|port| {
+                                            crate::i18n::format(
+                                                "settings-port",
+                                                &[("port", port.to_string())],
+                                            )
+                                        })
+                                        .unwrap_or_default())
+                                    .to_string(),
+                                ),
+                            ],
                         )
                     })
                     .unwrap_or_else(|| machine.endpoint.clone());
@@ -731,14 +870,14 @@ impl SettingsView {
                         .child(div().min_w_0().flex_1()
                             .child(div().truncate().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child(machine.name.clone()))
                             .child(paragraph(endpoint).mt_1())
-                            .child(paragraph(self.connections.status.get(&id).cloned().unwrap_or_else(|| "Checking connection…".into())).mt_1().text_color(content(0.5)))
-                            .when(machine.ssh.is_some() && update, |d| d.child(paragraph("Updating restarts the host and interrupts active agent turns.").mt_1().text_size(px(11.)))))
+                            .child(paragraph(self.connections.status.get(&id).cloned().unwrap_or_else(|| crate::i18n::text("settings-checking-connection"))).mt_1().text_color(content(0.5)))
+                            .when(machine.ssh.is_some() && update, |d| d.child(paragraph(crate::i18n::text("settings-updating-restarts-the-host-and-interrupts-active-agent")).mt_1().text_size(px(11.)))))
                         .when(machine.ssh.is_some(), |d| d.child(div().flex().items_center().gap_2()
-                            .when(update, |d| d.child(secondary_button(SharedString::from(format!("update-host-{id}")), "Update Host", false, disabled)
-                                .child("Update Host").on_click(cx.listener(move |this, _, _, cx| this.begin_connection(Some(update_id.clone()), true, cx)))))
-                            .child(secondary_button(SharedString::from(format!("reconnect-{id}")), "Reconnect", false, disabled)
-                                .child("Reconnect").on_click(cx.listener(move |this, _, _, cx| this.begin_connection(Some(reconnect_id.clone()), false, cx))))))
-                        .child(secondary_button(SharedString::from(format!("remove-machine-{id}")), format!("Remove {}", machine.name), true, disabled)
+                            .when(update, |d| d.child(secondary_button(SharedString::from(format!("update-host-{id}")), crate::i18n::text("settings-update-host"), false, disabled)
+                                .child(crate::i18n::text("settings-update-host")).on_click(cx.listener(move |this, _, _, cx| this.begin_connection(Some(update_id.clone()), true, cx)))))
+                            .child(secondary_button(SharedString::from(format!("reconnect-{id}")), crate::i18n::text("settings-reconnect"), false, disabled)
+                                .child(crate::i18n::text("settings-reconnect")).on_click(cx.listener(move |this, _, _, cx| this.begin_connection(Some(reconnect_id.clone()), false, cx))))))
+                        .child(secondary_button(SharedString::from(format!("remove-machine-{id}")), crate::i18n::format("settings-remove-3", &[("value", (machine.name).to_string())]), true, disabled)
                             .child(icon("trash", 16.)).on_click(cx.listener(move |this, _, _, cx| {
                                 if this.connections.busy || this.connections.revoking { return; }
                                 this.connections.error.clear(); this.connections.removing = Some(remove_id.clone()); cx.notify();
@@ -758,68 +897,162 @@ impl SettingsView {
                     .text_center()
                     .text_size(px(13.))
                     .text_color(content(0.45))
-                    .child("Add your always-on Windows, Mac, or Linux machine to get started.")
+                    .child(crate::i18n::text("settings-add-your-always-on-windows-mac"))
                     .into_any_element(),
             );
         }
         if self.connections.adding {
-            let target = self.connection_field(TARGET, "SSH address", disabled, cx);
-            let name = self.connection_field(NAME, "Name (optional)", disabled, cx);
-            let port = self.connection_field(PORT, "SSH port", disabled, cx);
+            let target = self.connection_field(
+                TARGET,
+                crate::i18n::text("settings-ssh-address"),
+                disabled,
+                cx,
+            );
+            let name = self.connection_field(
+                NAME,
+                crate::i18n::text("settings-name-optional"),
+                disabled,
+                cx,
+            );
+            let port =
+                self.connection_field(PORT, crate::i18n::text("settings-ssh-port"), disabled, cx);
             let connect_disabled = disabled || self.connection_value(TARGET, cx).trim().is_empty();
-            page.push(div().mt_5().p_5().rounded_xl().border_1().border_color(content(0.1)).flex().flex_col().gap_4()
-                .child(div().flex().justify_between().child(div().text_size(px(14.)).font_weight(FontWeight::MEDIUM).child("Connect through SSH"))
-                    .child(div().rounded_sm().bg(content(0.1)).px_2().py_1().text_size(px(11.)).text_color(content(0.6)).child("SSH")))
-                .child(target).child(name)
-                .child(div().id("ssh-advanced").role(Role::Button).aria_label("Advanced SSH settings").text_size(px(12.)).text_color(content(0.5)).cursor_pointer()
-                    .child(if self.connections.advanced { "▾ Advanced" } else { "▸ Advanced" })
-                    .on_click(cx.listener(|this, _, _, cx| { this.connections.advanced = !this.connections.advanced; cx.notify(); })))
-                .when(self.connections.advanced, |d| d.child(div().max_w(px(160.)).child(port)))
-                .child(paragraph("MonoCode installs and starts its background host, then connects securely. Your SSH keys and config are used automatically. Enable SSH on the host and sign in to Codex or Claude Code there. On Windows and Mac, keep the host’s desktop account signed in and the machine awake. Locking the desktop is fine."))
-                .child(paragraph("On Linux, setup installs a systemd user service and turns on lingering for your account (loginctl enable-linger), so the host and your other user services keep running after you log out. Without systemd, as in many containers and microVMs, the host runs as a background process instead and is started again when you reconnect. The host keeps running until you stop it on that machine; removing it here only disconnects this desktop."))
-                .child(div().flex().justify_end().gap_2()
-                    .child(secondary_button("cancel-machine", "Cancel", false, busy).child("Cancel").on_click(cx.listener(|this, _, _, cx| {
-                        if !this.connections.busy { this.connections.adding = false; cx.notify(); }
-                    })))
-                    .child(secondary_button("connect-machine", "Connect", false, connect_disabled).child(if busy { "Connecting…" } else { "Connect" })
-                        .on_click(cx.listener(|this, _, _, cx| this.begin_connection(None, false, cx)))))
-                .into_any_element());
+            page.push(
+                div()
+                    .mt_5()
+                    .p_5()
+                    .rounded_xl()
+                    .border_1()
+                    .border_color(content(0.1))
+                    .flex()
+                    .flex_col()
+                    .gap_4()
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_size(px(14.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child(crate::i18n::text("settings-connect-through-ssh")),
+                            )
+                            .child(
+                                div()
+                                    .rounded_sm()
+                                    .bg(content(0.1))
+                                    .px_2()
+                                    .py_1()
+                                    .text_size(px(11.))
+                                    .text_color(content(0.6))
+                                    .child(crate::i18n::text("settings-ssh")),
+                            ),
+                    )
+                    .child(target)
+                    .child(name)
+                    .child(
+                        div()
+                            .id("ssh-advanced")
+                            .role(Role::Button)
+                            .aria_label(crate::i18n::text("settings-advanced-ssh-settings"))
+                            .text_size(px(12.))
+                            .text_color(content(0.5))
+                            .cursor_pointer()
+                            .child(if self.connections.advanced {
+                                crate::i18n::text("settings-advanced-2")
+                            } else {
+                                crate::i18n::text("settings-advanced-3")
+                            })
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.connections.advanced = !this.connections.advanced;
+                                cx.notify();
+                            })),
+                    )
+                    .when(self.connections.advanced, |d| {
+                        d.child(div().max_w(px(160.)).child(port))
+                    })
+                    .child(paragraph(crate::i18n::text(
+                        "settings-monocode-installs-and-starts-its-background-host-then",
+                    )))
+                    .child(paragraph(crate::i18n::text(
+                        "settings-on-linux-setup-installs-a-systemd-user-service",
+                    )))
+                    .child(
+                        div()
+                            .flex()
+                            .justify_end()
+                            .gap_2()
+                            .child(
+                                secondary_button(
+                                    "cancel-machine",
+                                    crate::i18n::text("settings-cancel"),
+                                    false,
+                                    busy,
+                                )
+                                .child(crate::i18n::text("settings-cancel"))
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
+                                        if !this.connections.busy {
+                                            this.connections.adding = false;
+                                            cx.notify();
+                                        }
+                                    },
+                                )),
+                            )
+                            .child(
+                                secondary_button(
+                                    "connect-machine",
+                                    crate::i18n::text("settings-connect"),
+                                    false,
+                                    connect_disabled,
+                                )
+                                .child(if busy {
+                                    crate::i18n::text("settings-connecting")
+                                } else {
+                                    crate::i18n::text("settings-connect")
+                                })
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| this.begin_connection(None, false, cx),
+                                )),
+                            ),
+                    )
+                    .into_any_element(),
+            );
         }
         if busy && self.connections.lease.is_some() {
             let job = self.connections.job.clone();
-            let mut progress = div()
-                .id("ssh-connection-progress")
-                .role(Role::Status)
-                .relative()
-                .child(self.connections.progress.probe())
-                .mt_5()
-                .p_5()
-                .rounded_xl()
-                .border_1()
-                .border_color(content(0.1))
-                .flex()
-                .flex_col()
-                .gap_3()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .text_size(px(13.))
-                        .child(icon("loader", 16.))
-                        .child(
-                            job.as_ref()
-                                .map(|job| job.message.clone())
-                                .unwrap_or_else(|| "Starting connection…".into()),
-                        ),
-                );
+            let mut progress =
+                div()
+                    .id("ssh-connection-progress")
+                    .role(Role::Status)
+                    .relative()
+                    .child(self.connections.progress.probe())
+                    .mt_5()
+                    .p_5()
+                    .rounded_xl()
+                    .border_1()
+                    .border_color(content(0.1))
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .text_size(px(13.))
+                            .child(icon("loader", 16.))
+                            .child(job.as_ref().map(|job| job.message.clone()).unwrap_or_else(
+                                || crate::i18n::text("settings-starting-connection"),
+                            )),
+                    );
             if let Some(prompt) = job.and_then(|job| job.prompt) {
                 let answering = self.connections.answering;
                 progress = progress.child(paragraph(prompt.message).text_color(content(0.7)));
                 if !prompt.confirm {
                     progress = progress.child(self.connection_field(
                         ANSWER,
-                        "SSH password or passphrase",
+                        crate::i18n::text("settings-ssh-password-or-passphrase"),
                         answering,
                         cx,
                     ));
@@ -829,23 +1062,33 @@ impl SettingsView {
                         .flex()
                         .gap_2()
                         .child(
-                            secondary_button("answer-ssh-prompt", "Continue", false, answering)
-                                .child(if prompt.confirm {
-                                    "Trust host and continue"
-                                } else {
-                                    "Continue"
-                                })
-                                .on_click(
-                                    cx.listener(|this, _, _, cx| this.answer_connection(None, cx)),
-                                ),
+                            secondary_button(
+                                "answer-ssh-prompt",
+                                crate::i18n::text("settings-continue"),
+                                false,
+                                answering,
+                            )
+                            .child(if prompt.confirm {
+                                crate::i18n::text("settings-trust-host-and-continue")
+                            } else {
+                                crate::i18n::text("settings-continue")
+                            })
+                            .on_click(
+                                cx.listener(|this, _, _, cx| this.answer_connection(None, cx)),
+                            ),
                         )
                         .when(prompt.confirm, |d| {
                             d.child(
-                                secondary_button("reject-ssh-host", "Reject", false, answering)
-                                    .child("Reject")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.answer_connection(Some("no"), cx)
-                                    })),
+                                secondary_button(
+                                    "reject-ssh-host",
+                                    crate::i18n::text("settings-reject"),
+                                    false,
+                                    answering,
+                                )
+                                .child(crate::i18n::text("settings-reject"))
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| this.answer_connection(Some("no"), cx),
+                                )),
                             )
                         }),
                 );
@@ -855,11 +1098,11 @@ impl SettingsView {
                     .child(
                         secondary_button(
                             "cancel-ssh-connection",
-                            "Cancel connection",
+                            crate::i18n::text("settings-cancel-connection"),
                             false,
                             false,
                         )
-                        .child("Cancel connection")
+                        .child(crate::i18n::text("settings-cancel-connection"))
                         .on_click(cx.listener(|this, _, _, cx| this.cancel_connection(cx))),
                     )
                     .into_any_element(),
@@ -897,15 +1140,15 @@ impl SettingsView {
             div()
                 .id("existing-host-url")
                 .role(Role::Button)
-                .aria_label("Connect to an existing host by URL")
+                .aria_label(crate::i18n::text("settings-connect-to-an-existing-host-by"))
                 .mt_5()
                 .text_size(px(12.))
                 .text_color(content(0.45))
                 .cursor_pointer()
                 .child(if self.connections.url {
-                    "▾ Connect to an existing host by URL"
+                    crate::i18n::text("settings-connect-to-an-existing-host-by-2")
                 } else {
-                    "▸ Connect to an existing host by URL"
+                    crate::i18n::text("settings-connect-to-an-existing-host-by-3")
                 })
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.connections.url = !this.connections.url;
@@ -914,8 +1157,14 @@ impl SettingsView {
                 .into_any_element(),
         );
         if self.connections.url {
-            let url = self.connection_field(URL, "Host URL", disabled, cx);
-            let token = self.connection_field(TOKEN, "Device token", disabled, cx);
+            let url =
+                self.connection_field(URL, crate::i18n::text("settings-host-url"), disabled, cx);
+            let token = self.connection_field(
+                TOKEN,
+                crate::i18n::text("settings-device-token"),
+                disabled,
+                cx,
+            );
             page.push(
                 div()
                     .mt_4()
@@ -925,9 +1174,14 @@ impl SettingsView {
                     .child(url)
                     .child(token)
                     .child(
-                        secondary_button("connect-host-url", "Connect by URL", false, disabled)
-                            .child("Connect by URL")
-                            .on_click(cx.listener(|this, _, _, cx| this.connect_url(cx))),
+                        secondary_button(
+                            "connect-host-url",
+                            crate::i18n::text("settings-connect-by-url"),
+                            false,
+                            disabled,
+                        )
+                        .child(crate::i18n::text("settings-connect-by-url"))
+                        .on_click(cx.listener(|this, _, _, cx| this.connect_url(cx))),
                     )
                     .into_any_element(),
             );
@@ -942,18 +1196,84 @@ impl SettingsView {
     ) -> AnyElement {
         let revoke_machine = machine.clone();
         let disabled = self.connections.revoking;
-        div().id("remote-remove-confirmation").role(Role::Group).aria_label(format!("Confirm removing {}", machine.name)).border_t_1().border_color(content(0.1)).bg(content(0.03)).p_4().flex().flex_col().gap_3()
-            .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).child(format!("Remove {} from this desktop?", machine.name)))
-            .child(paragraph("This closes this desktop’s connection to the machine. It does not stop the host, and its sessions keep running and stay on that machine. You can add it again later."))
-            .child(paragraph("Removing alone leaves this desktop’s credential valid on the host. Revoke access to invalidate it first; the machine must be reachable."))
-            .child(paragraph("To stop the host and turn off its background service, run ~/.monocode-host/bin/monocode-host service uninstall on that machine (%USERPROFILE%\\.monocode-host\\bin\\monocode-host.cmd service uninstall on Windows). Its sessions and history are kept."))
-            .child(div().flex().flex_wrap().gap_2()
-                .child(secondary_button("revoke-remove-machine", "Revoke access and remove", true, disabled).child("Revoke access and remove")
-                    .on_click(cx.listener(move |this, _, _, cx| this.remove_connection(revoke_machine.clone(), true, cx))))
-                .child(secondary_button("remove-machine-only", "Remove from this desktop only", false, disabled).child("Remove from this desktop only")
-                    .on_click(cx.listener(move |this, _, _, cx| this.remove_connection(machine.clone(), false, cx))))
-                .child(secondary_button("cancel-remove-machine", "Cancel", false, disabled).child("Cancel")
-                    .on_click(cx.listener(|this, _, _, cx| { if !this.connections.revoking { this.connections.removing = None; cx.notify(); } })))).into_any_element()
+        div()
+            .id("remote-remove-confirmation")
+            .role(Role::Group)
+            .aria_label(crate::i18n::format(
+                "settings-confirm-removing-2",
+                &[("value", machine.name.to_string())],
+            ))
+            .border_t_1()
+            .border_color(content(0.1))
+            .bg(content(0.03))
+            .p_4()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(crate::i18n::format(
+                        "settings-remove-from-this-desktop",
+                        &[("value", machine.name.to_string())],
+                    )),
+            )
+            .child(paragraph(crate::i18n::text(
+                "settings-this-closes-this-desktop-s-connection-to-the",
+            )))
+            .child(paragraph(crate::i18n::text(
+                "settings-removing-alone-leaves-this-desktop-s-credential-valid",
+            )))
+            .child(paragraph(crate::i18n::text(
+                "settings-to-stop-the-host-and-turn-off-its",
+            )))
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap_2()
+                    .child(
+                        secondary_button(
+                            "revoke-remove-machine",
+                            crate::i18n::text("settings-revoke-access-and-remove"),
+                            true,
+                            disabled,
+                        )
+                        .child(crate::i18n::text("settings-revoke-access-and-remove"))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.remove_connection(revoke_machine.clone(), true, cx)
+                        })),
+                    )
+                    .child(
+                        secondary_button(
+                            "remove-machine-only",
+                            crate::i18n::text("settings-remove-from-this-desktop-only"),
+                            false,
+                            disabled,
+                        )
+                        .child(crate::i18n::text("settings-remove-from-this-desktop-only"))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.remove_connection(machine.clone(), false, cx)
+                        })),
+                    )
+                    .child(
+                        secondary_button(
+                            "cancel-remove-machine",
+                            crate::i18n::text("settings-cancel"),
+                            false,
+                            disabled,
+                        )
+                        .child(crate::i18n::text("settings-cancel"))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if !this.connections.revoking {
+                                this.connections.removing = None;
+                                cx.notify();
+                            }
+                        })),
+                    ),
+            )
+            .into_any_element()
     }
 }
 

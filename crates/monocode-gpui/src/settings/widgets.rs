@@ -6,8 +6,8 @@ use crate::{
     theme::*,
 };
 use gpui::{
-    AnyElement, Context, Div, ElementId, FontWeight, Hsla, MouseButton, MouseDownEvent, Role,
-    SharedString, Stateful, div, prelude::*, px, relative, rgb,
+    AnyElement, Context, Div, ElementId, FocusHandle, FontWeight, Hsla, MouseButton,
+    MouseDownEvent, Role, SharedString, Stateful, div, prelude::*, px, relative, rgb,
 };
 
 pub(super) const RED: u32 = 0xf87171;
@@ -26,7 +26,10 @@ pub(super) fn accent(alpha: f32) -> Hsla {
 }
 
 /// PageHeader: the page's title and what it is for.
-pub(super) fn page_header(title: &'static str, description: &'static str) -> Div {
+pub(super) fn page_header(
+    title: impl Into<SharedString>,
+    description: impl Into<SharedString>,
+) -> Div {
     div()
         .debug_selector(|| "settings-page-header".into())
         .pb_4()
@@ -36,7 +39,7 @@ pub(super) fn page_header(title: &'static str, description: &'static str) -> Div
                 .line_height(px(25.))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(content(1.))
-                .child(title),
+                .child(title.into()),
         )
         .child(
             div()
@@ -45,7 +48,7 @@ pub(super) fn page_header(title: &'static str, description: &'static str) -> Div
                 .text_size(px(13.))
                 .line_height(px(21.125))
                 .text_color(content(0.45))
-                .child(description),
+                .child(description.into()),
         )
 }
 
@@ -404,16 +407,17 @@ impl SettingsView {
     pub(super) fn segmented(
         &self,
         id: &'static str,
-        label: &'static str,
+        label: impl Into<SharedString>,
         value: &str,
         options: &[(&'static str, &str)],
         cx: &mut Context<Self>,
         change: impl Fn(&mut Self, &'static str, &mut Context<Self>) + Clone + 'static,
     ) -> AnyElement {
+        let label: SharedString = label.into();
         div()
             .id(SharedString::from(format!("segmented-{id}")))
             .role(Role::RadioGroup)
-            .aria_label(label)
+            .aria_label(&label)
             .grid()
             .grid_cols(options.len() as u16)
             .flex_shrink_0()
@@ -549,19 +553,26 @@ impl SettingsView {
     pub(super) fn select(
         &self,
         id: &'static str,
-        label: &'static str,
+        label: impl Into<SharedString>,
         value: &str,
         options: Vec<(String, SharedString, Option<AnyElement>)>,
         width: Option<f32>,
         cx: &mut Context<Self>,
         change: impl Fn(&mut Self, String, &mut Context<Self>) + Clone + 'static,
     ) -> AnyElement {
+        let label: SharedString = label.into();
         let open = self.select_open == Some(id);
         let slot: AnchorSlot = self
             .select_anchors
             .borrow_mut()
             .entry(id)
             .or_default()
+            .clone();
+        let trigger = self
+            .select_triggers
+            .borrow_mut()
+            .entry(id)
+            .or_insert_with(|| cx.focus_handle().tab_stop(true).tab_index(0))
             .clone();
         let selected = options.iter().position(|(v, _, _)| v == value);
         let mut options = options;
@@ -584,6 +595,7 @@ impl SettingsView {
         }
         let values: Vec<String> = options.iter().map(|(v, _, _)| v.clone()).collect();
         let weak = cx.weak_entity();
+        let key_trigger = trigger.clone();
         div()
             .relative()
             .map(|d| match width {
@@ -595,8 +607,16 @@ impl SettingsView {
                     .id(SharedString::from(format!("select-{id}")))
                     .debug_selector(move || format!("settings-select-{id}"))
                     .role(Role::ComboBox)
-                    .aria_label(format!("{label}: {trigger_label}"))
+                    .aria_label(crate::i18n::format(
+                        "settings-selected-option",
+                        &[
+                            ("label", label.to_string()),
+                            ("trigger_label", trigger_label.to_string()),
+                        ],
+                    ))
                     .aria_expanded(open)
+                    .track_focus(&trigger)
+                    .tab_index(0)
                     .relative()
                     .w_full()
                     .flex()
@@ -614,6 +634,7 @@ impl SettingsView {
                     .text_color(content(1.))
                     .cursor_pointer()
                     .hover(|s| s.border_color(content(0.2)))
+                    .focus(|s| s.border_color(accent(0.8)))
                     .child(slot.probe())
                     .child(
                         div()
@@ -648,23 +669,19 @@ impl SettingsView {
                         if this.select_open == Some(id) {
                             this.select_open = None;
                         } else {
-                            this.select_open = Some(id);
-                            this.select_active = selected.unwrap_or(0);
-                            this.select_scroll.scroll_to_item(this.select_active);
-                            this.select_query.clear();
-                            if searchable {
-                                this.select_filter
-                                    .update(cx, |i, cx| i.set_text(String::new(), cx));
-                                window.focus(
-                                    &gpui::Focusable::focus_handle(&this.select_filter, cx),
-                                    cx,
-                                );
-                            } else {
-                                window.focus(&this.select_focus, cx);
-                            }
+                            this.open_select(id, selected, searchable, window, cx);
                         }
                         cx.notify();
-                    })),
+                    }))
+                    .on_key_down(cx.listener(
+                        move |this, event: &gpui::KeyDownEvent, window, cx| {
+                            if matches!(event.keystroke.key.as_str(), "enter" | "space" | "down") {
+                                this.open_select(id, selected, searchable, window, cx);
+                                cx.stop_propagation();
+                                cx.notify();
+                            }
+                        },
+                    )),
             )
             .when(open, |d| {
                 let active = self.select_active;
@@ -675,12 +692,14 @@ impl SettingsView {
                         let is_selected = option == value;
                         let highlighted = ix == active;
                         let change = change.clone();
+                        let trigger = trigger.clone();
                         div()
                             .id(SharedString::from(format!("select-{id}-{ix}")))
                             .debug_selector(move || format!("settings-option-{id}-{ix}"))
                             .role(Role::ListBoxOption)
                             .aria_label(text.clone())
                             .aria_selected(is_selected)
+                            .when(highlighted, |d| d.aria_active_descendant())
                             .w_full()
                             .flex_shrink_0()
                             .flex()
@@ -724,7 +743,7 @@ impl SettingsView {
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.select_open = None;
                                 change(this, option.clone(), cx);
-                                window.focus(&this.focus, cx);
+                                window.focus(&trigger, cx);
                                 cx.notify();
                             }))
                     })
@@ -746,6 +765,13 @@ impl SettingsView {
                         .child(div().min_w_0().flex_1().child(self.select_filter.clone()))
                 });
                 let keys_change = change.clone();
+                let dismiss_trigger = trigger.clone();
+                let filter_values = values.clone();
+                let filter_change = change.clone();
+                let filter_trigger = trigger.clone();
+                let next_trigger = trigger.clone();
+                let previous_trigger = trigger.clone();
+                let cancel_trigger = trigger.clone();
                 d.child(
                     popover(
                         SharedString::from(format!("select-popover-{id}")),
@@ -759,7 +785,7 @@ impl SettingsView {
                     .on_dismiss(move |window, cx| {
                         let _ = weak.update(cx, |this, cx| {
                             this.select_open = None;
-                            window.focus(&this.focus, cx);
+                            window.focus(&dismiss_trigger, cx);
                             cx.notify();
                         });
                     })
@@ -774,7 +800,7 @@ impl SettingsView {
                                 div()
                                     .id(SharedString::from(format!("select-list-{id}")))
                                     .role(Role::ListBox)
-                                    .aria_label(label)
+                                    .aria_label(&label)
                                     .track_focus(&self.select_focus)
                                     .track_scroll(&self.select_scroll)
                                     .flex_1()
@@ -791,10 +817,62 @@ impl SettingsView {
                                                 .text_size(px(12.))
                                                 .line_height(px(16.))
                                                 .text_color(content(0.5))
-                                                .child("No matches"),
+                                                .child(crate::i18n::text("settings-no-matches")),
                                         )
                                     }),
                             )
+                            .when(searchable, |d| {
+                                d.capture_action(cx.listener(
+                                    move |this, _: &crate::input::Down, window, cx| {
+                                        this.select_active =
+                                            (this.select_active + 1).min(count.saturating_sub(1));
+                                        window.focus(&this.select_focus, cx);
+                                        this.select_scroll.scroll_to_item(this.select_active);
+                                        cx.stop_propagation();
+                                        cx.notify();
+                                    },
+                                ))
+                                .capture_action(cx.listener(
+                                    move |this, _: &crate::input::Up, window, cx| {
+                                        this.select_active = this.select_active.saturating_sub(1);
+                                        window.focus(&this.select_focus, cx);
+                                        this.select_scroll.scroll_to_item(this.select_active);
+                                        cx.stop_propagation();
+                                        cx.notify();
+                                    },
+                                ))
+                                .capture_action(cx.listener(
+                                    move |this, _: &crate::input::Submit, window, cx| {
+                                        if let Some(value) = filter_values.get(this.select_active) {
+                                            filter_change(this, value.clone(), cx);
+                                        }
+                                        this.select_open = None;
+                                        window.focus(&filter_trigger, cx);
+                                        cx.stop_propagation();
+                                        cx.notify();
+                                    },
+                                ))
+                            })
+                            .on_action(cx.listener(
+                                move |this, _: &crate::shell::FocusNext, window, cx| {
+                                    this.close_select_action(&next_trigger, Some(true), window, cx);
+                                },
+                            ))
+                            .on_action(cx.listener(
+                                move |this, _: &crate::shell::FocusPrevious, window, cx| {
+                                    this.close_select_action(
+                                        &previous_trigger,
+                                        Some(false),
+                                        window,
+                                        cx,
+                                    );
+                                },
+                            ))
+                            .on_action(cx.listener(
+                                move |this, _: &crate::shell::DismissMenu, window, cx| {
+                                    this.close_select_action(&cancel_trigger, None, window, cx);
+                                },
+                            ))
                             .on_key_down(cx.listener(
                                 move |this, event: &gpui::KeyDownEvent, window, cx| {
                                     let key = event.keystroke.key.as_str();
@@ -804,21 +882,43 @@ impl SettingsView {
                                             this.select_active = (this.select_active + 1).min(last)
                                         }
                                         "up" => {
-                                            this.select_active =
-                                                this.select_active.saturating_sub(1)
+                                            if searchable && this.select_active == 0 {
+                                                window.focus(
+                                                    &gpui::Focusable::focus_handle(
+                                                        &this.select_filter,
+                                                        cx,
+                                                    ),
+                                                    cx,
+                                                );
+                                            } else {
+                                                this.select_active =
+                                                    this.select_active.saturating_sub(1);
+                                            }
                                         }
                                         "home" => this.select_active = 0,
                                         "end" => this.select_active = last,
-                                        "enter" | "tab" => {
+                                        "enter" | "space"
+                                            if !searchable
+                                                || this.select_focus.is_focused(window) =>
+                                        {
                                             if let Some(v) = values.get(this.select_active) {
                                                 keys_change(this, v.clone(), cx);
                                             }
                                             this.select_open = None;
-                                            window.focus(&this.focus, cx);
+                                            window.focus(&key_trigger, cx);
+                                        }
+                                        "tab" => {
+                                            this.select_open = None;
+                                            window.focus(&key_trigger, cx);
+                                            if event.keystroke.modifiers.shift {
+                                                window.focus_prev(cx);
+                                            } else {
+                                                window.focus_next(cx);
+                                            }
                                         }
                                         "escape" => {
                                             this.select_open = None;
-                                            window.focus(&this.focus, cx);
+                                            window.focus(&key_trigger, cx);
                                         }
                                         _ => return,
                                     }
@@ -831,6 +931,50 @@ impl SettingsView {
                 )
             })
             .into_any_element()
+    }
+
+    fn close_select_action(
+        &mut self,
+        trigger: &FocusHandle,
+        forward: Option<bool>,
+        window: &mut gpui::Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.select_open = None;
+        window.focus(trigger, cx);
+        if let Some(forward) = forward {
+            if forward {
+                window.focus_next(cx);
+            } else {
+                window.focus_prev(cx);
+            }
+            if trigger.is_focused(window) {
+                // General can have no other tab stop; its search remains focusable.
+                window.focus(&gpui::Focusable::focus_handle(&self.search, cx), cx);
+            }
+        }
+        cx.notify();
+    }
+
+    fn open_select(
+        &mut self,
+        id: &'static str,
+        selected: Option<usize>,
+        searchable: bool,
+        window: &mut gpui::Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.select_open = Some(id);
+        self.select_active = selected.unwrap_or(0);
+        self.select_scroll.scroll_to_item(self.select_active);
+        self.select_query.clear();
+        if searchable {
+            self.select_filter
+                .update(cx, |i, cx| i.set_text(String::new(), cx));
+            window.focus(&gpui::Focusable::focus_handle(&self.select_filter, cx), cx);
+        } else {
+            window.focus(&self.select_focus, cx);
+        }
     }
 }
 
@@ -854,7 +998,7 @@ impl SettingsView {
         let value = self.selected_project.clone();
         self.select(
             "settings-project",
-            "Project",
+            crate::i18n::text("settings-project"),
             &value,
             options,
             None,
@@ -868,10 +1012,11 @@ impl SettingsView {
     pub(super) fn refresh_button(
         &self,
         id: &'static str,
-        label: &'static str,
+        label: impl Into<SharedString>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        secondary_button(id, label, false, self.discovery_loading)
+        let label: SharedString = label.into();
+        secondary_button(id, label.clone(), false, self.discovery_loading)
             .child(icon("refresh-cw", 14.))
             .child(label)
             .when(!self.discovery_loading, |d| {

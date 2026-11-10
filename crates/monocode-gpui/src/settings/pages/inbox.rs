@@ -10,45 +10,48 @@ impl SettingsView {
             (
                 "github",
                 "GitHub",
-                "Pull requests, reviews, and issues, read through the GitHub CLI.",
-                "Connection",
-                "Install GitHub CLI from cli.github.com, run gh auth login in a terminal, then check again.",
+                "settings-inbox-pull-requests-reviews-and-issues-read-through-the-github-cli",
+                "settings-inbox-connection",
+                "settings-inbox-install-github-cli-from-cli-github-com-run-gh-auth-login-in-a-terminal-then",
             ),
             (
                 "gitlab",
                 "GitLab",
-                "Merge requests from GitLab.com or a self-managed instance.",
-                "Connection",
-                "Connect GitLab.com or a self-managed GitLab instance. Use a personal access token with API access; the token is stored locally and Disconnect deletes it.",
+                "settings-inbox-merge-requests-from-gitlab-com-or-a-self-managed-instance",
+                "settings-inbox-connection",
+                "settings-inbox-connect-gitlab-com-or-a-self-managed-gitlab-instance-use-a-personal-access",
             ),
             (
                 "azuredevops",
                 "ADO",
-                "Pull requests and Boards work items from your ADO organization.",
-                "Connection",
-                "Connect your ADO organization with a personal access token (Boards + Repos read & write for comments). The token is stored locally and Disconnect deletes it.",
+                "settings-inbox-pull-requests-and-boards-work-items-from-your-ado-organization",
+                "settings-inbox-connection",
+                "settings-inbox-connect-your-ado-organization-with-a-personal-access-token-boards-repos-rea",
             ),
             (
                 "jira",
                 "Jira",
-                "Jira Cloud issues from the projects you pick.",
-                "Connection",
-                "Connect your Jira Cloud site with your email and an API token.",
+                "settings-inbox-jira-cloud-issues-from-the-projects-you-pick",
+                "settings-inbox-connection",
+                "settings-inbox-connect-your-jira-cloud-site-with-your-email-and-an-api-token",
             ),
             (
                 "linear",
                 "Linear",
-                "Issues assigned to you, from the teams you pick.",
-                "API key",
-                "Create a personal API key in Linear → Settings → Security & Access. Disconnect deletes it.",
+                "settings-inbox-issues-assigned-to-you-from-the-teams-you-pick",
+                "settings-inbox-api-key",
+                "settings-inbox-create-a-personal-api-key-in-linear-settings-security-access-disconnect-del",
             ),
         ] {
+            let description = crate::i18n::text(description);
+            let label = crate::i18n::text(label);
+            let hint = crate::i18n::text(hint);
             let (connected, connection_label) = self
                 .ctx
                 .inbox_connections
                 .get(id)
                 .cloned()
-                .unwrap_or_else(|| (false, "Checking connection…".into()));
+                .unwrap_or_else(|| (false, crate::i18n::text("settings-checking-connection")));
             let status = div()
                 .text_size(px(12.))
                 .text_color(content(if connected { 0.7 } else { 0.5 }))
@@ -59,30 +62,43 @@ impl SettingsView {
                     status,
                     secondary_button(
                         "github-installation-guide",
-                        "Installation guide",
+                        crate::i18n::text("settings-installation-guide"),
                         false,
                         false,
                     )
-                    .child("Installation guide")
+                    .child(crate::i18n::text("settings-installation-guide"))
                     .on_click(|_, _, cx| cx.open_url("https://cli.github.com/"))
                     .into_any_element(),
-                    secondary_button("github-check-again", "Check again", false, false)
-                        .child("Check again")
-                        .on_click(cx.listener(|_, _, _, cx| {
-                            cx.emit(SettingsEvent::ManageInboxProvider("github".into()))
-                        }))
-                        .into_any_element(),
+                    secondary_button(
+                        "github-check-again",
+                        crate::i18n::text("settings-check-again"),
+                        false,
+                        false,
+                    )
+                    .child(crate::i18n::text("settings-check-again"))
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        cx.emit(SettingsEvent::ManageInboxProvider("github".into()))
+                    }))
+                    .into_any_element(),
                 ]
             } else {
                 vec![
                     status,
                     secondary_button(
                         SharedString::from(format!("connect-{id}")),
-                        if connected { "Manage" } else { "Connect" },
+                        if connected {
+                            crate::i18n::text("settings-manage")
+                        } else {
+                            crate::i18n::text("settings-connect")
+                        },
                         false,
                         false,
                     )
-                    .child(if connected { "Manage" } else { "Connect" })
+                    .child(if connected {
+                        crate::i18n::text("settings-manage")
+                    } else {
+                        crate::i18n::text("settings-connect")
+                    })
                     .on_click(cx.listener(move |_, _, _, cx| {
                         cx.emit(SettingsEvent::ManageInboxProvider(id.into()))
                     }))

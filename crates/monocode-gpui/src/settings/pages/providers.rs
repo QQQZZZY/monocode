@@ -20,17 +20,19 @@ impl SettingsView {
                 center.settings_rows(cx)
             })
         } else {
-            vec![note("Provider accounts load with the workspace.")]
+            vec![note(crate::i18n::text(
+                "settings-provider-accounts-load-with-the-workspace",
+            ))]
         };
         let usage = vec![
             self.row(
                 Some("show-remaining-usage"),
                 true,
-                "Show remaining usage",
-                Some("Show remaining capacity in usage meters.".into()),
+                crate::i18n::text("settings-show-remaining-usage"),
+                Some(crate::i18n::text("settings-show-remaining-capacity-in-usage-meters").into()),
                 vec![self.toggle(
                     "show-remaining-usage",
-                    "Show remaining usage",
+                    crate::i18n::text("settings-show-remaining-usage"),
                     p.show_remaining_usage,
                     false,
                     cx,
@@ -40,11 +42,11 @@ impl SettingsView {
             self.row(
                 Some("mask-emails"),
                 false,
-                "Mask account emails",
-                Some("Hide email addresses until clicked.".into()),
+                crate::i18n::text("settings-mask-account-emails"),
+                Some(crate::i18n::text("settings-hide-email-addresses-until-clicked").into()),
                 vec![self.toggle(
                     "mask-emails",
-                    "Mask account emails",
+                    crate::i18n::text("settings-mask-account-emails"),
                     p.mask_emails,
                     false,
                     cx,
@@ -54,7 +56,7 @@ impl SettingsView {
         ];
         let mut options = vec![(
             "global".into(),
-            SharedString::from("Global"),
+            SharedString::from(crate::i18n::text("settings-global")),
             Some(icon("globe", 14.).into_any_element()),
         )];
         options.extend(self.ctx.projects.iter().map(|(path, label)| {
@@ -67,7 +69,7 @@ impl SettingsView {
         let scope = self.provider_scope.clone();
         let action = self.select(
             "provider-scope",
-            "Provider defaults scope",
+            crate::i18n::text("settings-provider-defaults-scope"),
             &scope,
             options,
             None,
@@ -123,7 +125,10 @@ impl SettingsView {
                         .clone();
                     secondary_button(
                         SharedString::from(format!("binary-{}", kind.id())),
-                        format!("Show {} CLI details", kind.label()),
+                        crate::i18n::format(
+                            "settings-show-cli-details",
+                            &[("name", (kind.label()).to_string())],
+                        ),
                         false,
                         false,
                     )
@@ -150,26 +155,26 @@ impl SettingsView {
                         .text_size(px(10.))
                         .text_color(content(0.6))
                         .child(if installed.is_some() {
-                            "INSTALLED"
+                            crate::i18n::text("settings-installed")
                         } else {
-                            "NOT INSTALLED"
+                            crate::i18n::text("settings-not-installed")
                         }),
                 );
             let mut controls = vec![
                 secondary_button(
                     SharedString::from(format!("default-provider-{}", kind.id())),
                     if selected {
-                        "Default"
+                        crate::i18n::text("settings-default")
                     } else {
-                        "Use by default"
+                        crate::i18n::text("settings-use-by-default")
                     },
                     false,
                     selected || selected_model.is_none() || installed.is_none(),
                 )
                 .child(if selected {
-                    "Default"
+                    crate::i18n::text("settings-default")
                 } else {
-                    "Use by default"
+                    crate::i18n::text("settings-use-by-default")
                 })
                 .when(
                     !selected && selected_model.is_some() && installed.is_some(),
@@ -230,14 +235,14 @@ impl SettingsView {
                                 .text_size(px(12.))
                                 .text_color(content(0.5))
                                 .child(if locked {
-                                    "Hidden globally"
+                                    crate::i18n::text("settings-hidden-globally")
                                 } else {
-                                    "Show in picker"
+                                    crate::i18n::text("settings-show-in-picker")
                                 }),
                         )
                         .child(self.toggle(
                             kind.id(),
-                            "Show provider in the model picker",
+                            crate::i18n::text("settings-show-provider-in-the-model-picker"),
                             visible,
                             locked,
                             cx,
@@ -261,23 +266,39 @@ impl SettingsView {
             }
             let description = installed
                 .map(|_| {
-                    format!(
-                        "{} {} available.",
-                        models.len(),
-                        if models.len() == 1 { "model" } else { "models" }
+                    crate::i18n::format(
+                        "settings-models-available",
+                        &[
+                            (
+                                "value1",
+                                crate::system_format::unsigned((models.len()) as u64),
+                            ),
+                            (
+                                "value2",
+                                (if models.len() == 1 {
+                                    crate::i18n::text("settings-models-available-model")
+                                } else {
+                                    crate::i18n::text("settings-models-available-models")
+                                })
+                                .to_string(),
+                            ),
+                        ],
                     )
                 })
                 .unwrap_or_else(|| kind.unavailable_hint());
             clis.push(self.row(None, index == 0, label, Some(description.into()), controls));
         }
         if self.discovery_loading {
-            clis.insert(0, note("Checking installed CLIs…"));
+            clis.insert(
+                0,
+                note(crate::i18n::text("settings-checking-installed-clis")),
+            );
         }
         // Any installed harness that can write one-off text, with the models
         // its sessions have listed; the harness default when none are loaded.
         let mut background = vec![(
             "auto".to_owned(),
-            SharedString::from("Automatic"),
+            SharedString::from(crate::i18n::text("settings-automatic")),
             None::<AnyElement>,
         )];
         for kind in Kind::ALL {
@@ -295,7 +316,10 @@ impl SettingsView {
                 })),
                 None => background.push((
                     format!("{}:", kind.id()),
-                    SharedString::from(format!("{} · Default model", kind.label())),
+                    SharedString::from(crate::i18n::format(
+                        "settings-default-model",
+                        &[("name", (kind.label()).to_string())],
+                    )),
                     Some(provider_icon(kind.id(), 14.).into_any_element()),
                 )),
             }
@@ -316,66 +340,149 @@ impl SettingsView {
                 SharedString::from(format!(
                     "{} · {}",
                     Kind::from_id(&choice.provider).label(),
-                    choice.model.as_deref().unwrap_or("Default model")
+                    choice
+                        .model
+                        .clone()
+                        .unwrap_or_else(|| crate::i18n::text("settings-default-model-fallback"))
                 )),
                 Some(provider_icon(&choice.provider, 14.).into_any_element()),
             ));
         }
-        let background = vec![self.row(
-            Some("background-model"),
-            true,
-            "Background model",
-            Some("Writes session titles, worktree branch names, commit messages and pull requests. Automatic uses each session's provider and its quick model.".into()),
-            vec![self.select(
-                "background-model",
-                "Background model",
-                &background_value,
-                background,
-                Some(240.),
-                cx,
-                |this, value, cx| {
-                    this.update(cx, |p| {
-                        p.background_model = value.split_once(':').map(|(provider, model)| {
-                            ModelChoice {
-                                provider: provider.into(),
-                                model: (!model.is_empty()).then(|| model.into()),
-                            }
-                        });
-                    })
-                },
-            )],
-        )];
-        let advanced=vec![
-            self.row(Some("idle-agents"),true,"Keep idle agents ready",Some("Keep up to this many idle agents running for faster follow-ups. Uses additional memory.".into()),vec![self.segmented("idle-agents","Keep idle agents ready",&p.idle_agents.to_string(),&[("0","None"),("1","1"),("2","2"),("3","3"),("5","5")],cx,|this,value,cx|if let Ok(value)=value.parse(){this.update(cx,|p|p.idle_agents=value)})]),
-            self.row(Some("claude-hooks"),false,"Claude Code hooks",Some("Run your configured Claude Code hooks. Changes apply on the next turn.".into()),vec![self.toggle("claude-hooks","Claude Code hooks",p.claude_hooks,false,cx,|this,on,cx|this.update(cx,|p|p.claude_hooks=on))]),
-            self.row(Some("claude-entrypoint"),false,"Identify as Monocode to Claude (experimental)",Some("Report Monocode as the client instead of the default sdk-cli, which community tests show uses the 5-hour limit up to ~2x faster. Anthropic hasn't confirmed this or whether relabeling is allowed. Applies to new sessions.".into()),vec![self.toggle("claude-entrypoint","Identify as Monocode to Claude",p.claude_entrypoint,false,cx,|this,on,cx|this.update(cx,|p|p.claude_entrypoint=on))])];
+        let background = vec![
+            self.row(
+                Some("background-model"),
+                true,
+                crate::i18n::text("settings-background-model"),
+                Some(
+                    crate::i18n::text(
+                        "settings-writes-session-titles-worktree-branch-names-commit",
+                    )
+                    .into(),
+                ),
+                vec![self.select(
+                    "background-model",
+                    crate::i18n::text("settings-background-model"),
+                    &background_value,
+                    background,
+                    Some(240.),
+                    cx,
+                    |this, value, cx| {
+                        this.update(cx, |p| {
+                            p.background_model =
+                                value.split_once(':').map(|(provider, model)| ModelChoice {
+                                    provider: provider.into(),
+                                    model: (!model.is_empty()).then(|| model.into()),
+                                });
+                        })
+                    },
+                )],
+            ),
+        ];
+        let advanced = vec![
+            self.row(
+                Some("idle-agents"),
+                true,
+                crate::i18n::text("settings-keep-idle-agents-ready"),
+                Some(crate::i18n::text("settings-keep-up-to-this-many-idle-agents").into()),
+                vec![self.segmented(
+                    "idle-agents",
+                    crate::i18n::text("settings-keep-idle-agents-ready"),
+                    &p.idle_agents.to_string(),
+                    &[
+                        ("0", &crate::i18n::text("settings-none")),
+                        ("1", "1"),
+                        ("2", "2"),
+                        ("3", "3"),
+                        ("5", "5"),
+                    ],
+                    cx,
+                    |this, value, cx| {
+                        if let Ok(value) = value.parse() {
+                            this.update(cx, |p| p.idle_agents = value)
+                        }
+                    },
+                )],
+            ),
+            self.row(
+                Some("claude-hooks"),
+                false,
+                crate::i18n::text("settings-claude-code-hooks"),
+                Some(
+                    crate::i18n::text("settings-run-your-configured-claude-code-hooks-changes")
+                        .into(),
+                ),
+                vec![self.toggle(
+                    "claude-hooks",
+                    crate::i18n::text("settings-claude-code-hooks"),
+                    p.claude_hooks,
+                    false,
+                    cx,
+                    |this, on, cx| this.update(cx, |p| p.claude_hooks = on),
+                )],
+            ),
+            self.row(
+                Some("claude-entrypoint"),
+                false,
+                crate::i18n::text("settings-identify-as-monocode-to-claude-experimental"),
+                Some(crate::i18n::text("settings-report-monocode-as-the-client-instead-of").into()),
+                vec![self.toggle(
+                    "claude-entrypoint",
+                    crate::i18n::text("settings-identify-as-monocode-to-claude"),
+                    p.claude_entrypoint,
+                    false,
+                    cx,
+                    |this, on, cx| this.update(cx, |p| p.claude_entrypoint = on),
+                )],
+            ),
+        ];
         vec![
             self.group(
                 Some("provider-accounts"),
                 true,
-                "Accounts",
-                Some("Manage sign-ins and choose accounts for each project.".into()),
-                Some(self.refresh_button("refresh-provider-accounts", "Refresh", cx)),
+                crate::i18n::text("settings-accounts"),
+                Some(crate::i18n::text("settings-manage-sign-ins-and-choose-accounts-for").into()),
+                Some(self.refresh_button(
+                    "refresh-provider-accounts",
+                    crate::i18n::text("settings-refresh"),
+                    cx,
+                )),
                 accounts,
             ),
-            self.group(None, false, "Usage and privacy", None, None, usage),
+            self.group(
+                None,
+                false,
+                crate::i18n::text("settings-usage-and-privacy"),
+                None,
+                None,
+                usage,
+            ),
             self.group(
                 Some("agent-clis"),
                 false,
-                "Agent CLIs",
-                Some("Choose available agents and default models for new conversations.".into()),
+                crate::i18n::text("settings-agent-clis"),
+                Some(
+                    crate::i18n::text("settings-choose-available-agents-and-default-models-for")
+                        .into(),
+                ),
                 Some(action),
                 clis,
             ),
             self.group(
                 None,
                 false,
-                "Background tasks",
-                Some("Small jobs Monocode runs with a model on your behalf.".into()),
+                crate::i18n::text("settings-background-tasks"),
+                Some(crate::i18n::text("settings-small-jobs-monocode-runs-with-a-model").into()),
                 None,
                 background,
             ),
-            self.group(None, false, "Advanced", None, None, advanced),
+            self.group(
+                None,
+                false,
+                crate::i18n::text("settings-advanced"),
+                None,
+                None,
+                advanced,
+            ),
         ]
     }
 }

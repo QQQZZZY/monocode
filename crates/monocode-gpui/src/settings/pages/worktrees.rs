@@ -13,11 +13,60 @@ impl SettingsView {
         let ready = !self.discovery_loading
             && self.discovery.worktrees.error.is_none()
             && !self.discovery.worktrees.main.is_empty();
-        let mut page=vec![div().relative().child(self.reveal_probe("project-worktrees")).flex().items_center().gap_1().child(project).child(secondary_button("create-settings-worktree","Create worktree",false,!ready).child(icon("plus",12.)).child("Create worktree").on_click(cx.listener(move|this,_,window,cx|{if ready{this.open_management(Target::Worktree,window,cx);}}))).into_any_element(),div().mt_4().flex().items_center().justify_between().gap_3().child(div().min_w_0().flex_1().text_size(px(12.)).line_height(px(18.)).text_color(content(0.5)).child("Sessions can share a worktree. Deleting one keeps its sessions by default and discards uncommitted changes. Its branch and commits are kept.")).child(self.refresh_button("refresh-settings-worktrees","Refresh",cx)).into_any_element()];
+        let mut page = vec![
+            div()
+                .relative()
+                .child(self.reveal_probe("project-worktrees"))
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(project)
+                .child(
+                    secondary_button(
+                        "create-settings-worktree",
+                        crate::i18n::text("settings-create-worktree"),
+                        false,
+                        !ready,
+                    )
+                    .child(icon("plus", 12.))
+                    .child(crate::i18n::text("settings-create-worktree"))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        if ready {
+                            this.open_management(Target::Worktree, window, cx);
+                        }
+                    })),
+                )
+                .into_any_element(),
+            div()
+                .mt_4()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_3()
+                .child(
+                    div()
+                        .min_w_0()
+                        .flex_1()
+                        .text_size(px(12.))
+                        .line_height(px(18.))
+                        .text_color(content(0.5))
+                        .child(crate::i18n::text(
+                            "settings-sessions-can-share-a-worktree-deleting",
+                        )),
+                )
+                .child(self.refresh_button(
+                    "refresh-settings-worktrees",
+                    crate::i18n::text("settings-refresh"),
+                    cx,
+                ))
+                .into_any_element(),
+        ];
         if self.selected_project.is_empty() {
-            page.push(note("Add a project to manage its worktrees."));
+            page.push(note(crate::i18n::text(
+                "settings-add-a-project-to-manage-its-worktrees",
+            )));
         } else if self.discovery_loading {
-            page.push(note("Loading worktrees…"));
+            page.push(note(crate::i18n::text("settings-loading-worktrees")));
         } else if let Some(error) = &self.discovery.worktrees.error {
             page.push(
                 div()
@@ -47,12 +96,13 @@ impl SettingsView {
                         div()
                             .text_size(px(13.))
                             .font_weight(gpui::FontWeight::MEDIUM)
-                            .child("No additional worktrees"),
+                            .child(crate::i18n::text("settings-no-additional-worktrees")),
                     )
                     .child(
-                        div().text_size(px(12.)).text_color(content(0.5)).child(
-                            "Create a worktree to work on another branch in a separate folder.",
-                        ),
+                        div()
+                            .text_size(px(12.))
+                            .text_color(content(0.5))
+                            .child(crate::i18n::text("settings-create-a-worktree-to-work-on")),
                     )
                     .into_any_element(),
             );
@@ -77,13 +127,13 @@ impl SettingsView {
                             })
                             .count();
                         let status = if t.missing {
-                            "Missing folder"
+                            crate::i18n::text("settings-missing-folder")
                         } else if tree.dirty == Some(true) {
-                            "Uncommitted changes"
+                            crate::i18n::text("settings-uncommitted-changes")
                         } else if tree.dirty == Some(false) {
-                            "Clean"
+                            crate::i18n::text("settings-clean")
                         } else {
-                            "Status unavailable"
+                            crate::i18n::text("settings-status-unavailable")
                         };
                         let blocked = tree.locked || t.branch.is_none();
                         div()
@@ -128,14 +178,23 @@ impl SettingsView {
                                             .child(
                                                 t.branch
                                                     .as_ref()
-                                                    .map(|b| format!("Current branch: {b}"))
+                                                    .map(|b| {
+                                                        crate::i18n::format(
+                                                            "settings-current-branch",
+                                                            &[("b", (b).to_string())],
+                                                        )
+                                                    })
                                                     .unwrap_or_else(|| {
-                                                        format!(
-                                                            "Detached at {}",
-                                                            t.head
-                                                                .chars()
-                                                                .take(7)
-                                                                .collect::<String>()
+                                                        crate::i18n::format(
+                                                            "settings-detached-at",
+                                                            &[(
+                                                                "value",
+                                                                (t.head
+                                                                    .chars()
+                                                                    .take(7)
+                                                                    .collect::<String>())
+                                                                .to_string(),
+                                                            )],
                                                         )
                                                     }),
                                             ),
@@ -145,25 +204,69 @@ impl SettingsView {
                                             .mt_2()
                                             .text_size(px(11.))
                                             .text_color(content(0.55))
-                                            .child(format!(
-                                                "{count} {} in this worktree · {status}{}{}",
-                                                if count == 1 { "session" } else { "sessions" },
-                                                if tree.unpushed > 0 {
-                                                    format!(
-                                                        " · {} unpublished commits",
-                                                        tree.unpushed
-                                                    )
-                                                } else {
-                                                    String::new()
-                                                },
-                                                if tree.locked { " · Locked" } else { "" }
-                                            )),
+                                            .child(crate::i18n::format(
+                                            "settings-worktree-summary",
+                                            &[
+                                                (
+                                                    "count",
+                                                    crate::system_format::unsigned((count) as u64),
+                                                ),
+                                                (
+                                                    "value1",
+                                                    (if count == 1 {
+                                                        crate::i18n::text(
+                                                            "settings-worktree-summary-session",
+                                                        )
+                                                    } else {
+                                                        crate::i18n::text(
+                                                            "settings-worktree-summary-sessions",
+                                                        )
+                                                    })
+                                                    .to_string(),
+                                                ),
+                                                ("status", (status).to_string()),
+                                                (
+                                                    "value2",
+                                                    (if tree.unpushed > 0 {
+                                                        crate::i18n::format(
+                                                            "settings-unpublished-commits",
+                                                            &[(
+                                                                "value",
+                                                                crate::system_format::unsigned(
+                                                                    (tree.unpushed) as u64,
+                                                                ),
+                                                            )],
+                                                        )
+                                                    } else {
+                                                        String::new()
+                                                    })
+                                                    .to_string(),
+                                                ),
+                                                (
+                                                    "value3",
+                                                    (if tree.locked {
+                                                        crate::i18n::text(
+                                                            "settings-worktree-locked-suffix",
+                                                        )
+                                                    } else {
+                                                        String::new()
+                                                    })
+                                                    .to_string(),
+                                                ),
+                                            ],
+                                        )),
                                     ),
                             )
                             .child(
                                 secondary_button(
                                     SharedString::from(format!("reveal-tree-{ix}")),
-                                    format!("Reveal {}", t.branch.as_deref().unwrap_or("worktree")),
+                                    crate::i18n::format(
+                                        "settings-reveal",
+                                        &[(
+                                            "value",
+                                            (t.branch.as_deref().unwrap_or("worktree")).to_string(),
+                                        )],
+                                    ),
                                     false,
                                     t.missing,
                                 )
@@ -173,7 +276,13 @@ impl SettingsView {
                             .child(
                                 secondary_button(
                                     SharedString::from(format!("delete-tree-{ix}")),
-                                    format!("Delete {}", t.branch.as_deref().unwrap_or("worktree")),
+                                    crate::i18n::format(
+                                        "settings-delete-2",
+                                        &[(
+                                            "value",
+                                            (t.branch.as_deref().unwrap_or("worktree")).to_string(),
+                                        )],
+                                    ),
                                     false,
                                     blocked,
                                 )
@@ -195,9 +304,12 @@ impl SettingsView {
             );
         }
         if ready {
-            page.push(note(format!(
-                "New worktrees are created in {}.",
-                self.discovery.worktrees.default_root.display()
+            page.push(note(crate::i18n::format(
+                "settings-new-worktrees-are-created-in",
+                &[(
+                    "value",
+                    (self.discovery.worktrees.default_root.display()).to_string(),
+                )],
             )));
         }
         page
