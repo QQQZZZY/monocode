@@ -26,22 +26,18 @@ pub(crate) enum Command {
     Orchestrator,
 }
 const COMMANDS: &[(Command, &str, &str)] = &[
-    (Command::New, "New conversation", "⌘N"),
-    (Command::Project, "Open project", "⌘O"),
-    (Command::Model, "Switch model", "⌘."),
-    (Command::Settings, "Open settings", "⌘,"),
-    (Command::Sidebar, "Toggle sidebar", "⌘B"),
-    (Command::Panel, "Toggle files and changes", "⌘⇧B"),
-    (Command::Terminal, "Toggle terminal", "⌘J"),
-    (Command::Layout, "Switch workspace layout", "⌘⇧L"),
-    (
-        Command::WorkspaceStyle,
-        "Switch rounded or boxy workspace",
-        "⌘⌥L",
-    ),
-    (Command::Plan, "Toggle Plan mode", ""),
-    (Command::Operator, "Toggle Operator", ""),
-    (Command::Orchestrator, "Toggle Orchestrator", ""),
+    (Command::New, "command-new", "⌘N"),
+    (Command::Project, "command-project", "⌘O"),
+    (Command::Model, "command-model", "⌘."),
+    (Command::Settings, "command-settings", "⌘,"),
+    (Command::Sidebar, "command-sidebar", "⌘B"),
+    (Command::Panel, "command-panel", "⌘⇧B"),
+    (Command::Terminal, "command-terminal", "⌘J"),
+    (Command::Layout, "command-layout", "⌘⇧L"),
+    (Command::WorkspaceStyle, "command-workspacestyle", "⌘⌥L"),
+    (Command::Plan, "command-plan", ""),
+    (Command::Operator, "command-operator", ""),
+    (Command::Orchestrator, "command-orchestrator", ""),
 ];
 pub(crate) enum Picked {
     File(String),
@@ -81,8 +77,8 @@ impl QuickOpen {
     pub(crate) fn new(cwd: String, palette: bool, cx: &mut Context<Self>) -> Self {
         let search = cx.new(|cx| {
             input::Input::field(
-                "Go to file or run a command",
-                "Search files by name…  (> for commands)",
+                crate::i18n::text("quick-open-go-to-file-or-run-a"),
+                crate::i18n::text("quick-open-search-files-by-name-for-commands"),
                 content(0.35),
                 cx,
             )
@@ -133,11 +129,12 @@ impl QuickOpen {
             let mut commands: Vec<_> = COMMANDS
                 .iter()
                 .filter_map(|(command, label, hint)| {
-                    composer::score(query.trim(), label).map(|score| {
+                    let label = crate::i18n::text(label);
+                    composer::score(query.trim(), &label).map(|score| {
                         (
                             score,
                             Row {
-                                label: (*label).into(),
+                                label,
                                 detail: if cfg!(target_os = "macos") {
                                     (*hint).into()
                                 } else {
@@ -236,7 +233,7 @@ impl Render for QuickOpen {
         div()
             .id("quick-open")
             .role(Role::Dialog)
-            .aria_label("Go to file or run a command")
+            .aria_label(crate::i18n::text("quick-open-go-to-file-or-run-a"))
             .w_full()
             .flex()
             .flex_col()
@@ -272,7 +269,7 @@ impl Render for QuickOpen {
                 div()
                     .id("quick-open-results")
                     .role(Role::ListBox)
-                    .aria_label("Results")
+                    .aria_label(crate::i18n::text("quick-open-results"))
                     .p_1p5()
                     .max_h(px(380.))
                     .overflow_y_scroll()
@@ -286,9 +283,11 @@ impl Render for QuickOpen {
                                 .text_size(px(13.))
                                 .text_color(content(0.45))
                                 .child(if self.loading {
-                                    "Loading project files…".to_owned()
+                                    crate::i18n::text("quick-open-loading-project-files").to_owned()
                                 } else {
-                                    self.error.clone().unwrap_or_else(|| "No results".into())
+                                    self.error.clone().unwrap_or_else(|| {
+                                        crate::i18n::text("quick-open-no-results")
+                                    })
                                 }),
                         )
                     }),
@@ -301,7 +300,9 @@ impl Render for QuickOpen {
                     .border_color(content(0.07))
                     .text_size(px(10.))
                     .text_color(content(0.35))
-                    .child("↑ ↓ navigate    ↵ open    Esc close    > commands"),
+                    .child(crate::i18n::text(
+                        "quick-open-navigate-open-esc-close-commands",
+                    )),
             )
     }
 }

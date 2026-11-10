@@ -93,9 +93,18 @@ impl SearchView {
     ) -> Self {
         let input = cx.new(|cx| {
             if sources.panel {
-                Input::command_field("Search", "Search conversations, files, projects…", cx)
+                Input::command_field(
+                    crate::i18n::text("search-search"),
+                    crate::i18n::text("search-search-conversations-files-projects"),
+                    cx,
+                )
             } else {
-                Input::field("Search", "Search everything...", content(0.4), cx)
+                Input::field(
+                    crate::i18n::text("search-search"),
+                    crate::i18n::text("search-search-everything"),
+                    content(0.4),
+                    cx,
+                )
             }
         });
         let changed = cx.subscribe(&input, |this, _, _: &input::Changed, cx| {
@@ -254,8 +263,15 @@ impl SearchView {
                 vec![]
             }
         } else {
-            search::grouped(
-                search::titles(&self.summaries, &self.query)
+            let mut summaries = self.summaries.clone();
+            for summary in &mut summaries {
+                if monocode_core::session_title::is_default_title(&summary.title, &summary.provider)
+                {
+                    summary.title = crate::i18n::text("shell-new-session");
+                }
+            }
+            let mut hits = search::grouped(
+                search::titles(&summaries, &self.query)
                     .into_iter()
                     .chain(self.local.clone())
                     .chain(self.remote.clone())
@@ -263,7 +279,19 @@ impl SearchView {
                     .chain(self.content.clone())
                     .chain(search::projects(&self.projects, &self.query)),
                 self.scope,
-            )
+            );
+            for hit in &mut hits {
+                if let Target::Message { session, .. } = &hit.target
+                    && let Some(summary) = self.summaries.iter().find(|s| s.id == *session)
+                    && monocode_core::session_title::is_default_title(
+                        &summary.title,
+                        &summary.provider,
+                    )
+                {
+                    hit.meta = crate::i18n::text("shell-new-session");
+                }
+            }
+            hits
         };
         if self.active >= self.hits.len() {
             self.active = 0;
@@ -492,7 +520,9 @@ fn empty_state() -> AnyElement {
                         .max_w(px(320.))
                         .text_center()
                         .text_color(content(0.45))
-                        .child("Find files, conversations, messages, and projects."),
+                        .child(crate::i18n::text(
+                            "search-find-files-conversations-messages-and-projects",
+                        )),
                 ),
         )
         .into_any_element()
@@ -500,13 +530,13 @@ fn empty_state() -> AnyElement {
 /// The heading a result sits under; consecutive hits share one.
 fn section(target: &Target, suggesting: bool) -> &'static str {
     match (target, suggesting) {
-        (Target::Conversation(_), true) => "Recent conversations",
-        (Target::Conversation(_), false) => "Conversations",
-        (Target::Message { .. }, _) => "Messages",
-        (Target::File { location: None, .. }, true) => "Recent files",
-        (Target::File { location: None, .. }, false) => "Files",
-        (Target::File { .. }, _) => "In file contents",
-        (Target::Project(_), _) => "Projects",
+        (Target::Conversation(_), true) => "search-recent-conversations",
+        (Target::Conversation(_), false) => "search-conversations",
+        (Target::Message { .. }, _) => "search-messages",
+        (Target::File { location: None, .. }, true) => "search-recent-files",
+        (Target::File { location: None, .. }, false) => "search-files",
+        (Target::File { .. }, _) => "search-in-file-contents",
+        (Target::Project(_), _) => "search-projects",
     }
 }
 fn keycap(text: impl Into<gpui::SharedString>) -> gpui::Div {
@@ -525,13 +555,13 @@ fn keycap(text: impl Into<gpui::SharedString>) -> gpui::Div {
         .text_color(content(0.55))
         .child(text.into())
 }
-fn hint(keys: &[&'static str], label: &'static str) -> gpui::Div {
+fn hint(keys: &[&'static str], label: &str) -> gpui::Div {
     div()
         .flex()
         .items_center()
         .gap(px(4.))
         .children(keys.iter().map(|k| keycap(*k)))
-        .child(div().pl(px(2.)).child(label))
+        .child(div().pl(px(2.)).child(label.to_owned()))
 }
 fn empty_message(text: String) -> AnyElement {
     div()
@@ -577,7 +607,7 @@ impl SearchView {
         hits.extend(recent.into_iter().take(conversations).map(|s| Hit {
             id: format!("conversation:{}", s.id),
             target: Target::Conversation(s.id),
-            title: monocode_core::session_title::display_title(&s.title, &s.provider).into(),
+            title: crate::i18n::session_title(&s.title, &s.provider),
             meta: search::project_name(&s.cwd),
             provider: s.provider.clone(),
             highlights: vec![],
@@ -868,7 +898,7 @@ impl SearchView {
             .id("app-search")
             .key_context("Workspace")
             .debug_selector(|| "app-search".into())
-            .aria_label("Search")
+            .aria_label(crate::i18n::text("search-search"))
             .size_full()
             .min_h_0()
             .min_w_0()
@@ -942,31 +972,32 @@ impl SearchView {
                     .px_3()
                     .border_b_1()
                     .border_color(stroke)
-                    .children(
-                        Scope::ALL
-                            .into_iter()
-                            .enumerate()
-                            .map(|(ix, (scope, label))| {
-                                div()
-                                    .id(("app-search-scope", ix))
-                                    .debug_selector(move || format!("app-search-scope-{ix}"))
-                                    .role(Role::Button)
-                                    .aria_label(label)
-                                    .child(label)
-                                    .aria_selected(self.scope == scope)
-                                    .rounded_md()
-                                    .px_2()
-                                    .py_1()
-                                    .text_size(px(12.))
-                                    .line_height(px(18.))
-                                    .bg(content(if self.scope == scope { selection } else { 0. }))
-                                    .text_color(content(if self.scope == scope { 1. } else { 0.5 }))
-                                    .hover(|s| s.bg(content(0.05)).text_color(content(1.)))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.select_scope(scope, cx);
-                                    }))
-                            }),
-                    ),
+                    .children(Scope::ALL.into_iter().enumerate().map(|(ix, (scope, _))| {
+                        let label = match scope {
+                            Scope::All => crate::i18n::text("search-all"),
+                            Scope::Conversations => crate::i18n::text("search-conversations"),
+                            Scope::Files => crate::i18n::text("search-files"),
+                            Scope::Projects => crate::i18n::text("search-projects"),
+                        };
+                        div()
+                            .id(("app-search-scope", ix))
+                            .debug_selector(move || format!("app-search-scope-{ix}"))
+                            .role(Role::Button)
+                            .aria_label(label.clone())
+                            .child(label.to_owned())
+                            .aria_selected(self.scope == scope)
+                            .rounded_md()
+                            .px_2()
+                            .py_1()
+                            .text_size(px(12.))
+                            .line_height(px(18.))
+                            .bg(content(if self.scope == scope { selection } else { 0. }))
+                            .text_color(content(if self.scope == scope { 1. } else { 0.5 }))
+                            .hover(|s| s.bg(content(0.05)).text_color(content(1.)))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.select_scope(scope, cx);
+                            }))
+                    })),
             )
             .child(if self.query.is_empty() {
                 empty_state()
@@ -974,7 +1005,7 @@ impl SearchView {
                 div()
                     .id("app-search-results")
                     .role(Role::ListBox)
-                    .aria_label("Search results")
+                    .aria_label(crate::i18n::text("search-search-results"))
                     .flex_1()
                     .min_h_0()
                     .p_1p5()
@@ -987,7 +1018,9 @@ impl SearchView {
                                 .py_1()
                                 .text_size(px(11.))
                                 .text_color(content(0.45))
-                                .child("Results limited to the first matches"),
+                                .child(crate::i18n::text(
+                                    "search-results-limited-to-the-first-matches",
+                                )),
                         )
                     })
                     .children(rows)
@@ -998,7 +1031,11 @@ impl SearchView {
                                 .py_1p5()
                                 .text_size(px(12.))
                                 .text_color(content(0.5))
-                                .child(self.error.clone().unwrap_or_else(|| "No results".into())),
+                                .child(
+                                    self.error
+                                        .clone()
+                                        .unwrap_or_else(|| crate::i18n::text("search-no-results")),
+                                ),
                         )
                     })
                     .into_any_element()
@@ -1014,7 +1051,7 @@ impl SearchView {
                     .pt_1()
                     .text_size(px(11.))
                     .text_color(content(0.4))
-                    .child("Showing the first matches")
+                    .child(crate::i18n::text("search-showing-the-first-matches"))
                     .into_any_element(),
             );
         }
@@ -1033,7 +1070,7 @@ impl SearchView {
                         .text_size(px(11.))
                         .font_weight(gpui::FontWeight::MEDIUM)
                         .text_color(content(0.42))
-                        .child(heading)
+                        .child(crate::i18n::text(heading))
                         .into_any_element(),
                 );
             }
@@ -1047,7 +1084,7 @@ impl SearchView {
             .key_context("Workspace")
             .debug_selector(|| "app-search".into())
             .role(Role::Dialog)
-            .aria_label("Search")
+            .aria_label(crate::i18n::text("search-search"))
             .w_full()
             .flex()
             .flex_col()
@@ -1116,62 +1153,63 @@ impl SearchView {
                     .pb(px(10.))
                     .border_b_1()
                     .border_color(content(0.07))
-                    .children(
-                        Scope::ALL
-                            .into_iter()
-                            .enumerate()
-                            .map(|(ix, (scope, label))| {
-                                let selected = self.scope == scope;
-                                let glyph = match scope {
-                                    Scope::All => "sparkles",
-                                    Scope::Conversations => "message-square",
-                                    Scope::Files => "file",
-                                    Scope::Projects => "folder",
-                                };
-                                div()
-                                    .id(("app-search-scope", ix))
-                                    .debug_selector(move || format!("app-search-scope-{ix}"))
-                                    .role(Role::Button)
-                                    .aria_label(label)
-                                    .aria_selected(selected)
-                                    .cursor_pointer()
-                                    .h(px(26.))
-                                    .px(px(10.))
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(6.))
-                                    .rounded_full()
-                                    .border_1()
-                                    .border_color(if selected {
-                                        accent_color().opacity(0.45)
-                                    } else {
-                                        content(0.08)
-                                    })
-                                    .bg(if selected {
-                                        accent_color().opacity(0.14)
-                                    } else {
-                                        content(0.)
-                                    })
-                                    .text_size(px(12.))
-                                    .text_color(content(if selected { 1. } else { 0.55 }))
-                                    .hover(|s| s.bg(content(0.05)).text_color(content(0.95)))
-                                    .child(icon(glyph, 12.).text_color(if selected {
-                                        accent_color()
-                                    } else {
-                                        content(0.45)
-                                    }))
-                                    .child(label)
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.select_scope(scope, cx);
-                                    }))
-                            }),
-                    ),
+                    .children(Scope::ALL.into_iter().enumerate().map(|(ix, (scope, _))| {
+                        let label = match scope {
+                            Scope::All => crate::i18n::text("search-all"),
+                            Scope::Conversations => crate::i18n::text("search-conversations"),
+                            Scope::Files => crate::i18n::text("search-files"),
+                            Scope::Projects => crate::i18n::text("search-projects"),
+                        };
+                        let selected = self.scope == scope;
+                        let glyph = match scope {
+                            Scope::All => "sparkles",
+                            Scope::Conversations => "message-square",
+                            Scope::Files => "file",
+                            Scope::Projects => "folder",
+                        };
+                        div()
+                            .id(("app-search-scope", ix))
+                            .debug_selector(move || format!("app-search-scope-{ix}"))
+                            .role(Role::Button)
+                            .aria_label(label.clone())
+                            .aria_selected(selected)
+                            .cursor_pointer()
+                            .h(px(26.))
+                            .px(px(10.))
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .rounded_full()
+                            .border_1()
+                            .border_color(if selected {
+                                accent_color().opacity(0.45)
+                            } else {
+                                content(0.08)
+                            })
+                            .bg(if selected {
+                                accent_color().opacity(0.14)
+                            } else {
+                                content(0.)
+                            })
+                            .text_size(px(12.))
+                            .text_color(content(if selected { 1. } else { 0.55 }))
+                            .hover(|s| s.bg(content(0.05)).text_color(content(0.95)))
+                            .child(icon(glyph, 12.).text_color(if selected {
+                                accent_color()
+                            } else {
+                                content(0.45)
+                            }))
+                            .child(label.to_owned())
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.select_scope(scope, cx);
+                            }))
+                    })),
             )
             .child(
                 div()
                     .id("app-search-results")
                     .role(Role::ListBox)
-                    .aria_label("Search results")
+                    .aria_label(crate::i18n::text("search-search-results"))
                     .h(px(400.))
                     .px(px(8.))
                     .py(px(6.))
@@ -1183,13 +1221,18 @@ impl SearchView {
                     .when(self.hits.is_empty() && !(loading && !suggesting), |d| {
                         d.child(empty_message(if suggesting {
                             match self.scope {
-                                Scope::Projects => "No projects yet".into(),
-                                _ => "Type to search conversations, files and projects".into(),
+                                Scope::Projects => crate::i18n::text("search-no-projects-yet"),
+                                _ => crate::i18n::text(
+                                    "search-type-to-search-conversations-files-and-projects",
+                                ),
                             }
                         } else {
-                            self.error
-                                .clone()
-                                .unwrap_or_else(|| format!("No results for “{}”", self.query))
+                            self.error.clone().unwrap_or_else(|| {
+                                crate::i18n::format(
+                                    "search-no-results-for",
+                                    &[("value", (self.query).to_string())],
+                                )
+                            })
                         }))
                     }),
             )
@@ -1205,14 +1248,25 @@ impl SearchView {
                     .gap(px(14.))
                     .text_size(px(11.))
                     .text_color(content(0.45))
-                    .child(hint(&["↑", "↓"], "Navigate"))
-                    .child(hint(&["↵"], "Open"))
-                    .child(hint(&["⇥"], "Switch scope"))
+                    .child(hint(&["↑", "↓"], &crate::i18n::text("search-navigate")))
+                    .child(hint(&["↵"], &crate::i18n::text("search-open")))
+                    .child(hint(&["⇥"], &crate::i18n::text("search-switch-scope")))
                     .child(div().flex_1())
                     .when(!suggesting && count > 0, |d| {
-                        d.child(format!(
-                            "{count} result{}",
-                            if count == 1 { "" } else { "s" }
+                        d.child(crate::i18n::format(
+                            "search-result-count",
+                            &[
+                                ("count", crate::system_format::unsigned((count) as u64)),
+                                (
+                                    "value1",
+                                    (if count == 1 {
+                                        String::new()
+                                    } else {
+                                        crate::i18n::text("search-result-count-s")
+                                    })
+                                    .to_string(),
+                                ),
+                            ],
                         ))
                     }),
             )
@@ -1225,6 +1279,73 @@ mod tests {
     use gpui::TestAppContext;
     use monocode_core::store::Store;
     use std::sync::Mutex;
+
+    #[gpui::test]
+    fn chinese_search_displays_and_matches_default_titles_without_changing_storage(
+        cx: &mut TestAppContext,
+    ) {
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::SimplifiedChinese);
+        let store = Arc::new(Mutex::new(
+            Store::open(std::path::Path::new(":memory:")).unwrap(),
+        ));
+        let mut summary = locked(&store).unwrap().create("codex", "/tmp").unwrap();
+        summary.has_messages = true;
+        let id = summary.id;
+        let view = cx.new(|cx| {
+            SearchView::new(
+                "/nonexistent-search-panel".into(),
+                store.clone(),
+                Sources {
+                    summaries: vec![summary.clone()],
+                    panel: true,
+                    ..Default::default()
+                },
+                cx,
+            )
+        });
+        view.update(cx, |view, cx| {
+            assert_eq!(view.suggestions()[0].title, "新建会话");
+            view.query = "新建".into();
+            view.rank(cx);
+            let hit = view
+                .hits
+                .iter()
+                .find(|hit| matches!(hit.target, Target::Conversation(_)))
+                .unwrap();
+            assert_eq!(hit.title, "新建会话");
+            assert!(!hit.highlights.is_empty());
+
+            let rows = [monocode_core::transcript::Row {
+                role: "user".into(),
+                text: "needle".into(),
+                first: true,
+                sent_at: None,
+            }];
+            view.local = search::messages(&summary, &rows, "needle", &AtomicBool::new(false));
+            view.query = "needle".into();
+            view.rank(cx);
+            assert_eq!(
+                view.hits
+                    .iter()
+                    .find(|hit| matches!(hit.target, Target::Message { .. }))
+                    .unwrap()
+                    .meta,
+                "新建会话"
+            );
+            assert_eq!(view.summaries[0].title, "New Codex session");
+        });
+        assert_eq!(
+            locked(&store)
+                .unwrap()
+                .sessions()
+                .unwrap()
+                .into_iter()
+                .find(|s| s.id == id)
+                .unwrap()
+                .title,
+            "New Codex session"
+        );
+    }
 
     struct TempDir(std::path::PathBuf);
     impl TempDir {
