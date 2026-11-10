@@ -9,16 +9,29 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
 };
 
+/// The stable placeholder stored for a newly created session.
+pub fn default_title(provider: Kind) -> String {
+    format!("New {} session", provider.label())
+}
+
+/// Stable stored title for a second-opinion session. Store this value and
+/// localize it only at display time; never persist a translated title.
+pub const SECOND_OPINION_TITLE: &str = "Second opinion";
+
+/// Whether a title is one of the stored default placeholders.
+pub fn is_default_title(title: &str, provider: &str) -> bool {
+    title == provider
+        || title == Kind::from_id(provider).label()
+        || title == default_title(Kind::from_id(provider))
+}
+
 /// Tauri's sessionDisplayTitle; persistence retains its canonical provider prefix.
 pub fn display_title<'a>(title: &'a str, provider: &str) -> &'a str {
     let prefix = format!("{provider} · ");
     if let Some(title) = title.strip_prefix(&prefix) {
         return title;
     }
-    if title == provider
-        || title == Kind::from_id(provider).label()
-        || title == format!("New {} session", Kind::from_id(provider).label())
-    {
+    if is_default_title(title, provider) {
         return "New session";
     }
     title

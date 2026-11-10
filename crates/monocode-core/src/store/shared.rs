@@ -588,9 +588,8 @@ impl Store {
         original: &str,
     ) -> Result<(Session, bool), String> {
         self.shared_writable()?;
-        let label = crate::provider::Kind::parse(provider)
-            .ok_or_else(|| format!("Unknown provider: {provider}"))?
-            .label();
+        let kind = crate::provider::Kind::parse(provider)
+            .ok_or_else(|| format!("Unknown provider: {provider}"))?;
         let id = self.shared_register(original)?;
         let exists: bool = sql(self.conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM sessions WHERE id=?1)",
@@ -611,7 +610,7 @@ impl Store {
             return Ok((existing, false));
         }
         let now = crate::time::now_ms().min(i64::MAX as u64) as i64;
-        let title = format!("New {label} session");
+        let title = crate::session_title::default_title(kind);
         sql(self.conn.execute("INSERT INTO sessions(id,cwd,harness,model,model_settings,runtime_mode,title,blocks_json,created_at,updated_at)
             VALUES(?1,?2,?3,?4,'{}','supervised',?5,'[]',?6,?6)",
             params![original,cwd,provider,format!("{provider}:default"),title,now]))?;

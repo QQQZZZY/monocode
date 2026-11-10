@@ -543,11 +543,9 @@ impl Store {
         }
 
         let updated_at = crate::response::now_ms();
-        let title = format!(
-            "New {} session",
+        let title = crate::session_title::default_title(
             crate::provider::Kind::parse(provider)
-                .ok_or_else(|| format!("Unknown provider: {provider}"))?
-                .label()
+                .ok_or_else(|| format!("Unknown provider: {provider}"))?,
         );
         self.conn
             .execute(
@@ -1160,6 +1158,13 @@ impl Store {
     }
     /// A late generated title cannot replace a manual rename or recreate a deleted session.
     pub fn replace_title(&self, id: i64, expected: &str, title: &str) -> Result<bool, String> {
+        if let Some(remote) = self.remote_session(id)? {
+            if remote.session_id.is_some() || remote.summary.title != expected {
+                return Ok(false);
+            }
+            self.patch_remote_session(id, serde_json::json!({"title": title}))?;
+            return Ok(true);
+        }
         if self.shared.is_some() {
             return self.shared_replace_title(id, expected, title);
         }
