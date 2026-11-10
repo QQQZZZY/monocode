@@ -787,7 +787,7 @@ pub(crate) fn body_selected(
         Part::Visual { caption, .. } => body
             .text_color(content(0.5))
             .child(if caption.is_empty() {
-                "Visual".to_owned()
+                crate::i18n::text("markdown-visual").to_owned()
             } else {
                 caption.clone()
             })

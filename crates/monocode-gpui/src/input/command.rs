@@ -107,8 +107,8 @@ impl Input {
     /// The compact composer in BtwSheet; Enter sends and Shift+Enter adds a line.
     pub(crate) fn side_question(cx: &mut Context<Self>) -> Self {
         let mut input = Self::new(cx);
-        input.label = "By-the-way question".into();
-        input.placeholder = "Ask a side question…".into();
+        input.label = crate::i18n::text("input-by-the-way-question").into();
+        input.placeholder = crate::i18n::text("input-ask-a-side-question").into();
         // `rows={1}`: the side composer has no workspace bar under it.
         input.min_height = 22.;
         input.height = 22.;

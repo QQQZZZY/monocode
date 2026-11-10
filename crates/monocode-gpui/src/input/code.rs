@@ -162,7 +162,7 @@ impl Input {
         input.code.as_mut().unwrap().wrap = cx
             .try_global::<crate::settings::Preferences>()
             .is_none_or(|p| p.file_word_wrap);
-        input.label = "File editor".into();
+        input.label = crate::i18n::text("input-file-editor").into();
         input.placeholder = "".into();
         input.font_size = 12.5;
         input.line_height = 20.;
@@ -427,7 +427,7 @@ impl Input {
             div()
                 .id("editor-completions")
                 .role(Role::List)
-                .aria_label("Autocomplete")
+                .aria_label(crate::i18n::text("input-autocomplete"))
                 .absolute()
                 .left(px(left))
                 .top(px(top))
@@ -1124,7 +1124,7 @@ impl Input {
                     d.child(
                         crate::right_panel::icon_action(
                             "stage-change",
-                            "Stage change",
+                            crate::i18n::text("input-stage-change"),
                             "plus",
                             true,
                         )
@@ -1137,7 +1137,7 @@ impl Input {
                 .child(
                     crate::right_panel::icon_action(
                         "revert-change",
-                        "Revert change",
+                        crate::i18n::text("input-revert-change"),
                         "rotate-ccw",
                         true,
                     )

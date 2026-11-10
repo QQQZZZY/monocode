@@ -267,15 +267,19 @@ impl RenderOnce for Diagram {
                 size.width.0 as f32 / size.height.0 as f32
             });
         let mut status = match &preview.result {
-            None => Some("Rendering diagram…".to_owned()),
-            Some(Err(error)) => Some(format!("Unable to preview Mermaid: {error}")),
+            None => Some(crate::i18n::text("markdown-rendering-diagram")),
+            Some(Err(error)) => Some(crate::i18n::format(
+                "markdown-unable-to-preview-mermaid",
+                &[("error", (error).to_string())],
+            )),
             Some(Ok(_)) => None,
         };
         let media = if show_source {
             let fence = source_preview(&self.fence);
             if !Arc::ptr_eq(&fence, &self.fence) {
-                status =
-                    Some("Source preview is truncated. Copy includes the complete source.".into());
+                status = Some(crate::i18n::text(
+                    "markdown-source-preview-is-truncated-copy-includes-the-complete",
+                ));
             }
             div()
                 .id("mermaid-source")
@@ -298,7 +302,10 @@ impl RenderOnce for Diagram {
                 .inset_0()
                 .debug_selector(|| "mermaid-image".into())
                 .role(Role::Image)
-                .aria_label(format!("Mermaid diagram\n{}", self.fence.code))
+                .aria_label(crate::i18n::format(
+                    "markdown-mermaid-diagram-code",
+                    &[("value1", (self.fence.code).to_string())],
+                ))
                 .size_full()
                 .object_fit(gpui::ObjectFit::Contain)
                 .into_any_element()
@@ -342,13 +349,17 @@ impl RenderOnce for Diagram {
                                 .debug_selector(|| "mermaid-toggle".into())
                                 .role(Role::Button)
                                 .aria_label(if show_source {
-                                    "Show diagram"
+                                    crate::i18n::text("markdown-show-diagram")
                                 } else {
-                                    "Show source"
+                                    crate::i18n::text("markdown-show-source")
                                 })
                                 .cursor_pointer()
                                 .hover(|s| s.text_color(content(1.)))
-                                .child(if show_source { "Diagram" } else { "Source" })
+                                .child(if show_source {
+                                    crate::i18n::text("markdown-diagram")
+                                } else {
+                                    crate::i18n::text("markdown-source")
+                                })
                                 .on_click(move |_, _, cx| {
                                     state.update(cx, |state, cx| {
                                         state.source = !state.source;
@@ -361,7 +372,11 @@ impl RenderOnce for Diagram {
                     .child(
                         icon_button(
                             "mermaid-copy",
-                            if is_copied { "Copied" } else { "Copy code" },
+                            if is_copied {
+                                crate::i18n::text("markdown-copied")
+                            } else {
+                                crate::i18n::text("markdown-copy-code")
+                            },
                             if is_copied { "check" } else { "copy" },
                         )
                         .debug_selector(|| "mermaid-copy".into())
