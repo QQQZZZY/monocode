@@ -8,6 +8,8 @@ use std::collections::HashMap;
 #[serde(default)]
 pub(crate) struct Preferences {
     // General
+    #[serde(deserialize_with = "deserialize_language")]
+    pub language: String,
     pub sounds: bool,
     pub notifications: bool,
     pub project_notifications: serde_json::Value,
@@ -107,6 +109,13 @@ pub(crate) struct Preferences {
     pub keybindings: HashMap<String, Option<String>>,
 }
 
+fn deserialize_language<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<String, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(value.as_str().unwrap_or("system").to_owned())
+}
+
 pub(crate) const UI_SCALE_PERCENTS: [u32; 16] = [
     50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200,
 ];
@@ -114,6 +123,7 @@ pub(crate) const UI_SCALE_PERCENTS: [u32; 16] = [
 impl Default for Preferences {
     fn default() -> Self {
         Self {
+            language: "system".into(),
             sounds: true,
             notifications: false,
             project_notifications: serde_json::json!({}),
@@ -191,6 +201,14 @@ impl Default for Preferences {
 }
 
 impl Preferences {
+    pub(crate) fn language(&self) -> &str {
+        match self.language.as_str() {
+            "en" => "en",
+            "zh-CN" => "zh-CN",
+            _ => "system",
+        }
+    }
+
     /// "bottom", "panel" or "title".
     pub(crate) fn terminal_placement(&self) -> &str {
         match self.terminal_placement.as_str() {
@@ -293,6 +311,29 @@ impl Preferences {
 #[cfg(test)]
 mod decoration_tests {
     use super::Preferences;
+
+    #[test]
+    fn language_preference_defaults_and_round_trips() {
+        let mut prefs: Preferences = serde_json::from_str("{}").unwrap();
+        assert_eq!(prefs.language(), "system");
+        prefs.language = "en".into();
+        let saved = serde_json::to_string(&prefs).unwrap();
+        let restored: Preferences = serde_json::from_str(&saved).unwrap();
+        assert_eq!(restored.language(), "en");
+        prefs.language = "zh-CN".into();
+        let saved = serde_json::to_string(&prefs).unwrap();
+        let restored: Preferences = serde_json::from_str(&saved).unwrap();
+        assert_eq!(restored.language(), "zh-CN");
+        let unknown: Preferences = serde_json::from_str(r#"{"language":"unsupported"}"#).unwrap();
+        assert_eq!(unknown.language(), "system");
+        for invalid in ["null", "42", "{}"] {
+            let restored: Preferences =
+                serde_json::from_str(&format!(r#"{{"language":{invalid},"theme":"light"}}"#))
+                    .unwrap();
+            assert_eq!(restored.language(), "system");
+            assert_eq!(restored.theme, "light");
+        }
+    }
 
     #[test]
     fn decoration_requests_are_scoped_to_the_wayland_backend() {
