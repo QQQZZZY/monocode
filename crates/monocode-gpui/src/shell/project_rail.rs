@@ -203,7 +203,7 @@ impl Shell {
                             .debug_selector(|| "project-rail-resize".into())
                             .group("resize-handle")
                             .role(Role::Splitter)
-                            .aria_label("Resize project sidebar")
+                            .aria_label(crate::i18n::text("shell-resize-project-sidebar"))
                             .absolute()
                             .right(px(-3.5))
                             .top_0()
@@ -278,7 +278,7 @@ impl Shell {
                 .id("project-rail")
                 .debug_selector(|| "project-rail".into())
                 .role(Role::Navigation)
-                .aria_label("Project shortcuts")
+                .aria_label(crate::i18n::text("shell-project-shortcuts"))
                 .size_full()
                 .flex()
                 .flex_col()
@@ -289,11 +289,15 @@ impl Shell {
                 .child(div().min_h(px(8.)).flex_1())
                 .child(
                     div().w_full().py(px(6.)).flex().justify_center().child(
-                        icon_button("rail-settings", "Settings", "settings")
-                            .size(px(32.))
-                            .on_click(cx.listener(|this, _, w, cx| {
-                                this.open_settings(crate::settings::Section::General, w, cx)
-                            })),
+                        icon_button(
+                            "rail-settings",
+                            crate::i18n::text("shell-settings"),
+                            "settings",
+                        )
+                        .size(px(32.))
+                        .on_click(cx.listener(|this, _, w, cx| {
+                            this.open_settings(crate::settings::Section::General, w, cx)
+                        })),
                     ),
                 )
                 .into_any();
@@ -310,7 +314,7 @@ impl Shell {
             .id("project-rail")
             .debug_selector(|| "project-rail".into())
             .role(Role::Navigation)
-            .aria_label("Projects")
+            .aria_label(crate::i18n::text("shell-projects"))
             .size_full()
             .flex()
             .flex_col()
@@ -434,7 +438,9 @@ impl Shell {
                 .text_size(px(11.))
                 .line_height(px(13.75))
                 .text_color(content(0.4))
-                .when(!compact, |d| d.child("No projects yet"))
+                .when(!compact, |d| {
+                    d.child(crate::i18n::text("shell-no-projects-yet"))
+                })
                 .into_any(),
         }
     }
@@ -465,14 +471,24 @@ impl Shell {
                         .text_size(px(12.))
                         .line_height(px(20.))
                         .text_color(content(0.5))
-                        .child(label),
+                        .child(crate::i18n::text(match label {
+                            "Pinned" => "shell-pinned",
+                            "Groups" => "shell-groups",
+                            "Projects" => "shell-projects",
+                            _ => unreachable!(),
+                        })),
                 )
             })
             .when(label == "Groups", |d| {
                 d.child(
-                    icon_button("rail-new-project-group", "New project group", "folder-tree")
-                        .size(px(20.))
-                        .on_click(cx.listener(|this, e: &gpui::ClickEvent, w, cx| {
+                    icon_button(
+                        "rail-new-project-group",
+                        crate::i18n::text("shell-new-project-group"),
+                        "folder-tree",
+                    )
+                    .size(px(20.))
+                    .on_click(cx.listener(
+                        |this, e: &gpui::ClickEvent, w, cx| {
                             let id = this.create_project_rail_group(None, cx);
                             this.open_menu(
                                 MenuTarget::ProjectRailGroup(id),
@@ -480,32 +496,37 @@ impl Shell {
                                 w,
                                 cx,
                             );
-                        })),
+                        },
+                    )),
                 )
             })
             .when(label == "Projects", |d| {
                 let anchor = AnchorSlot::default();
                 d.child(
-                    icon_button("rail-open-project", "Open project", "plus")
-                        .debug_selector(|| "rail-open-project".into())
-                        .child(anchor.probe())
-                        .aria_expanded(self.menu_open(&MenuTarget::ProjectRailAdd))
-                        .size(px(20.))
-                        .when(self.menu_open(&MenuTarget::ProjectRailAdd), |d| {
-                            d.bg(content(0.08)).text_color(content(1.))
-                        })
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            if this.menu_open(&MenuTarget::ProjectRailAdd) {
-                                this.close_menu(cx);
-                            } else {
-                                this.open_menu(
-                                    MenuTarget::ProjectRailAdd,
-                                    Anchor::Slot(anchor.clone()),
-                                    window,
-                                    cx,
-                                );
-                            }
-                        })),
+                    icon_button(
+                        "rail-open-project",
+                        crate::i18n::text("shell-open-project"),
+                        "plus",
+                    )
+                    .debug_selector(|| "rail-open-project".into())
+                    .child(anchor.probe())
+                    .aria_expanded(self.menu_open(&MenuTarget::ProjectRailAdd))
+                    .size(px(20.))
+                    .when(self.menu_open(&MenuTarget::ProjectRailAdd), |d| {
+                        d.bg(content(0.08)).text_color(content(1.))
+                    })
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        if this.menu_open(&MenuTarget::ProjectRailAdd) {
+                            this.close_menu(cx);
+                        } else {
+                            this.open_menu(
+                                MenuTarget::ProjectRailAdd,
+                                Anchor::Slot(anchor.clone()),
+                                window,
+                                cx,
+                            );
+                        }
+                    })),
                 )
             })
             .into_any()
@@ -527,7 +548,7 @@ impl Shell {
                     .id("rail-settings")
                     .debug_selector(|| "rail-settings".into())
                     .role(Role::Button)
-                    .aria_label("Settings")
+                    .aria_label(crate::i18n::text("shell-settings"))
                     .cursor_pointer()
                     .h(px(32.))
                     .px_2()
@@ -541,17 +562,18 @@ impl Shell {
                     .hover(|s| s.bg(content(0.1)).text_color(content(1.)))
                     .child(icon("settings", 16.).text_color(content(0.35)))
                     .when(!compact, |d| {
-                        d.child(div().flex_1().child("Settings")).child(
-                            div()
-                                .font_weight(FontWeight::NORMAL)
-                                .text_size(px(11.))
-                                .text_color(content(0.4))
-                                .child(if cfg!(target_os = "macos") {
-                                    "⌘,"
-                                } else {
-                                    "Ctrl ,"
-                                }),
-                        )
+                        d.child(div().flex_1().child(crate::i18n::text("shell-settings")))
+                            .child(
+                                div()
+                                    .font_weight(FontWeight::NORMAL)
+                                    .text_size(px(11.))
+                                    .text_color(content(0.4))
+                                    .child(if cfg!(target_os = "macos") {
+                                        "⌘,"
+                                    } else {
+                                        "Ctrl ,"
+                                    }),
+                            )
                     })
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.open_settings(crate::settings::Section::General, window, cx)
@@ -576,7 +598,7 @@ impl Shell {
                         .debug_selector(|| "sidebar-search-field".into())
                         .group("rail-search")
                         .role(Role::Button)
-                        .aria_label("Search")
+                        .aria_label(crate::i18n::text("shell-search"))
                         .cursor_pointer()
                         .h(px(32.))
                         .mb(px(2.))
@@ -599,7 +621,12 @@ impl Shell {
                         .text_color(content(0.5))
                         .hover(|s| s.bg(content(0.1)).text_color(content(1.)))
                         .child(icon("search", 16.).text_color(content(0.35)))
-                        .child(div().flex_1().min_w_0().child("Search"))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .child(crate::i18n::text("shell-search")),
+                        )
                         .child(
                             div()
                                 .text_size(px(11.))
@@ -630,7 +657,7 @@ impl Shell {
                     _ => true,
                 })
                 .map(|(label, glyph)| {
-                    let selected = self.app_view_label() == Some(label);
+                    let selected = self.app_view_id() == Some(label);
                     let unread = label == "Inbox"
                         && self
                             .inbox
@@ -640,7 +667,16 @@ impl Shell {
                         .id(label)
                         .debug_selector(move || format!("sidebar-navigation-{label}"))
                         .role(Role::Button)
-                        .aria_label(if unread { "Inbox, new items" } else { label })
+                        .aria_label(if unread {
+                            crate::i18n::text("shell-inbox-new-items")
+                        } else {
+                            crate::i18n::text(match label {
+                                "Inbox" => "workspace-inbox",
+                                "Notes" => "workspace-notes",
+                                "Automations" => "workspace-automations",
+                                _ => unreachable!(),
+                            })
+                        })
                         .aria_selected(selected)
                         .cursor_pointer()
                         .h(px(32.))
@@ -659,7 +695,13 @@ impl Shell {
                         } else {
                             0.35
                         })))
-                        .child(div().flex_1().child(label))
+                        .child(div().flex_1().child(crate::i18n::text(match label {
+                            "New" => "shell-new",
+                            "Inbox" => "workspace-inbox",
+                            "Notes" => "workspace-notes",
+                            "Automations" => "workspace-automations",
+                            _ => unreachable!(),
+                        })))
                         .when(unread, |d| {
                             d.child(div().size(px(8.)).rounded_full().bg(accent_color()))
                         })
@@ -721,14 +763,25 @@ impl Shell {
         let (picker_label, picker_mark) = active_mono.map_or_else(
             || {
                 (
-                    format!(
-                        "Switch project, {}",
-                        self.project_label(&self.workspace.project)
+                    crate::i18n::format(
+                        "shell-switch-project-3",
+                        &[(
+                            "value",
+                            (self.project_label(&self.workspace.project)).to_string(),
+                        )],
                     ),
                     self.project_mark(&self.workspace.project, 16.),
                 )
             },
-            |(name, mark)| (format!("Switch project, current mono {name}"), mark),
+            |(name, mark)| {
+                (
+                    crate::i18n::format(
+                        "shell-switch-project-current-mono",
+                        &[("name", (name).to_string())],
+                    ),
+                    mark,
+                )
+            },
         );
         div()
             .w_full()
@@ -769,10 +822,11 @@ impl Shell {
                     })),
             )
             .children(tabs.into_iter().map(|tab| {
-                let (label, glyph) = match tab {
-                    ClassicSidebarTab::Sessions => ("Sessions", "chatting"),
-                    ClassicSidebarTab::Files => ("Explorer", "file-script"),
-                    ClassicSidebarTab::Changes => ("Changes", "git-branch"),
+                let label = tab.label();
+                let glyph = match tab {
+                    ClassicSidebarTab::Sessions => "chatting",
+                    ClassicSidebarTab::Files => "file-script",
+                    ClassicSidebarTab::Changes => "git-branch",
                 };
                 let selected = workspace_active
                     && self.workspace.sidebar_visible
@@ -821,16 +875,20 @@ impl Shell {
                 }))
             }))
             .child(
-                icon_button("rail-global-search", "Search", "search")
-                    .size(px(32.))
-                    .when(self.app_search.is_some(), |d| d.bg(content(0.1)))
-                    .on_click(cx.listener(|this, _, w, cx| {
-                        if this.app_search.is_some() {
-                            this.close_app_search(w, cx)
-                        } else {
-                            this.focus_search(w, cx)
-                        }
-                    })),
+                icon_button(
+                    "rail-global-search",
+                    crate::i18n::text("shell-search"),
+                    "search",
+                )
+                .size(px(32.))
+                .when(self.app_search.is_some(), |d| d.bg(content(0.1)))
+                .on_click(cx.listener(|this, _, w, cx| {
+                    if this.app_search.is_some() {
+                        this.close_app_search(w, cx)
+                    } else {
+                        this.focus_search(w, cx)
+                    }
+                })),
             )
             .children(
                 [
@@ -850,7 +908,7 @@ impl Shell {
                 .into_iter()
                 .filter(|(_, v)| *v)
                 .map(|(view, _)| {
-                    let selected = self.app_view_label() == Some(view.label());
+                    let selected = self.app_view_id() == Some(view.id());
                     let glyph = if view == workspace::AppView::Notes {
                         "sticky-note"
                     } else {
@@ -880,7 +938,7 @@ impl Shell {
                         )
                     })
                     .on_click(cx.listener(move |this, _, w, cx| {
-                        if this.app_view_label() == Some(view.label()) {
+                        if this.app_view_id() == Some(view.id()) {
                             this.close_app_view(w, cx);
                         } else {
                             match view {
@@ -1013,7 +1071,7 @@ impl Shell {
                             .child(
                                 icon_button(
                                     "rail-group-options",
-                                    "Group options",
+                                    crate::i18n::text("shell-group-options"),
                                     "more-horizontal",
                                 )
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -1204,7 +1262,10 @@ impl Shell {
                     .debug_selector(move || format!("rail-project-button-{ix}"))
                     .group("project-rail-row")
                     .role(Role::Button)
-                    .aria_label(format!("Switch project, {label}"))
+                    .aria_label(crate::i18n::format(
+                        "shell-switch-project",
+                        &[("label", label.to_string())],
+                    ))
                     .aria_description(path.clone())
                     .aria_selected(selected)
                     .cursor_pointer()
@@ -1290,9 +1351,9 @@ impl Shell {
                                     icon_button(
                                         "rail-pin-project",
                                         if pinned {
-                                            "Unpin project"
+                                            crate::i18n::text("shell-unpin-project")
                                         } else {
-                                            "Pin project"
+                                            crate::i18n::text("shell-pin-project")
                                         },
                                         if pinned { "pin-off" } else { "pin" },
                                     )
@@ -1318,7 +1379,7 @@ impl Shell {
                                 .child(
                                     icon_button(
                                         "rail-project-options",
-                                        "Project options",
+                                        crate::i18n::text("shell-project-options"),
                                         "more-horizontal",
                                     )
                                     .on_mouse_down(MouseButton::Left, |_, _, cx| {
@@ -1424,7 +1485,7 @@ impl Shell {
             .project_rail_groups
             .push(workspace::ProjectRailGroup {
                 id: id.clone(),
-                name: "New group".into(),
+                name: crate::i18n::text("shell-new-group-2"),
                 ..Default::default()
             });
         if let Some(path) = path {

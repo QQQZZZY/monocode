@@ -31,6 +31,9 @@ impl Conversation {
     pub(crate) fn display_title(&self) -> String {
         display_title(&self.summary.title, &self.summary.provider).replace('\n', " ")
     }
+    pub(crate) fn localized_title(&self) -> String {
+        crate::i18n::session_title(&self.summary.title, &self.summary.provider)
+    }
     pub(crate) fn rename(&mut self, title: String, cx: &mut Context<Self>) {
         self.cancel_title_generation();
         self.summary.title = title;
@@ -43,18 +46,13 @@ impl Conversation {
         }
     }
     pub(super) fn generate_title(&mut self, message: &str, cx: &mut Context<Self>) {
-        if self.summary.has_messages
-            || self.settings.mono.is_some()
-            || self.summary.title
-                != format!(
-                    "New {} session",
-                    Kind::from_id(&self.summary.provider).label()
-                )
-        {
+        if self.summary.has_messages || self.settings.mono.is_some() {
             return;
         }
         self.cancel_title_generation();
         let placeholder = self.summary.title.clone();
+        let should_title =
+            monocode_core::session_title::is_default_title(&placeholder, &self.summary.provider);
         let seed = message
             .split_whitespace()
             .collect::<Vec<_>>()
@@ -65,7 +63,9 @@ impl Conversation {
         if seed.is_empty() {
             return;
         }
-        self.summary.title = seed.clone();
+        if should_title {
+            self.summary.title = seed.clone();
+        }
         let cancel = Arc::new(AtomicBool::new(false));
         self.title_cancel = Some(cancel.clone());
         let text = self.background_text_model(cx);
@@ -82,9 +82,10 @@ impl Conversation {
         let work = cx.background_executor().spawn(async move {
             // Persist the fallback before generation so a fast response cannot
             // race its initial write, and never overwrite a saved manual name.
-            let titled = locked(&store)
-                .and_then(|s| s.replace_title(id, &placeholder, &expected))
-                .unwrap_or(false);
+            let titled = should_title
+                && locked(&store)
+                    .and_then(|s| s.replace_title(id, &placeholder, &expected))
+                    .unwrap_or(false);
             // GPUI unit tests use synthetic conversations. Live-provider checks
             // are opt-in; the core runner is tested with isolated CLI fixtures.
             let generated = if !titled || cfg!(test) {
@@ -189,6 +190,10 @@ mod tests {
         for title in ["codex", "Codex", "New Codex session"] {
             assert_eq!(display_title(title, "codex"), "New session");
         }
+        assert!(!monocode_core::session_title::is_default_title(
+            "New session",
+            "codex"
+        ));
     }
     #[gpui::test]
     fn late_generated_titles_preserve_manual_names_and_conversation_history(
@@ -264,5 +269,101 @@ mod tests {
             view.read_with(cx, |v, _| v.summary.work_item.clone()),
             manual
         );
+    }
+
+    #[gpui::test]
+    fn first_prompt_uses_stored_placeholder_in_each_ui_language(cx: &mut gpui::TestAppContext) {
+        let language = std::env::var("MONOCODE_TEST_LANGUAGE").unwrap_or_else(|_| "en".into());
+        crate::i18n::configure_thread_for_test(crate::i18n::resolved_language(&language));
+        let store = Arc::new(std::sync::Mutex::new(
+            monocode_core::store::Store::open(Path::new(":memory:")).unwrap(),
+        ));
+        let prompt = "Review https://github.com/acme/app/pull/1142";
+        for (switched, legacy) in [(false, false), (true, false), (false, true), (true, true)] {
+            let mut summary = locked(&store).unwrap().create("codex", "/tmp").unwrap();
+            if legacy {
+                summary.title = "Codex".into();
+                locked(&store)
+                    .unwrap()
+                    .title(summary.id, &summary.title)
+                    .unwrap();
+            }
+            let id = summary.id;
+            let view = cx.new(|cx| Conversation::new(summary, store.clone(), cx));
+            view.update(cx, |v, cx| {
+                assert_eq!(v.display_title(), "New session");
+                assert_eq!(
+                    v.localized_title(),
+                    if language == "zh-CN" {
+                        "新建会话"
+                    } else {
+                        "New session"
+                    }
+                );
+                if switched {
+                    assert!(
+                        v.apply_model_pick(&crate::pickers::ModelPicked(Kind::Claude, None), cx)
+                    );
+                    assert_eq!(v.summary.title, "New Claude Code session");
+                }
+            });
+            let saved = locked(&store)
+                .unwrap()
+                .sessions()
+                .unwrap()
+                .into_iter()
+                .find(|s| s.id == id)
+                .unwrap();
+            assert_eq!(
+                saved.title,
+                if switched {
+                    "New Claude Code session"
+                } else if legacy {
+                    "Codex"
+                } else {
+                    "New Codex session"
+                }
+            );
+            view.update(cx, |v, cx| v.generate_title(prompt, cx));
+            cx.run_until_parked();
+            let saved = locked(&store)
+                .unwrap()
+                .sessions()
+                .unwrap()
+                .into_iter()
+                .find(|s| s.id == id)
+                .unwrap();
+            let (title, linked) = view.read_with(cx, |v, _| {
+                (v.summary.title.clone(), v.summary.work_item.clone())
+            });
+            assert_eq!(title, prompt.chars().take(42).collect::<String>());
+            assert_eq!(saved.title, title);
+            assert_eq!(linked.as_ref().map(|item| item.number), Some(1142));
+            assert_eq!(saved.work_item, linked);
+        }
+
+        let mut summary = locked(&store).unwrap().create("codex", "/tmp").unwrap();
+        summary.title = "My manual title".into();
+        locked(&store)
+            .unwrap()
+            .title(summary.id, &summary.title)
+            .unwrap();
+        let id = summary.id;
+        let view = cx.new(|cx| Conversation::new(summary, store.clone(), cx));
+        view.update(cx, |v, cx| {
+            assert!(v.apply_model_pick(&crate::pickers::ModelPicked(Kind::Claude, None), cx));
+            assert_eq!(v.summary.title, "My manual title");
+            v.generate_title(prompt, cx);
+        });
+        cx.run_until_parked();
+        let saved = locked(&store)
+            .unwrap()
+            .sessions()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.id == id)
+            .unwrap();
+        assert_eq!(saved.title, "My manual title");
+        assert_eq!(saved.work_item.as_ref().map(|item| item.number), Some(1142));
     }
 }

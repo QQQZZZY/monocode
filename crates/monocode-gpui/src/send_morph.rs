@@ -27,7 +27,7 @@ const ROLL: Duration = Duration::from_millis(240);
 /// What the button offers right now.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) struct Face {
-    pub label: &'static str,
+    pub label_key: &'static str,
     pub glyph: &'static str,
     /// A stop square instead of the glyph.
     pub stop: bool,
@@ -39,16 +39,16 @@ impl Face {
     /// Where the action sits in the roll, so moving to a later one rises
     /// and moving back drops.
     fn rank(&self) -> i32 {
-        match (self.stop, self.label) {
+        match (self.stop, self.label_key) {
             (true, _) => 4,
-            (_, "Queue") => 1,
-            (_, "Steer") => 2,
-            (_, "Save draft") => 3,
+            (_, "composer-send-queue") => 1,
+            (_, "composer-send-steer") => 2,
+            (_, "composer-send-draft") => 3,
             _ => 0,
         }
     }
     fn same_line(&self, other: &Face) -> bool {
-        self.label == other.label && self.glyph == other.glyph && self.stop == other.stop
+        self.label_key == other.label_key && self.glyph == other.glyph && self.stop == other.stop
     }
 }
 
@@ -76,7 +76,8 @@ fn ease(start: Instant, length: Duration, now: Instant) -> f32 {
 }
 
 /// The pill's width for `label`, measured in the window's font.
-pub(crate) fn expanded_width(label: &str, window: &Window) -> f32 {
+pub(crate) fn expanded_width(key: &str, window: &Window) -> f32 {
+    let label = crate::i18n::text(key);
     let style = window.text_style();
     let run = gpui::TextRun {
         len: label.len(),
@@ -301,7 +302,7 @@ fn line(face: Face, ink: Hsla, open: f32) -> gpui::Div {
                 .font_weight(gpui::FontWeight::MEDIUM)
                 .text_color(ink)
                 .opacity(open)
-                .child(face.label),
+                .child(crate::i18n::text(face.label_key)),
         )
 }
 
@@ -342,7 +343,7 @@ pub(crate) fn button(
         .id(id)
         .debug_selector(|| id.into())
         .role(Role::Button)
-        .aria_label(face.label)
+        .aria_label(crate::i18n::text(face.label_key))
         .group(id)
         .cursor_pointer()
         .flex_shrink_0()

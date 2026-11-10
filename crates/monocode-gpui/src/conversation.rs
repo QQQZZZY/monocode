@@ -373,7 +373,7 @@ impl Conversation {
             .unwrap_or_else(|| cwd.to_owned());
         let linked =
             self.settings.worktree_cwd.is_some() || self.git.as_ref().is_some_and(|git| git.linked);
-        let detail = |label: &'static str, value: String| {
+        let detail = |label: String, value: String| {
             div()
                 .flex()
                 .gap_2()
@@ -428,15 +428,15 @@ impl Conversation {
                                 content(0.45)
                             })
                             .child(if self.needs_approval() {
-                                "Needs approval".to_owned()
+                                crate::i18n::text("conversation-needs-approval")
                             } else if self.busy {
-                                "Working…".to_owned()
+                                crate::i18n::text("conversation-working")
                             } else if done {
-                                "Done".to_owned()
+                                crate::i18n::text("conversation-done").to_owned()
                             } else if self.loading {
-                                "Loading…".to_owned()
+                                crate::i18n::text("conversation-loading")
                             } else {
-                                monocode_core::time::relative(
+                                crate::i18n::relative(
                                     self.summary.updated_at,
                                     monocode_core::time::now_ms(),
                                 )
@@ -450,7 +450,7 @@ impl Conversation {
                     .line_height(px(20.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(content(1.))
-                    .child(self.display_title()),
+                    .child(self.localized_title()),
             )
             .child(
                 div()
@@ -464,10 +464,14 @@ impl Conversation {
                     .flex_col()
                     .gap_1p5()
                     .when_some(self.branch.clone(), |d, branch| {
-                        d.child(detail("Branch", branch))
+                        d.child(detail(crate::i18n::text("conversation-branch"), branch))
                     })
                     .child(detail(
-                        if linked { "Worktree" } else { "Directory" },
+                        if linked {
+                            crate::i18n::text("conversation-worktree")
+                        } else {
+                            crate::i18n::text("conversation-directory")
+                        },
                         directory,
                     )),
             )
@@ -626,7 +630,7 @@ impl Conversation {
             orchestration_plan: None,
             orchestration_error: None,
             orchestration_progress: None,
-            status: "Loading conversation…".into(),
+            status: crate::i18n::text("conversation-loading-conversation"),
             loaded: false,
             history_unloaded: false,
             history_actions: Default::default(),
@@ -916,7 +920,8 @@ impl Conversation {
             return;
         }
         if self.settings.worktree_removed {
-            self.status = "Select a branch or worktree to continue this conversation.".into();
+            self.status =
+                crate::i18n::text("conversation-select-a-branch-or-worktree-to-continue-this");
             cx.notify();
             return;
         }
@@ -1029,9 +1034,9 @@ impl Conversation {
         let mode = self.settings.orchestrator || self.settings.plan || self.settings.operator;
         Some(
             if self.busy && !mode && self.steers_follow_up(alternate, cx) {
-                ("Steer", "queue-steer")
+                ("composer-send-steer", "queue-steer")
             } else {
-                ("Queue", "queue-list")
+                ("composer-send-queue", "queue-list")
             },
         )
     }
@@ -1170,7 +1175,7 @@ impl Conversation {
         self.preparing_worktree = settings.new_worktree && settings.worktree_cwd.is_none();
         if self.preparing_worktree {
             settings.worktree_base = settings.worktree_base.or(self.branch.clone());
-            self.status = "Creating worktree…".into();
+            self.status = crate::i18n::text("conversation-creating-worktree");
         }
         if settings.mono.is_none()
             && settings
@@ -1447,12 +1452,12 @@ impl Conversation {
                                 },
                             );
                             this.questions.push_back((card, vec![events, keep_open]));
-                            this.status = "Waiting for your answer".into();
+                            this.status = crate::i18n::text("conversation-waiting-for-your-answer");
                         }
                         if !finished && !this.approvals.is_empty() {
-                            this.status = "Waiting for approval".into();
+                            this.status = crate::i18n::text("conversation-waiting-for-approval");
                         } else if !finished && !this.questions.is_empty() {
-                            this.status = "Waiting for your answer".into();
+                            this.status = crate::i18n::text("conversation-waiting-for-your-answer");
                         }
                         if finished {
                             if this.is_remote() {
@@ -1489,7 +1494,7 @@ impl Conversation {
                             if let Some(id) = this.follow_ups.sending.clone() {
                                 this.fail_follow_up(
                                     &id,
-                                    "The turn ended before this message was accepted".into(),
+                                    crate::i18n::text("conversation-the-turn-ended-before-this-message-was-accepted"),
                                     cx,
                                 );
                             }
@@ -1657,7 +1662,13 @@ impl Conversation {
                         .as_nanos() as u64,
                     title: {
                         let title = self.display_title();
-                        if *selection || title.trim().is_empty() || title == "New session" {
+                        if *selection
+                            || title.trim().is_empty()
+                            || monocode_core::session_title::is_default_title(
+                                &self.summary.title,
+                                &self.summary.provider,
+                            )
+                        {
                             monocode_core::notes::title(text)
                         } else {
                             title
@@ -1747,7 +1758,7 @@ impl Conversation {
         self.summary = summary;
         self.settings = settings;
         self.context = None;
-        self.status = "Worktree deleted".into();
+        self.status = crate::i18n::text("conversation-worktree-deleted");
         self.refresh_git(cx);
         cx.emit(SessionChanged);
         cx.notify();
@@ -1810,7 +1821,7 @@ impl Conversation {
     }
     fn prepare_worktree(&mut self, cx: &mut Context<Self>) {
         self.preparing_worktree = true;
-        self.status = "Creating worktree…".into();
+        self.status = crate::i18n::text("conversation-creating-worktree");
         let cwd = self.summary.cwd.clone();
         let base = self
             .settings
@@ -1992,19 +2003,11 @@ impl Conversation {
         let id = self.summary.id;
         let provider = self.summary.provider.clone();
         let remote = self.is_remote();
-        let title = (!self.summary.has_messages).then(|| self.summary.title.clone());
+        // Title writes have their own ordering; a late settings save must not overwrite them.
         cx.background_executor()
             .spawn(async move {
-                let saved = locked(&store).and_then(|s| {
-                    s.configure_agent(id, &provider, &settings)?;
-                    if let Some(title) = title
-                        && s.agent_settings(id)?
-                            .is_some_and(|saved| saved.revision == settings.revision)
-                    {
-                        s.title(id, &title)?;
-                    }
-                    Ok(())
-                });
+                let saved =
+                    locked(&store).and_then(|s| s.configure_agent(id, &provider, &settings));
                 if saved.is_ok() && remote {
                     let _ = crate::runtime::remote::configure_saved(store, id);
                 }
@@ -2147,11 +2150,11 @@ impl Conversation {
     fn effort_label(&self) -> SharedString {
         effort_name(self.selected_effort().unwrap_or("default")).into()
     }
-    fn effort_setting_label(&self) -> &'static str {
+    fn effort_setting_label(&self) -> String {
         if Kind::from_id(&self.summary.provider) == Kind::Codex {
-            "Reasoning"
+            crate::i18n::text("conversation-reasoning")
         } else {
-            "Effort"
+            crate::i18n::text("conversation-effort")
         }
     }
     fn selected_tier(&self) -> Option<&str> {
@@ -2269,20 +2272,36 @@ impl Conversation {
             let restored = reverting
                 .then(|| self.settings.pending_provider_switch.clone())
                 .flatten();
+            let placeholder = (!self.summary.has_messages
+                && monocode_core::session_title::is_default_title(
+                    &self.summary.title,
+                    &self.summary.provider,
+                ))
+            .then(|| monocode_core::session_title::default_title(picked.0));
             let changed = locked(&self.store).and_then(|store| {
                 store.change_provider(self.summary.id, picked.0.id())?;
+                let title_changed = match &placeholder {
+                    Some(title) => {
+                        store.replace_title(self.summary.id, &self.summary.title, title)?
+                    }
+                    None => false,
+                };
                 if let Some(id) = restored
                     .as_ref()
                     .and_then(|pending| pending.provider_id.as_deref())
                 {
                     store.provider_id(self.summary.id, id)?;
                 }
-                Ok(())
+                Ok(title_changed)
             });
-            if let Err(error) = changed {
-                self.status = error;
-                cx.notify();
-                return false;
+            match changed {
+                Ok(true) => self.summary.title = placeholder.expect("changed placeholder"),
+                Ok(false) => {}
+                Err(error) => {
+                    self.status = error;
+                    cx.notify();
+                    return false;
+                }
             }
             if let Some(pending) = restored {
                 self.settings.account = pending.account;
@@ -2332,9 +2351,6 @@ impl Conversation {
                 completion.set_provider(picked.0.id(), cx)
             });
             self.catalog.clear();
-            if !self.summary.has_messages {
-                self.summary.title = format!("New {} session", picked.0.label());
-            }
         }
         self.model = picked.1.clone();
         if let Some(context) = &mut self.context {
@@ -2459,7 +2475,7 @@ impl Conversation {
         events: &mut Vec<Subscription>,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> (&'static str, Vec<MenuItem>, f32, MenuStyle) {
+    ) -> (String, Vec<MenuItem>, f32, MenuStyle) {
         let provider = Kind::from_id(&self.summary.provider);
         match kind {
             ComposerMenu::Account => {
@@ -2481,7 +2497,12 @@ impl Conversation {
                             .collect()
                     })
                     .unwrap_or_default();
-                ("Switch account", items, 250., MenuStyle::Explorer)
+                (
+                    crate::i18n::text("conversation-switch-account"),
+                    items,
+                    250.,
+                    MenuStyle::Explorer,
+                )
             }
             ComposerMenu::Workspace => {
                 let picker = cx.new(|cx| {
@@ -2508,32 +2529,41 @@ impl Conversation {
                 ));
                 let focus = picker.read(cx).focus(cx);
                 (
-                    "Workspace",
+                    crate::i18n::text("conversation-workspace-2"),
                     vec![
-                        MenuItem::Header("Workspace".into()),
-                        MenuAction::new("workspace:current", "Current checkout")
-                            .icon("folder")
-                            .checked(
-                                !self.settings.new_worktree && self.settings.worktree_cwd.is_none(),
-                            )
-                            .into(),
-                        MenuAction::new("workspace:new", "New worktree")
-                            .icon("folder-tree")
-                            .checked(self.settings.new_worktree)
-                            .into(),
+                        MenuItem::Header(crate::i18n::text("conversation-workspace-2").into()),
+                        MenuAction::new(
+                            "workspace:current",
+                            crate::i18n::text("conversation-current-checkout"),
+                        )
+                        .icon("folder")
+                        .checked(
+                            !self.settings.new_worktree && self.settings.worktree_cwd.is_none(),
+                        )
+                        .into(),
+                        MenuAction::new(
+                            "workspace:new",
+                            crate::i18n::text("conversation-new-worktree"),
+                        )
+                        .icon("folder-tree")
+                        .checked(self.settings.new_worktree)
+                        .into(),
                         MenuItem::Separator,
-                        MenuAction::new("workspace:existing", "Existing worktrees")
-                            .icon("folder-tree")
-                            .flyout(Flyout {
-                                view: picker.into(),
-                                width: 300.,
-                                padding: 0.,
-                                height: None,
-                                max_height: Some(320.),
-                                focus: Some(focus),
-                                surface: None,
-                            })
-                            .into(),
+                        MenuAction::new(
+                            "workspace:existing",
+                            crate::i18n::text("conversation-existing-worktrees"),
+                        )
+                        .icon("folder-tree")
+                        .flyout(Flyout {
+                            view: picker.into(),
+                            width: 300.,
+                            padding: 0.,
+                            height: None,
+                            max_height: Some(320.),
+                            focus: Some(focus),
+                            surface: None,
+                        })
+                        .into(),
                     ],
                     240.,
                     MenuStyle::Settings,
@@ -2541,30 +2571,43 @@ impl Conversation {
             }
             // Composer.tsx's plus menu with native mode and attachment actions.
             ComposerMenu::Add => {
-                let mut items = vec![MenuItem::Header("Add to message".into())];
+                let mut items = vec![MenuItem::Header(
+                    crate::i18n::text("conversation-add-to-message").into(),
+                )];
                 items.extend(
                     [
-                        MenuAction::new("upload", "Upload file")
+                        MenuAction::new("upload", crate::i18n::text("conversation-upload-file"))
                             .icon("file-add")
-                            .description("Attach files or images"),
-                        MenuAction::new("plan", "Plan mode")
+                            .description(crate::i18n::text("conversation-attach-files-or-images")),
+                        MenuAction::new("plan", crate::i18n::text("conversation-plan-mode"))
                             .icon("ai-idea")
                             .icon_color(tint(YELLOW_300, 0.8))
-                            .description("Review a plan before building"),
-                        MenuAction::new("operator", "Operator")
+                            .description(crate::i18n::text(
+                                "conversation-review-a-plan-before-building",
+                            )),
+                        MenuAction::new("operator", crate::i18n::text("conversation-operator"))
                             .disabled(self.is_remote())
                             .icon("cursor-magic")
                             .icon_color(tint(SKY_300, 0.8))
-                            .description("Give this thread access to MonoCode"),
-                        MenuAction::new("orchestrator", "Orchestrator")
-                            .disabled(self.is_remote())
-                            .icon("share")
-                            .icon_color(tint(FUCHSIA_300, 0.65))
-                            .badge("v1")
-                            .description("Plan and coordinate agent work"),
-                        MenuAction::new("draft", "Draft")
+                            .description(crate::i18n::text(
+                                "conversation-give-this-thread-access-to-monocode",
+                            )),
+                        MenuAction::new(
+                            "orchestrator",
+                            crate::i18n::text("conversation-orchestrator"),
+                        )
+                        .disabled(self.is_remote())
+                        .icon("share")
+                        .icon_color(tint(FUCHSIA_300, 0.65))
+                        .badge("v1")
+                        .description(crate::i18n::text(
+                            "conversation-plan-and-coordinate-agent-work",
+                        )),
+                        MenuAction::new("draft", crate::i18n::text("conversation-draft"))
                             .icon("circle-dashed-hi")
-                            .description("Save this message without starting the agent")
+                            .description(crate::i18n::text(
+                                "conversation-save-this-message-without-starting-the-agent",
+                            ))
                             .disabled(self.busy || self.follow_ups.state.draft.is_some()),
                     ]
                     .into_iter()
@@ -2579,10 +2622,15 @@ impl Conversation {
                         action.checked(checked).into()
                     }),
                 );
-                ("Add to message", items, 250., MenuStyle::Composer)
+                (
+                    crate::i18n::text("conversation-add-to-message"),
+                    items,
+                    250.,
+                    MenuStyle::Composer,
+                )
             }
             ComposerMenu::GitActions => (
-                "Git actions",
+                crate::i18n::text("conversation-git-actions"),
                 self.git_action_menu_items(cx),
                 250.,
                 MenuStyle::Composer,
@@ -2623,7 +2671,7 @@ impl Conversation {
                     Vec::new()
                 };
                 items.push(
-                    MenuAction::new("model", "Model")
+                    MenuAction::new("model", crate::i18n::text("conversation-model"))
                         .value_image(provider.id())
                         .value(self.model_info().map_or_else(
                             || model_name(provider, self.model.as_deref()),
@@ -2640,17 +2688,27 @@ impl Conversation {
                         })
                         .into(),
                 );
-                ("Model and settings", items, 250., MenuStyle::Settings)
+                (
+                    crate::i18n::text("conversation-model-and-settings"),
+                    items,
+                    250.,
+                    MenuStyle::Settings,
+                )
             }
             ComposerMenu::Recent => (
-                "Recently used models",
+                crate::i18n::text("conversation-recently-used-models"),
                 self.recent_model_items(cx),
                 250.,
                 MenuStyle::Recent,
             ),
             ComposerMenu::Access => {
                 let items = self.mono_access_options();
-                ("Access", items, 288., MenuStyle::Access)
+                (
+                    crate::i18n::text("conversation-access-2"),
+                    items,
+                    288.,
+                    MenuStyle::Access,
+                )
             }
             ComposerMenu::Setting(ix) => self.mono_setting_menu(ix),
         }
@@ -2845,12 +2903,46 @@ impl Conversation {
             .children(menu)
             .children(self.model_list_popover(cx))
             .children(self.orchestration_card(cx))
-            .children(if self.is_remote() { None } else { self.usage_notice(false, cx) })
+            .children(if self.is_remote() {
+                None
+            } else {
+                self.usage_notice(false, cx)
+            })
             .child(self.changes_shelf(window, cx))
             .child(self.background_shelf(window, cx))
             .child(self.message_queue(window, cx))
-            .children(if self.is_remote() { None } else { self.auth_notice(cx) })
-            .when(self.settings.worktree_removed,|d|d.child(div().mb_2().p_3().rounded_lg().border_1().border_color(content(0.1)).flex().items_center().gap_3().text_size(px(12.)).child(div().flex_1().child("Worktree deleted. Select a branch or worktree to continue this conversation.")).child(tool_pill("reattach-worktree","Select worktree").child("Select worktree").on_click(cx.listener(|this,_,window,cx|this.open_git(GitMode::Worktree,window,cx))))))
+            .children(if self.is_remote() {
+                None
+            } else {
+                self.auth_notice(cx)
+            })
+            .when(self.settings.worktree_removed, |d| {
+                d.child(
+                    div()
+                        .mb_2()
+                        .p_3()
+                        .rounded_lg()
+                        .border_1()
+                        .border_color(content(0.1))
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .text_size(px(12.))
+                        .child(div().flex_1().child(crate::i18n::text(
+                            "conversation-worktree-deleted-select-a-branch-or",
+                        )))
+                        .child(
+                            tool_pill(
+                                "reattach-worktree",
+                                crate::i18n::text("conversation-select-worktree"),
+                            )
+                            .child(crate::i18n::text("conversation-select-worktree"))
+                            .on_click(cx.listener(
+                                |this, _, window, cx| this.open_git(GitMode::Worktree, window, cx),
+                            )),
+                        ),
+                )
+            })
             .when_some(self.settings.handoff.clone(), |d, handoff| {
                 d.child(
                     div()
@@ -2865,18 +2957,21 @@ impl Conversation {
                         .text_size(px(12.))
                         .text_color(content(0.7))
                         .child(icon("response-handoff", 14.))
-                        .child(div().min_w_0().flex_1().child(format!(
-                            "Handoff from {} · Add your next instruction below",
-                            Kind::from_id(&handoff.from).label()
+                        .child(div().min_w_0().flex_1().child(crate::i18n::format(
+                            "conversation-handoff-from-add-your-next-instruction-below",
+                            &[("name", Kind::from_id(&handoff.from).label().to_string())],
                         )))
                         .child(
-                            tool_pill("dismiss-handoff", "Dismiss handoff")
-                                .child(icon("close", 12.))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.settings.handoff = None;
-                                    this.save_settings(cx);
-                                    cx.notify();
-                                })),
+                            tool_pill(
+                                "dismiss-handoff",
+                                crate::i18n::text("conversation-dismiss-handoff"),
+                            )
+                            .child(icon("close", 12.))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.settings.handoff = None;
+                                this.save_settings(cx);
+                                cx.notify();
+                            })),
                         ),
                 )
             })
@@ -2916,9 +3011,13 @@ impl Conversation {
                     .relative()
                     .rounded(px(radius))
                     .border_1()
-                    .border_color(composer_border(self.input.focus_handle(cx).is_focused(window)))
+                    .border_color(composer_border(
+                        self.input.focus_handle(cx).is_focused(window),
+                    ))
                     .shadow(composer_shadow())
-                    .when(self.file_drag, |d| d.border_color(accent_color().opacity(0.6)))
+                    .when(self.file_drag, |d| {
+                        d.border_color(accent_color().opacity(0.6))
+                    })
                     .flex()
                     .flex_col()
                     .on_mouse_down(
@@ -2949,23 +3048,24 @@ impl Conversation {
                             .px_2()
                             .pb(px(10.))
                             .child(
-                                tool_pill("composer-add", "Add files or choose a mode")
-                                    .aria_expanded(self.menu_is(ComposerMenu::Add))
-                                    .when(self.menu_is(ComposerMenu::Add), |d| d.bg(content(0.2)))
-                                    .child(self.add_anchor.probe())
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.toggle_menu(ComposerMenu::Add, window, cx)
-                                    }))
-                                    .w(px(26.))
-                                    .justify_center()
-                                    .text_color(content(0.5))
-                                    .child(
-                                        icon("plus", 14.)
-                                            .text_color(content(0.5))
-                                            .group_hover("composer-add", |s| {
-                                                s.text_color(content(1.))
-                                            }),
-                                    ),
+                                tool_pill(
+                                    "composer-add",
+                                    crate::i18n::text("conversation-add-files-or-choose-a-mode"),
+                                )
+                                .aria_expanded(self.menu_is(ComposerMenu::Add))
+                                .when(self.menu_is(ComposerMenu::Add), |d| d.bg(content(0.2)))
+                                .child(self.add_anchor.probe())
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.toggle_menu(ComposerMenu::Add, window, cx)
+                                }))
+                                .w(px(26.))
+                                .justify_center()
+                                .text_color(content(0.5))
+                                .child(
+                                    icon("plus", 14.)
+                                        .text_color(content(0.5))
+                                        .group_hover("composer-add", |s| s.text_color(content(1.))),
+                                ),
                             )
                             .child(
                                 div()
@@ -2976,93 +3076,110 @@ impl Conversation {
                                     .items_center()
                                     .gap_1()
                                     .child(
-                                        tool_pill("composer-model", "Model")
-                                            .min_w_0()
-                                            .max_w(px(220.))
-                                            .flex_shrink(1.)
-                                            .aria_label(format!(
-                                                "{}, {}{}",
-                                                kind.label(),
-                                                self.model_label(),
-                                                trigger_effort
-                                                    .as_ref()
-                                                    .map(|effort| format!(", effort {effort}"))
-                                                    .unwrap_or_default()
-                                            ))
-                                            .child(self.model_anchor.probe())
-                                            .aria_expanded(self.menu_is(ComposerMenu::Model) || self.menu_is(ComposerMenu::Recent) || self.mono_ui.models.is_some())
-                                            .on_click(cx.listener(|this, _, window, cx| {
-                                                this.toggle_menu(ComposerMenu::Model, window, cx)
-                                            }))
-                                            .on_mouse_down(
-                                                MouseButton::Right,
-                                                cx.listener(|this, _, window, cx| {
-                                                    cx.stop_propagation();
-                                                    this.open_recent_models(window, cx)
-                                                }),
+                                        tool_pill(
+                                            "composer-model",
+                                            crate::i18n::text("conversation-model"),
+                                        )
+                                        .min_w_0()
+                                        .max_w(px(220.))
+                                        .flex_shrink(1.)
+                                        .aria_label(format!(
+                                            "{}, {}{}",
+                                            kind.label(),
+                                            self.model_label(),
+                                            trigger_effort
+                                                .as_ref()
+                                                .map(|effort| crate::i18n::format(
+                                                    "conversation-effort-2",
+                                                    &[("effort", (effort).to_string())]
+                                                ))
+                                                .unwrap_or_default()
+                                        ))
+                                        .child(self.model_anchor.probe())
+                                        .aria_expanded(
+                                            self.menu_is(ComposerMenu::Model)
+                                                || self.menu_is(ComposerMenu::Recent)
+                                                || self.mono_ui.models.is_some(),
+                                        )
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.toggle_menu(ComposerMenu::Model, window, cx)
+                                        }))
+                                        .on_mouse_down(
+                                            MouseButton::Right,
+                                            cx.listener(|this, _, window, cx| {
+                                                cx.stop_propagation();
+                                                this.open_recent_models(window, cx)
+                                            }),
+                                        )
+                                        .child(provider_icon(&self.summary.provider, 16.))
+                                        .child(pill_label(self.model_label()))
+                                        .when_some(trigger_effort, |d, effort| {
+                                            d.child(
+                                                div()
+                                                    .debug_selector(|| {
+                                                        "composer-model-effort".into()
+                                                    })
+                                                    .flex_shrink_0()
+                                                    .text_size(px(11.))
+                                                    .text_color(content(0.5))
+                                                    .child(effort),
                                             )
-                                            .child(provider_icon(&self.summary.provider, 16.))
-                                            .child(pill_label(self.model_label()))
-                                            .when_some(trigger_effort, |d, effort| {
-                                                d.child(
-                                                    div()
-                                                        .debug_selector(|| "composer-model-effort".into())
-                                                        .flex_shrink_0()
-                                                        .text_size(px(11.))
-                                                        .text_color(content(0.5))
-                                                        .child(effort),
-                                                )
-                                            })
-                                            .when(trigger_fast, |d| {
-                                                d.child(fast_bolt())
-                                            })
-                                            .child(icon("chevron-down", 12.)),
+                                        })
+                                        .when(trigger_fast, |d| d.child(fast_bolt()))
+                                        .child(icon("chevron-down", 12.)),
                                     )
                                     .children(controls)
                                     .child(
-                                        tool_pill("composer-access", "Access")
-                                            .aria_label(format!(
-                                                "Access, {}",
-                                                self.settings.access.label()
-                                            ))
-                                            .aria_expanded(self.menu_is(ComposerMenu::Access))
-                                            .child(self.access_anchor.probe())
-                                            .on_click(cx.listener(|this, _, window, cx| {
-                                                this.toggle_menu(ComposerMenu::Access, window, cx)
-                                            }))
-                                            .child(
-                                                icon(
-                                                    match self.settings.access {
-                                                        AccessMode::FullAccess => "shield-alert",
-                                                        AccessMode::AutoAcceptEdits => {
-                                                            "pencil-edit"
-                                                        }
-                                                        AccessMode::Auto => "sparkles",
-                                                        _ => "square-lock",
-                                                    },
-                                                    14.,
+                                        tool_pill(
+                                            "composer-access",
+                                            crate::i18n::text("conversation-access-2"),
+                                        )
+                                        .aria_label(crate::i18n::format(
+                                            "conversation-access",
+                                            &[(
+                                                "value",
+                                                crate::conversation::access_label(
+                                                    self.settings.access,
                                                 )
-                                                .text_color(
-                                                    if self.settings.access
-                                                        == AccessMode::FullAccess
-                                                    {
-                                                        tint(AMBER_400, 0.9)
-                                                    } else {
-                                                        content(1.)
-                                                    },
-                                                ),
+                                                .to_string(),
+                                            )],
+                                        ))
+                                        .aria_expanded(self.menu_is(ComposerMenu::Access))
+                                        .child(self.access_anchor.probe())
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.toggle_menu(ComposerMenu::Access, window, cx)
+                                        }))
+                                        .child(
+                                            icon(
+                                                match self.settings.access {
+                                                    AccessMode::FullAccess => "shield-alert",
+                                                    AccessMode::AutoAcceptEdits => "pencil-edit",
+                                                    AccessMode::Auto => "sparkles",
+                                                    _ => "square-lock",
+                                                },
+                                                14.,
                                             )
-                                            .child(pill_label(self.settings.access.label()))
-                                            .child(icon("chevron-down", 12.)),
+                                            .text_color(
+                                                if self.settings.access == AccessMode::FullAccess {
+                                                    tint(AMBER_400, 0.9)
+                                                } else {
+                                                    content(1.)
+                                                },
+                                            ),
+                                        )
+                                        .child(pill_label(crate::conversation::access_label(
+                                            self.settings.access,
+                                        )))
+                                        .child(icon("chevron-down", 12.)),
                                     ),
                             )
                             .child(self.action(has_value, window, cx)),
                     )
                     .children(self.attachment_drop_overlay(12.)),
             )
-            .children(runner.map(|runner| {
-                runner.cached(crate::composer_runner::Runner::placement())
-            }))
+            .children(
+                runner.map(|runner| runner.cached(crate::composer_runner::Runner::placement())),
+            )
             .children(self.remote_notice(cx))
             .child(self.workspace_bar(cx))
             .into_any_element()
@@ -3073,11 +3190,11 @@ impl Conversation {
             self.git.as_ref().is_some_and(|s| s.linked) || self.settings.worktree_cwd.is_some();
         let new = draft && self.settings.new_worktree;
         let label = if new {
-            "New worktree"
+            crate::i18n::text("composer-new-worktree")
         } else if linked {
-            "Worktree"
+            crate::i18n::text("composer-worktree")
         } else {
-            "Current checkout"
+            crate::i18n::text("composer-current-checkout")
         };
         let enabled = !self.busy && !self.preparing_worktree && self.git.is_some();
         // Still reading git is not unavailable: don't dim, then brighten.
@@ -3090,9 +3207,12 @@ impl Conversation {
                 } else {
                     "folder"
                 },
-                label.into(),
+                label.clone().into(),
             )
-            .aria_label(format!("Workspace {label}"))
+            .aria_label(crate::i18n::format(
+                "conversation-workspace",
+                &[("label", label.to_string())],
+            ))
             .aria_expanded(self.menu_is(ComposerMenu::Workspace))
             .child(self.workspace_anchor.probe())
             .when(dimmed, |d| d.opacity(0.4))
@@ -3108,7 +3228,10 @@ impl Conversation {
             div()
                 .id("composer-workspace")
                 .role(Role::Group)
-                .aria_label(format!("Workspace {label}"))
+                .aria_label(crate::i18n::format(
+                    "conversation-workspace",
+                    &[("label", label.to_string())],
+                ))
                 .flex_shrink_0()
                 .h(px(24.))
                 .ml(px(-6.))
@@ -3133,13 +3256,23 @@ impl Conversation {
         let ratio = self.context.and_then(|usage| usage.ratio());
         let show_context = ratio.is_some() || draft;
         let headline = ratio
-            .map(|r| format!("{:.0}% context used", r * 100.))
-            .unwrap_or_else(|| "No context used yet".into());
+            .map(|r| {
+                crate::i18n::format(
+                    "context-used",
+                    &[("percent", crate::system_format::percent((r * 100.) as f64))],
+                )
+            })
+            .unwrap_or_else(|| crate::i18n::text("conversation-no-context-used-yet"));
         let detail = self.context.map(|usage| {
-            format!(
-                "{} / {} tokens",
-                monocode_core::context::format_tokens(usage.used),
-                monocode_core::context::format_tokens(usage.window.unwrap_or(0))
+            crate::i18n::format(
+                "conversation-tokens",
+                &[
+                    ("value", (crate::i18n::tokens(usage.used)).to_string()),
+                    (
+                        "value2",
+                        (crate::i18n::tokens(usage.window.unwrap_or(0))).to_string(),
+                    ),
+                ],
             )
         });
         div()
@@ -3153,15 +3286,31 @@ impl Conversation {
             .when_some(branch, |d, branch| {
                 let detached = !new && self.git.as_ref().is_some_and(|s| s.detached);
                 let label = if detached {
-                    format!("detached {branch}")
+                    crate::i18n::format(
+                        "conversation-detached",
+                        &[("branch", (branch).to_string())],
+                    )
                 } else {
                     branch
                 };
                 d.child(
                     bar_trigger("composer-branch", "git-branch", label.clone().into())
-                        .aria_label(format!(
-                            "{} {label}",
-                            if new { "Worktree base" } else { "Branch" }
+                        .aria_label(crate::i18n::format(
+                            "conversation-branch-caption",
+                            &[
+                                (
+                                    "value1",
+                                    (if new {
+                                        crate::i18n::text(
+                                            "conversation-branch-caption-worktree-base",
+                                        )
+                                    } else {
+                                        crate::i18n::text("conversation-branch-caption-branch")
+                                    })
+                                    .to_string(),
+                                ),
+                                ("label", (label).to_string()),
+                            ],
                         ))
                         .aria_description(self.execution_cwd().to_owned())
                         .max_w(px(256.))
@@ -3190,10 +3339,10 @@ impl Conversation {
                             div()
                                 .id("cancel-edit-last-turn")
                                 .role(Role::Button)
-                                .aria_label("Cancel editing")
+                                .aria_label(crate::i18n::text("conversation-cancel-editing"))
                                 .text_size(px(11.))
                                 .text_color(content(0.6))
-                                .child("Cancel edit")
+                                .child(crate::i18n::text("conversation-cancel-edit"))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.cancel_edit_last_turn(cx);
                                 })),
@@ -3210,12 +3359,12 @@ impl Conversation {
                                     .id("provider-status")
                                     .debug_selector(|| "provider-status".into())
                                     .role(Role::Status)
-                                    .aria_label(self.status.clone())
+                                    .aria_label(status_label(&self.status))
                                     .max_w(px(220.))
                                     .truncate()
                                     .text_size(px(11.))
                                     .text_color(content(0.45))
-                                    .child(self.status.clone()),
+                                    .child(status_label(&self.status)),
                             )
                         },
                     )
@@ -3291,12 +3440,12 @@ impl Conversation {
         // Something to send grows the button into a pill naming the action;
         // empty or stopping, it rests as a square.
         let face = crate::send_morph::Face {
-            label: if busy {
-                "Stop"
+            label_key: if busy {
+                "composer-send-stop"
             } else if draft {
-                "Save draft"
+                "composer-send-draft"
             } else {
-                follow_up.map_or("Send", |(label, _)| label)
+                follow_up.map_or("composer-send-send", |(label, _)| label)
             },
             glyph: follow_up.map_or("send", |(_, glyph)| glyph),
             stop: busy,
@@ -3304,7 +3453,7 @@ impl Conversation {
         };
         let frame = self.send_morph.borrow_mut().frame(
             face,
-            crate::send_morph::expanded_width(face.label, window),
+            crate::send_morph::expanded_width(face.label_key, window),
             !cx.reduce_motion(),
         );
         if frame.moving {
@@ -3423,9 +3572,14 @@ impl Conversation {
                                 .line_height(px(28.))
                                 .text_color(content(1.))
                                 .truncate()
-                                .child(format!(
-                                    "What should we work on in {}?",
-                                    self.project_appearance.label(&self.summary.cwd)
+                                .child(crate::i18n::format(
+                                    "conversation-what-should-we-work-on-in",
+                                    &[(
+                                        "value",
+                                        self.project_appearance
+                                            .label(&self.summary.cwd)
+                                            .to_string(),
+                                    )],
                                 )),
                         )
                     })
@@ -3506,20 +3660,19 @@ pub(crate) fn preferred_effort(provider: &str, cx: &gpui::App) -> Option<String>
 }
 pub(crate) fn effort_name(value: &str) -> String {
     match value {
-        "default" => "Default",
-        "none" => "None",
-        "minimal" => "Minimal",
-        "low" => "Low",
-        "medium" => "Medium",
-        "high" => "High",
-        "xhigh" => "Extra High",
-        "max" => "Max",
-        "ultra" => "Ultra",
-        "ultracode" => "Ultracode",
-        "ultrathink" => "Ultrathink",
-        other => other,
+        "default" => crate::i18n::text("effort-default"),
+        "none" => crate::i18n::text("effort-none"),
+        "minimal" => crate::i18n::text("effort-minimal"),
+        "low" => crate::i18n::text("effort-low"),
+        "medium" => crate::i18n::text("effort-medium"),
+        "high" => crate::i18n::text("effort-high"),
+        "xhigh" => crate::i18n::text("effort-extra-high"),
+        "max" => crate::i18n::text("effort-max"),
+        "ultra" => crate::i18n::text("effort-ultra"),
+        "ultracode" => crate::i18n::text("effort-ultracode"),
+        "ultrathink" => crate::i18n::text("effort-ultrathink"),
+        other => other.to_owned(),
     }
-    .into()
 }
 
 fn model_control_toggle(control: &catalog::ModelControl) -> bool {
@@ -3937,11 +4090,12 @@ impl Render for Conversation {
 }
 
 // The composer's `h-6.5` toolbar pills share `bg-selection` and its hover.
-fn tool_pill(id: &'static str, label: &'static str) -> gpui::Stateful<gpui::Div> {
+fn tool_pill(id: &'static str, label: impl Into<gpui::SharedString>) -> gpui::Stateful<gpui::Div> {
+    let label = label.into();
     div()
         .id(id)
         .role(Role::Button)
-        .aria_label(label)
+        .aria_label(&label)
         .group(id)
         .cursor_pointer()
         .relative()
@@ -3985,7 +4139,7 @@ fn composer_surface(radius: f32) -> impl IntoElement {
 /// ComposerAction: the solid send button, or a stop square while busy.
 fn send_button(
     id: &'static str,
-    label: &'static str,
+    label: &str,
     busy: bool,
     glyph: &'static str,
     enabled: bool,
@@ -4000,7 +4154,7 @@ fn send_button(
         .id(id)
         .debug_selector(|| id.into())
         .role(Role::Button)
-        .aria_label(label)
+        .aria_label(label.to_owned())
         .cursor_pointer()
         .flex_shrink_0()
         .size(px(26.))
@@ -4875,4 +5029,24 @@ pub(crate) fn fast_bolt() -> gpui::Div {
     div()
         .flex_shrink_0()
         .child(icon("zap", 12.).text_color(gpui::rgb(0xfbbf24)))
+}
+
+// Runtime status stays unchanged for persistence and mobile; resolve known UI captions here.
+fn status_label(status: &str) -> String {
+    crate::runtime_text::status(status)
+}
+
+pub(crate) fn access_label(mode: monocode_core::agent::AccessMode) -> String {
+    crate::i18n::text(&format!("access-{}", mode.id()))
+}
+
+#[cfg(test)]
+#[test]
+fn status_translation_keeps_unknown_diagnostic_details() {
+    assert_eq!(status_label("Ready"), "Ready");
+    assert_eq!(status_label("Working…"), "Working…");
+    assert_eq!(
+        status_label("custom provider: raw detail Ω"),
+        "custom provider: raw detail Ω"
+    );
 }

@@ -122,16 +122,16 @@ impl SidebarList {
     }
 }
 
-fn age_label(updated_at: u64, now: u64) -> &'static str {
+fn age_key(updated_at: u64, now: u64) -> &'static str {
     let today = chrono::DateTime::from_timestamp_millis(now.min(i64::MAX as u64) as i64)
         .map(|t| t.with_timezone(&chrono::Local).date_naive());
     let day = chrono::DateTime::from_timestamp_millis(updated_at.min(i64::MAX as u64) as i64)
         .map(|t| t.with_timezone(&chrono::Local).date_naive());
     match today.zip(day).map(|(today, day)| (today - day).num_days()) {
-        Some(days) if days <= 0 => "Today",
-        Some(1) => "Yesterday",
-        Some(2..=6) => "Last 7 days",
-        _ => "Older",
+        Some(days) if days <= 0 => "sidebar-today",
+        Some(1) => "sidebar-yesterday",
+        Some(2..=6) => "sidebar-last-week",
+        _ => "sidebar-older",
     }
 }
 
@@ -351,7 +351,7 @@ impl Shell {
             if self.rails.children.contains(id) {
                 continue;
             }
-            let label = age_label(self.session_metadata(*id, cx).summary.updated_at, now);
+            let label = age_key(self.session_metadata(*id, cx).summary.updated_at, now);
             if previous != Some(label) {
                 rows.push(Row::Heading { label, first });
                 previous = Some(label);
@@ -361,7 +361,7 @@ impl Shell {
         }
         if first {
             rows.push(Row::Heading {
-                label: "Sessions",
+                label: "sidebar-sessions",
                 first: true,
             });
             if entries.is_empty() {
@@ -491,8 +491,8 @@ impl Shell {
                     })
                     .unwrap_or_else(|| div().into_any());
             }
-            Row::Pinned => section_label("Pinned").into_any(),
-            Row::Folders => section_label("Folders").into_any(),
+            Row::Pinned => section_label(crate::i18n::text("sidebar-pinned")).into_any(),
+            Row::Folders => section_label(crate::i18n::text("sidebar-folders")).into_any(),
             Row::Group(entry) => {
                 if let Entry::Folder { id, .. } = &entry
                     && let Some(anchor) = self.folder_bounds.get(id)
@@ -502,7 +502,7 @@ impl Shell {
                 self.sidebar_group_header(&entry, cx)
             }
             Row::Gap => return div().h(px(12.)).into_any(),
-            Row::Heading { label, first } => section_label(label)
+            Row::Heading { label, first } => section_label(crate::i18n::text(label))
                 .when(!first, |d| d.mt_3())
                 .when(first, |d| d.child(self.sidebar_filter_button(cx)))
                 .into_any(),
@@ -542,9 +542,9 @@ impl Shell {
                 .text_size(px(12.))
                 .text_color(rgb(MUTED))
                 .child(if self.query.is_empty() {
-                    "No sessions yet"
+                    crate::i18n::text("shell-no-sessions-yet")
                 } else {
-                    "No matching sessions"
+                    crate::i18n::text("shell-no-matching-sessions")
                 })
                 .into_any(),
         };
@@ -563,37 +563,43 @@ const TRAILING_SLOT: f32 = 14.;
 impl Shell {
     pub(super) fn sidebar_options_menu_items(&self) -> Vec<MenuItem> {
         vec![
-            MenuAction::new("sidebar-search", "Search")
+            MenuAction::new("sidebar-search", crate::i18n::text("shell-search"))
                 .icon("search")
                 .toggle(self.workspace.sidebar_search_visible)
                 .into(),
-            MenuAction::new("sidebar-notes", "Notes")
+            MenuAction::new("sidebar-notes", crate::i18n::text("shell-notes"))
                 .icon("note")
                 .toggle(self.workspace.sidebar_notes_visible)
                 .disabled(!self.workspace.preferences.notes)
                 .into(),
-            MenuAction::new("sidebar-automations", "Automations")
-                .icon("zap")
-                .toggle(self.workspace.sidebar_automations_visible)
-                .into(),
-            MenuAction::new("sidebar-inbox", "Inbox")
+            MenuAction::new(
+                "sidebar-automations",
+                crate::i18n::text("shell-automations"),
+            )
+            .icon("zap")
+            .toggle(self.workspace.sidebar_automations_visible)
+            .into(),
+            MenuAction::new("sidebar-inbox", crate::i18n::text("shell-inbox"))
                 .icon("inbox")
                 .toggle(self.workspace.sidebar_inbox_visible)
                 .into(),
-            MenuAction::new("sidebar-monos", "Monos")
+            MenuAction::new("sidebar-monos", crate::i18n::text("shell-monos"))
                 .icon("ghost")
                 .toggle(self.workspace.preferences.monos)
                 .into(),
-            MenuAction::new("sidebar-activity", "Activity")
+            MenuAction::new("sidebar-activity", crate::i18n::text("shell-activity"))
                 .icon("response-activity")
                 .toggle(self.workspace.sidebar_activity_visible)
                 .disabled(!self.workspace.preferences.working_agents)
                 .into(),
             MenuItem::Separator,
-            MenuAction::new("compact-session-cards", "Compact view")
-                .icon("list-bullet")
-                .toggle(self.workspace.compact_session_cards)
-                .into(),
+            MenuAction::new(
+                "compact-session-cards",
+                crate::i18n::text("shell-compact-view"),
+            )
+            .icon("list-bullet")
+            .toggle(self.workspace.compact_session_cards)
+            .into(),
         ]
     }
 
@@ -694,7 +700,13 @@ impl Shell {
                                 .text_color(content(0.35))
                                 .group_hover("rail-search", |s| s.text_color(content(0.7))),
                         )
-                        .child(div().flex_1().min_w_0().h(px(20.)).child("Search"))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .h(px(20.))
+                                .child(crate::i18n::text("shell-search")),
+                        )
                         .child(
                             // The shortcut span sits outside the label's `font-medium`.
                             div()
@@ -736,7 +748,7 @@ impl Shell {
                     let selected = if label == "New" {
                         blank_session
                     } else {
-                        self.app_view_label() == Some(label)
+                        self.app_view_id() == Some(label)
                     };
                     let unread = label == "Inbox"
                         && self
@@ -747,7 +759,17 @@ impl Shell {
                         .id(label)
                         .debug_selector(move || format!("sidebar-navigation-{label}"))
                         .role(Role::Button)
-                        .aria_label(if unread { "Inbox, new items" } else { label })
+                        .aria_label(if unread {
+                            crate::i18n::text("shell-inbox-new-items")
+                        } else {
+                            crate::i18n::text(match label {
+                                "New" => "shell-new",
+                                "Inbox" => "workspace-inbox",
+                                "Notes" => "workspace-notes",
+                                "Automations" => "workspace-automations",
+                                _ => unreachable!(),
+                            })
+                        })
                         .aria_selected(selected)
                         .cursor_pointer()
                         .group("rail-action")
@@ -771,7 +793,13 @@ impl Shell {
                         } else {
                             0.35
                         })))
-                        .child(div().flex_1().child(label))
+                        .child(div().flex_1().child(crate::i18n::text(match label {
+                            "New" => "shell-new",
+                            "Inbox" => "workspace-inbox",
+                            "Notes" => "workspace-notes",
+                            "Automations" => "workspace-automations",
+                            _ => unreachable!(),
+                        })))
                         .when_some(
                             match label {
                                 "New" => Some(format!("{MOD}T").into_any_element()),
@@ -857,7 +885,7 @@ impl Shell {
             div()
                 .id("filter-sessions")
                 .role(Role::Button)
-                .aria_label("Filter sessions")
+                .aria_label(crate::i18n::text("shell-filter-sessions"))
                 .aria_expanded(self.menu_open(&MenuTarget::SessionFilter))
                 .cursor_pointer()
                 .group("classic-filter")
@@ -874,7 +902,11 @@ impl Shell {
                         .group_hover("classic-filter", |s| s.text_color(content(1.))),
                 )
         } else {
-            icon_button("filter-sessions", "Filter sessions", "filter")
+            icon_button(
+                "filter-sessions",
+                crate::i18n::text("shell-filter-sessions"),
+                "filter",
+            )
         };
         button
             .debug_selector(|| "sidebar-filter-button".into())
@@ -904,7 +936,7 @@ impl Shell {
 #[cfg(test)]
 mod tests {
     use super::super::*;
-    use super::age_label;
+    use super::age_key;
     use chrono::TimeZone;
     use gpui::TestAppContext;
 
@@ -1453,12 +1485,12 @@ mod tests {
                 .timestamp_millis() as u64
         };
         let now = ms(20, 0, 5);
-        assert_eq!(age_label(ms(20, 0, 1), now), "Today");
-        assert_eq!(age_label(ms(19, 23, 59), now), "Yesterday");
-        assert_eq!(age_label(ms(14, 0, 0), now), "Last 7 days");
-        assert_eq!(age_label(ms(13, 23, 59), now), "Older");
-        assert_eq!(age_label(0, now), "Older");
+        assert_eq!(age_key(ms(20, 0, 1), now), "sidebar-today");
+        assert_eq!(age_key(ms(19, 23, 59), now), "sidebar-yesterday");
+        assert_eq!(age_key(ms(14, 0, 0), now), "sidebar-last-week");
+        assert_eq!(age_key(ms(13, 23, 59), now), "sidebar-older");
+        assert_eq!(age_key(0, now), "sidebar-older");
         // A local calendar day remains Yesterday across daylight-saving changes.
-        assert_eq!(age_label(ms(25, 0, 1), ms(26, 0, 5)), "Yesterday");
+        assert_eq!(age_key(ms(25, 0, 1), ms(26, 0, 5)), "sidebar-yesterday");
     }
 }

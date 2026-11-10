@@ -2350,6 +2350,7 @@ accounts-personal = 个人
 automations-scheduled-2 = 已计划
 conversation-plan = 计划
 conversation-pending = 待处理
+conversation-scroll-for-completion-updates = 滚动查看完成情况报告
 settings-mute-notifications = 静音通知
 settings-change-mute-duration = 更改静音时长
 settings-close-skill-form = 关闭技能表单

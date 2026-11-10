@@ -20,11 +20,11 @@ enum Slider {
 }
 impl Slider {
     const ALL: [Self; 3] = [Self::Hue, Self::Saturation, Self::DarkLightness];
-    fn label(self) -> &'static str {
+    fn label(self) -> String {
         match self {
-            Self::Hue => "Hue",
-            Self::Saturation => "Saturation",
-            Self::DarkLightness => "Dark-mode lightness",
+            Self::Hue => crate::i18n::text("project-theme-hue"),
+            Self::Saturation => crate::i18n::text("project-theme-saturation"),
+            Self::DarkLightness => crate::i18n::text("project-theme-dark-mode-lightness"),
         }
     }
     fn id(self) -> &'static str {
@@ -58,7 +58,7 @@ impl Slider {
     fn display(self, value: u32) -> String {
         match self {
             Self::Hue => format!("{value}°"),
-            _ => format!("{value}%"),
+            _ => crate::system_format::percent(value as f64),
         }
     }
 }
@@ -127,12 +127,12 @@ impl ThemeDialog {
         cx.emit(Event::Changed(self.appearance.clone()));
         cx.notify();
     }
-    fn heading(text: &'static str) -> gpui::Div {
+    fn heading(text: impl Into<gpui::SharedString>) -> gpui::Div {
         div()
             .text_size(px(13.))
             .line_height(px(19.5))
             .font_weight(gpui::FontWeight::MEDIUM)
-            .child(text)
+            .child(text.into())
     }
     fn section() -> gpui::Div {
         div()
@@ -152,12 +152,14 @@ impl ThemeDialog {
             .flex()
             .flex_col()
             .gap_2()
-            .child(Self::heading("Workspace theme"))
+            .child(Self::heading(crate::i18n::text(
+                "project-theme-workspace-theme",
+            )))
             .child(
                 div()
                     .id("project-theme-palette-group")
                     .role(Role::RadioGroup)
-                    .aria_label("Workspace theme")
+                    .aria_label(crate::i18n::text("project-theme-workspace-theme"))
                     .flex()
                     .flex_wrap()
                     .gap(px(6.))
@@ -168,11 +170,16 @@ impl ThemeDialog {
                             .map(|(ix, &(id, label, dark, pale))| {
                                 let palette = if light { pale } else { dark };
                                 let selected = theme.workspace_theme == id;
+                                let label = if id == "default" {
+                                    crate::i18n::text("settings-default")
+                                } else {
+                                    label.to_owned()
+                                };
                                 div()
                                     .id(("project-theme-palette", ix))
                                     .debug_selector(move || format!("project-theme-palette-{id}"))
                                     .role(Role::RadioButton)
-                                    .aria_label(label)
+                                    .aria_label(label.clone())
                                     .aria_selected(selected)
                                     .h(px(28.))
                                     .px_2()
@@ -217,7 +224,7 @@ impl ThemeDialog {
             .accent_color
             .as_deref()
             .and_then(|hex| u32::from_str_radix(hex.trim_start_matches('#'), 16).ok());
-        let choices = std::iter::once((None, "Default"))
+        let choices = std::iter::once((None, "settings-default"))
             .chain(ACCENTS.iter().map(|&(c, label)| (Some(c), label)));
         Self::section()
             .debug_selector(|| "project-theme-accent".into())
@@ -227,12 +234,14 @@ impl ThemeDialog {
                     .items_center()
                     .justify_between()
                     .gap_4()
-                    .child(Self::heading("Accent color"))
+                    .child(Self::heading(crate::i18n::text(
+                        "project-theme-accent-color",
+                    )))
                     .child(
                         div()
                             .id("project-theme-accent-group")
                             .role(Role::RadioGroup)
-                            .aria_label("Accent color")
+                            .aria_label(crate::i18n::text("project-theme-accent-color"))
                             .flex()
                             .items_center()
                             .gap_1()
@@ -243,7 +252,7 @@ impl ThemeDialog {
                                     .id(("project-theme-accent", ix))
                                     .debug_selector(move || format!("project-theme-accent-{ix}"))
                                     .role(Role::RadioButton)
-                                    .aria_label(label)
+                                    .aria_label(crate::i18n::text(label))
                                     .aria_selected(selected)
                                     .size(px(22.))
                                     .flex()
@@ -387,7 +396,7 @@ impl Render for ThemeDialog {
             .id("project-theme-dialog")
             .debug_selector(|| "project-theme-dialog".into())
             .role(Role::Dialog)
-            .aria_label("Theme Colors")
+            .aria_label(crate::i18n::text("project-theme-theme-colors"))
             .track_focus(&self.focus)
             .relative()
             .min_h_0()
@@ -427,7 +436,7 @@ impl Render for ThemeDialog {
                                     .text_size(px(16.))
                                     .line_height(px(20.))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .child("Theme Colors"),
+                                    .child(crate::i18n::text("project-theme-theme-colors")),
                             )
                             .child(
                                 div()
@@ -438,16 +447,26 @@ impl Render for ThemeDialog {
                                     .line_height(px(16.5))
                                     .text_color(content(0.5))
                                     .child(if custom {
-                                        format!("Used while {label} is open")
+                                        crate::i18n::format(
+                                            "project-theme-used-while-is-open",
+                                            &[("label", (label).to_string())],
+                                        )
                                     } else {
-                                        format!("{label} uses the app colors")
+                                        crate::i18n::format(
+                                            "project-theme-uses-the-app-colors",
+                                            &[("label", (label).to_string())],
+                                        )
                                     }),
                             ),
                     )
                     .child(
-                        icon_button("close-project-theme", "Close theme colors", "close")
-                            .size(px(28.))
-                            .on_click(cx.listener(|_, _, _, cx| cx.emit(Event::Close))),
+                        icon_button(
+                            "close-project-theme",
+                            crate::i18n::text("project-theme-close-theme-colors"),
+                            "close",
+                        )
+                        .size(px(28.))
+                        .on_click(cx.listener(|_, _, _, cx| cx.emit(Event::Close))),
                     ),
             )
             .child(
@@ -469,23 +488,26 @@ impl Render for ThemeDialog {
                     .child(
                         Self::section()
                             .child(
-                                button("project-theme-use-app-colors", "Use app colors")
-                                    .flex_shrink_0()
-                                    .when(!custom, |d| d.opacity(0.4))
-                                    .when(custom, |d| {
-                                        d.on_click(
-                                            cx.listener(|this, _, _, cx| this.use_app_colors(cx)),
-                                        )
-                                    }),
+                                button(
+                                    "project-theme-use-app-colors",
+                                    crate::i18n::text("project-theme-use-app-colors"),
+                                )
+                                .flex_shrink_0()
+                                .when(!custom, |d| d.opacity(0.4))
+                                .when(custom, |d| {
+                                    d.on_click(
+                                        cx.listener(|this, _, _, cx| this.use_app_colors(cx)),
+                                    )
+                                }),
                             )
                             .child(
                                 div()
                                     .text_size(px(11.))
                                     .line_height(px(17.875))
                                     .text_color(content(0.45))
-                                    .child(
-                                        "Light or dark mode, translucency and diff colors follow Settings › Appearance.",
-                                    ),
+                                    .child(crate::i18n::text(
+                                        "project-theme-light-or-dark-mode-translucency-and",
+                                    )),
                             ),
                     ),
             )

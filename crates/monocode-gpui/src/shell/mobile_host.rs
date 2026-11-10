@@ -1410,7 +1410,11 @@ impl Shell {
                 if let Some(view) = self.sessions.get(&id) {
                     view.update(cx, |v, cx| v.rename(title.clone(), cx));
                 }
-                self.store_write("rename the session", cx, move |s| s.title(id, &title));
+                self.store_write(
+                    crate::i18n::text("shell-action-rename-session"),
+                    cx,
+                    move |s| s.title(id, &title),
+                );
                 self.invalidate_chrome(cx);
                 cx.notify();
                 Ok(reply)

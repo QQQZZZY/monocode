@@ -13,11 +13,19 @@ pub(crate) enum AppView {
     Automations,
 }
 impl AppView {
-    pub fn label(self) -> &'static str {
+    pub fn id(self) -> &'static str {
         match self {
             Self::Inbox => "Inbox",
             Self::Notes => "Notes",
             Self::Automations => "Automations",
+        }
+    }
+
+    pub fn label(self) -> String {
+        match self {
+            Self::Inbox => crate::i18n::text("workspace-inbox"),
+            Self::Notes => crate::i18n::text("workspace-notes"),
+            Self::Automations => crate::i18n::text("workspace-automations"),
         }
     }
     pub fn icon(self) -> &'static str {

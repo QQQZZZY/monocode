@@ -2396,6 +2396,7 @@ accounts-personal = Personal
 automations-scheduled-2 = Scheduled
 conversation-plan = Plan
 conversation-pending = Pending
+conversation-scroll-for-completion-updates = Scroll for completion updates
 
 settings-mute-notifications = Mute notifications
 settings-change-mute-duration = Change mute duration

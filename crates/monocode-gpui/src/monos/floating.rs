@@ -32,18 +32,18 @@ fn drag(window: &mut Window) {
 /// A header button: 28pt, and it never starts a window move.
 fn header_button(
     id: &'static str,
-    label: &'static str,
+    label: impl Into<gpui::SharedString>,
     path: &'static str,
 ) -> gpui::Stateful<gpui::Div> {
     icon_button_hover(id, label, path, 0.08)
         .size(px(28.))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 }
-fn status_label(state: &str) -> &'static str {
+fn status_label(state: &str) -> String {
     match state {
-        "working" => "Working",
-        "needs-you" => "Needs you",
-        _ => "Idle",
+        "working" => crate::i18n::text("monos-working"),
+        "needs-you" => crate::i18n::text("monos-needs-you"),
+        _ => crate::i18n::text("monos-idle"),
     }
 }
 /// MonoStatusDot and MonoStatus's dot: accent when it needs you, the Mono's
@@ -98,7 +98,7 @@ impl Floating {
         div()
             .id("floating-mono-rail")
             .role(Role::Navigation)
-            .aria_label("Monos")
+            .aria_label(crate::i18n::text("monos-monos"))
             .w(px(56.))
             .h_full()
             .flex_shrink_0()
@@ -178,7 +178,7 @@ impl Floating {
                 div()
                     .id("floating-new-mono")
                     .role(Role::Button)
-                    .aria_label("New mono")
+                    .aria_label(crate::i18n::text("monos-new-mono"))
                     .size(px(32.))
                     .flex_shrink_0()
                     .rounded_lg()
@@ -272,35 +272,46 @@ impl Floating {
             )
             .when(busy, |d| {
                 d.child(
-                    header_button("floating-stop", "Stop reply", "square")
-                        .on_click(cx.listener(|this, _, _, cx| this.stop(cx))),
+                    header_button(
+                        "floating-stop",
+                        crate::i18n::text("monos-stop-reply"),
+                        "square",
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.stop(cx))),
                 )
             })
             .child(
-                header_button("floating-reveal", "Open in MonoCode", "external-link").on_click(
-                    cx.listener(|this, _, window, cx| {
-                        let id = this.selected.clone();
-                        let owner = this.owner.clone();
-                        let parent = owner.read(cx).parent_window;
-                        // As Tauri's reveal: the workspace takes the chat over,
-                        // so this panel steps aside.
-                        this.close(window, cx);
-                        let app: &mut App = cx;
-                        app.defer(move |cx| {
-                            if let Some(parent) = parent {
-                                let _ = parent.update(cx, |_, w, cx| {
-                                    owner.update(cx, |m, cx| m.open(&id, w, cx));
-                                    w.activate_window();
-                                    cx.activate(true);
-                                });
-                            }
-                        });
-                    }),
-                ),
+                header_button(
+                    "floating-reveal",
+                    crate::i18n::text("monos-open-in-monocode"),
+                    "external-link",
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    let id = this.selected.clone();
+                    let owner = this.owner.clone();
+                    let parent = owner.read(cx).parent_window;
+                    // As Tauri's reveal: the workspace takes the chat over,
+                    // so this panel steps aside.
+                    this.close(window, cx);
+                    let app: &mut App = cx;
+                    app.defer(move |cx| {
+                        if let Some(parent) = parent {
+                            let _ = parent.update(cx, |_, w, cx| {
+                                owner.update(cx, |m, cx| m.open(&id, w, cx));
+                                w.activate_window();
+                                cx.activate(true);
+                            });
+                        }
+                    });
+                })),
             )
             .child(
-                header_button("floating-close", "Hide chat", "close")
-                    .on_click(cx.listener(|this, _, window, cx| this.close(window, cx))),
+                header_button(
+                    "floating-close",
+                    crate::i18n::text("monos-hide-chat"),
+                    "close",
+                )
+                .on_click(cx.listener(|this, _, window, cx| this.close(window, cx))),
             )
     }
     fn stop(&mut self, cx: &mut Context<Self>) {
@@ -395,7 +406,7 @@ impl gpui::Render for Floating {
                                                 .text_color(content(0.5))
                                                 .text_center()
                                                 .child(failure.unwrap_or_else(|| {
-                                                    "Loading conversation…".into()
+                                                    crate::i18n::text("monos-loading-conversation")
                                                 })),
                                         ),
                                 ),
@@ -451,16 +462,19 @@ impl Monos {
                     .text_size(px(13.))
                     .text_color(content(0.5))
                     .text_center()
-                    .child(format!("{} is open in a floating chat.", mono.label())),
+                    .child(crate::i18n::format(
+                        "monos-is-open-in-a-floating-chat",
+                        &[("name", mono.label().to_string())],
+                    )),
             )
             .child(
                 crate::settings::widgets::secondary_button(
                     "floating-show-here",
-                    "Show here",
+                    crate::i18n::text("monos-show-here"),
                     false,
                     false,
                 )
-                .child("Show here")
+                .child(crate::i18n::text("monos-show-here"))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.hide_floating(&id, cx);
                     this.focus_active(window, cx);

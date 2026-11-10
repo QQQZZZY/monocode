@@ -9,12 +9,8 @@ impl Shell {
         self.active_app_view.is_some()
     }
 
-    pub(super) fn app_view_label(&self) -> Option<&'static str> {
-        self.active_app_view.map(|view| match view {
-            AppView::Inbox => "Inbox",
-            AppView::Notes => "Notes",
-            AppView::Automations => "Automations",
-        })
+    pub(super) fn app_view_id(&self) -> Option<&'static str> {
+        self.active_app_view.map(AppView::id)
     }
 
     pub(super) fn app_title_tab(
@@ -26,11 +22,8 @@ impl Shell {
         let active = self.active_app_view == Some(view);
         let close = active || width >= TAB_CLOSE_MIN_WIDTH;
         div()
-            .id(SharedString::from(format!(
-                "app-title-tab-{}",
-                view.label()
-            )))
-            .debug_selector(move || format!("app-title-tab-{}", view.label()))
+            .id(SharedString::from(format!("app-title-tab-{}", view.id())))
+            .debug_selector(move || format!("app-title-tab-{}", view.id()))
             .group("app-title-tab")
             .role(Role::Tab)
             .aria_label(view.label())
@@ -72,13 +65,13 @@ impl Shell {
             .when(close, |d| {
                 d.child(
                     div()
-                        .id(SharedString::from(format!(
-                            "close-app-tab-{}",
-                            view.label()
-                        )))
-                        .debug_selector(move || format!("close-app-tab-{}", view.label()))
+                        .id(SharedString::from(format!("close-app-tab-{}", view.id())))
+                        .debug_selector(move || format!("close-app-tab-{}", view.id()))
                         .role(Role::Button)
-                        .aria_label(format!("Close {}", view.label()))
+                        .aria_label(crate::i18n::format(
+                            "shell-close-2",
+                            &[("name", view.label().to_string())],
+                        ))
                         .absolute()
                         .right_1()
                         .top(px(10.))

@@ -13,6 +13,9 @@ impl Metadata<'_> {
         monocode_core::session_title::display_title(&self.summary.title, &self.summary.provider)
             .replace('\n', " ")
     }
+    pub(super) fn localized_title(&self) -> String {
+        crate::i18n::session_title(&self.summary.title, &self.summary.provider)
+    }
     pub(super) fn needs_approval(&self) -> bool {
         self.live.is_some_and(Conversation::needs_approval) || self.remote_waiting
     }

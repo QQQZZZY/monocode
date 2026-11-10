@@ -37,11 +37,11 @@ impl ClassicSidebarTab {
         }
     }
 
-    fn label(self) -> &'static str {
+    pub(super) fn label(self) -> String {
         match self {
-            Self::Sessions => "Sessions",
-            Self::Files => "Explorer",
-            Self::Changes => "Changes",
+            Self::Sessions => crate::i18n::text("sidebar-sessions"),
+            Self::Files => crate::i18n::text("sidebar-explorer"),
+            Self::Changes => crate::i18n::text("sidebar-changes"),
         }
     }
 
@@ -116,8 +116,8 @@ impl WorkspaceTabs {
 pub(super) fn session_search(cx: &mut Context<Shell>) -> Entity<input::Input> {
     cx.new(|cx| {
         let mut input = input::Input::field(
-            "Search conversations",
-            "Search conversations...",
+            crate::i18n::text("shell-search-conversations"),
+            crate::i18n::text("shell-search-conversations-2"),
             content(0.35),
             cx,
         );
@@ -394,13 +394,18 @@ impl Shell {
                 .text_size(px(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(content(1.))
-                .child("Workspace")
+                .child(crate::i18n::text("shell-workspace"))
                 .into_any();
         }
         let focus = self.worktree_focus.get(&self.workspace.project);
         let title = focus
-            .map(|focus| focus.branch.as_deref().unwrap_or("Detached worktree"))
-            .unwrap_or("Workspace")
+            .map(|focus| {
+                focus
+                    .branch
+                    .clone()
+                    .unwrap_or_else(|| crate::i18n::text("shell-detached-worktree"))
+            })
+            .unwrap_or_else(|| crate::i18n::text("shell-workspace"))
             .to_owned();
         div()
             .flex_1()
@@ -412,7 +417,7 @@ impl Shell {
                     .id("classic-workspace-picker")
                     .debug_selector(|| "classic-workspace-picker".into())
                     .role(Role::Button)
-                    .aria_label("Switch working copy")
+                    .aria_label(crate::i18n::text("shell-switch-working-copy"))
                     .aria_description(self.working_copy().to_owned())
                     .aria_expanded(self.classic_worktree_picker.is_some())
                     .cursor_pointer()
@@ -481,7 +486,7 @@ impl Shell {
             .id("classic-workspace-tabs")
             .debug_selector(|| "classic-workspace-tabs".into())
             .role(Role::TabList)
-            .aria_label("Workspace")
+            .aria_label(crate::i18n::text("shell-workspace"))
             .h(px(36.))
             .flex_shrink_0()
             .flex()
@@ -520,7 +525,23 @@ impl Shell {
                                     })
                                     .role(Role::Tab)
                                     .aria_label(if tab == ClassicSidebarTab::Changes && changes {
-                                        format!("Changes +{additions} -{deletions}")
+                                        crate::i18n::format(
+                                            "shell-changes",
+                                            &[
+                                                (
+                                                    "additions",
+                                                    crate::system_format::unsigned(
+                                                        (additions) as u64,
+                                                    ),
+                                                ),
+                                                (
+                                                    "deletions",
+                                                    crate::system_format::unsigned(
+                                                        (deletions) as u64,
+                                                    ),
+                                                ),
+                                            ],
+                                        )
                                     } else {
                                         tab.label().to_owned()
                                     })

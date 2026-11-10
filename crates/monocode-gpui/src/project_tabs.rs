@@ -1,6 +1,6 @@
 //! Compact project tool tabs shared by the rounded and expanded layouts.
 use crate::{right_panel::RightTab, theme::*};
-use gpui::{App, MouseButton, Role, Stateful, Window, div, prelude::*, px};
+use gpui::{App, MouseButton, Role, SharedString, Stateful, Window, div, prelude::*, px};
 use std::time::Instant;
 
 const TAB_TEXT_SIZE: f32 = 12.;
@@ -37,23 +37,32 @@ impl<T: Copy + PartialEq> TabReveal<T> {
 }
 
 pub(crate) struct TabLabel {
-    text: &'static str,
+    text: SharedString,
     count: usize,
     max_width: Option<f32>,
 }
 impl From<&'static str> for TabLabel {
     fn from(text: &'static str) -> Self {
         Self {
-            text,
+            text: text.into(),
             count: 0,
             max_width: None,
         }
     }
 }
-impl From<(&'static str, usize)> for TabLabel {
-    fn from((text, count): (&'static str, usize)) -> Self {
+impl From<String> for TabLabel {
+    fn from(text: String) -> Self {
         Self {
-            text,
+            text: text.into(),
+            count: 0,
+            max_width: None,
+        }
+    }
+}
+impl From<(String, usize)> for TabLabel {
+    fn from((text, count): (String, usize)) -> Self {
+        Self {
+            text: text.into(),
             count,
             max_width: None,
         }
@@ -80,12 +89,13 @@ pub(crate) fn tab_button(
     window: &mut Window,
 ) -> Stateful<gpui::Div> {
     let label = label.into();
+    let count_text = crate::system_format::unsigned(label.count as u64);
     let count_width = if label.count > 0 {
-        (label_width(&label.count.to_string(), window) + 8.).max(16.) + 6.
+        (label_width(&count_text, window) + 8.).max(16.) + 6.
     } else {
         0.
     };
-    let natural_width = label_width(label.text, window) + 6. + count_width;
+    let natural_width = label_width(&label.text, window) + 6. + count_width;
     let width = label
         .max_width
         .map_or(natural_width, |max| max.min(natural_width));
@@ -101,7 +111,7 @@ pub(crate) fn tab_button(
         .id(id)
         .debug_selector(move || id.into())
         .role(Role::Tab)
-        .aria_label(label.text)
+        .aria_label(label.text.clone())
         .aria_selected(selected)
         .group(id)
         .cursor_pointer()
@@ -177,7 +187,7 @@ pub(crate) fn tab_button(
                                         .font_weight(gpui::FontWeight::MEDIUM)
                                         .font_features(crate::right_panel::tabular())
                                         .text_center()
-                                        .child(label.count.to_string()),
+                                        .child(count_text),
                                 )
                             }),
                     ),

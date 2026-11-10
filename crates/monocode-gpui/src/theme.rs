@@ -1,3 +1,4 @@
+use gpui::SharedString;
 use gpui::{AnyElement, Div, Hsla, Role, Stateful, Svg, div, img, prelude::*, px, rgb, rgba, svg};
 // Shared appearance tokens. Interaction fills use translucent content ink
 // rather than opaque replacement greys.
@@ -415,7 +416,7 @@ pub(crate) fn inset_pane_fill() -> Hsla {
         .with(|tokens| tokens.borrow().as_ref().map(|t| t.inset_pane))
         .unwrap_or_else(pane_fill)
 }
-pub(crate) fn section_label(label: &'static str) -> Div {
+pub(crate) fn section_label(label: impl Into<SharedString>) -> Div {
     div()
         .h(px(28.))
         .px_2()
@@ -426,7 +427,7 @@ pub(crate) fn section_label(label: &'static str) -> Div {
         .text_size(px(12.))
         .font_weight(gpui::FontWeight::MEDIUM)
         .text_color(content(0.5))
-        .child(div().flex_1().child(label))
+        .child(div().flex_1().child(label.into()))
 }
 pub(crate) fn icon(path: &'static str, side: f32) -> Svg {
     svg()
@@ -523,14 +524,14 @@ pub(crate) fn provider_icon(provider: &str, side: f32) -> Div {
 }
 pub(crate) fn icon_button(
     id: &'static str,
-    label: &'static str,
+    label: impl Into<SharedString>,
     path: &'static str,
 ) -> Stateful<Div> {
     icon_button_hover(id, label, path, 0.1)
 }
 pub(crate) fn icon_button_hover(
     id: &'static str,
-    label: &'static str,
+    label: impl Into<SharedString>,
     path: &'static str,
     hover_alpha: f32,
 ) -> Stateful<Div> {
@@ -538,7 +539,7 @@ pub(crate) fn icon_button_hover(
 }
 pub(crate) fn icon_button_enabled(
     id: &'static str,
-    label: &'static str,
+    label: impl Into<SharedString>,
     path: &'static str,
     enabled: bool,
 ) -> Stateful<Div> {
@@ -546,7 +547,7 @@ pub(crate) fn icon_button_enabled(
 }
 fn chrome_button(
     id: &'static str,
-    label: &'static str,
+    label: impl Into<SharedString>,
     path: &'static str,
     enabled: bool,
     hover_alpha: f32,
@@ -554,7 +555,7 @@ fn chrome_button(
     div()
         .id(id)
         .role(Role::Button)
-        .aria_label(label)
+        .aria_label(label.into())
         .group("chrome-button")
         .cursor_pointer()
         .flex()
