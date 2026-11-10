@@ -531,7 +531,15 @@ impl Monos {
                 .into()
             })
             .collect();
-        let menu = cx.new(|cx| Menu::new("Working copies", items, window, cx).width(280.));
+        let menu = cx.new(|cx| {
+            Menu::new(
+                crate::i18n::text("monos-menu-working-copies"),
+                items,
+                window,
+                cx,
+            )
+            .width(280.)
+        });
         let event = cx.subscribe(&menu, move |this, _, event: &MenuEvent, cx| {
             this.picker = None;
             if let MenuEvent::Picked(action, _) = event
@@ -576,9 +584,9 @@ impl Monos {
                 .py_4()
                 .text_size(px(12.))
                 .text_color(content(0.45))
-                .child(format!(
-                    "Give {} a project to work on, and its changes show up here to commit.",
-                    mono.label()
+                .child(crate::i18n::format(
+                    "monos-give-a-project-to-work-on-and",
+                    &[("name", mono.label().to_string())],
                 ))
                 .into_any_element();
         }
@@ -587,7 +595,7 @@ impl Monos {
             .id("mono-changes-projects")
             .debug_selector(|| "mono-changes-projects".into())
             .role(Role::TabList)
-            .aria_label("Projects")
+            .aria_label(crate::i18n::text("monos-projects"))
             .h(px(36.))
             .flex_shrink_0()
             .flex()
@@ -634,9 +642,21 @@ impl Monos {
                     .clone();
                 let mono_id = mono.id.clone();
                 let path = project.path.clone();
-                let title = format!(
-                    "{label}, {count} pending changes{}",
-                    if active { ", selected" } else { "" }
+                let title = crate::i18n::format(
+                    "monos-pending-changes",
+                    &[
+                        ("label", (label).to_string()),
+                        ("count", crate::system_format::unsigned(count as u64)),
+                        (
+                            "value",
+                            (if active {
+                                crate::i18n::text("monos-selected-suffix")
+                            } else {
+                                String::new()
+                            })
+                            .to_string(),
+                        ),
+                    ],
                 );
                 let checkouts = project.checkouts.clone();
                 let picker_mono = mono.id.clone();
@@ -657,7 +677,7 @@ impl Monos {
                             .debug_selector(move || format!("mono-changes-project-{ix}"))
                             .role(Role::Tab)
                             .aria_selected(active)
-                            .aria_label(title)
+                            .aria_label(&title)
                             .cursor_pointer()
                             .h_full()
                             .flex()
@@ -673,7 +693,11 @@ impl Monos {
                             ))
                             .child(div().max_w(px(160.)).truncate().child(label))
                             .when(count > 0, |d| {
-                                d.child(div().text_color(content(0.4)).child(count.to_string()))
+                                d.child(
+                                    div()
+                                        .text_color(content(0.4))
+                                        .child(crate::system_format::unsigned(count as u64)),
+                                )
                             })
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.select_change_project(&mono_id, &path, &target, window, cx)
@@ -684,7 +708,7 @@ impl Monos {
                             div()
                                 .id(("mono-changes-checkouts", ix))
                                 .role(Role::Button)
-                                .aria_label("Switch project working copy")
+                                .aria_label(crate::i18n::text("monos-switch-project-working-copy"))
                                 .size(px(18.))
                                 .mr_1()
                                 .flex()
@@ -732,7 +756,10 @@ impl Monos {
                             .py_2()
                             .text_size(px(12.))
                             .text_color(rgb(0xff6467))
-                            .child(format!("Couldn’t load repositories: {error}")),
+                            .child(crate::i18n::format(
+                                "monos-couldn-t-load-repositories",
+                                &[("error", error.to_string())],
+                            )),
                     )
                 },
             )

@@ -49,19 +49,22 @@ impl Monos {
     pub(super) fn filter_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let f = &self.session_filters;
         let mut items: Vec<MenuItem> = vec![
-            MenuAction::new("archived", "Show archived")
+            MenuAction::new("archived", crate::i18n::text("monos-show-archived"))
                 .checked(f.show_archived)
                 .into(),
-            MenuAction::new("unavailable", "Unavailable sessions")
-                .checked(f.show_unavailable)
-                .into(),
+            MenuAction::new(
+                "unavailable",
+                crate::i18n::text("monos-unavailable-sessions"),
+            )
+            .checked(f.show_unavailable)
+            .into(),
             MenuItem::Separator,
         ];
         for (id, label) in [
-            ("all", "All time"),
-            ("today", "Today"),
-            ("7d", "Last 7 days"),
-            ("30d", "Last 30 days"),
+            ("all", crate::i18n::text("filters-all-time")),
+            ("today", crate::i18n::text("filters-today")),
+            ("7d", crate::i18n::text("filters-last-7-days")),
+            ("30d", crate::i18n::text("filters-last-30-days")),
         ] {
             items.push(
                 MenuAction::new(format!("time:{id}"), label)
@@ -75,9 +78,13 @@ impl Monos {
         }
         items.push(MenuItem::Separator);
         for (id, label, on) in [
-            ("working", "Working", f.working),
-            ("approval", "Needs approval", f.needs_approval),
-            ("done", "Done", f.done),
+            ("working", crate::i18n::text("filters-working"), f.working),
+            (
+                "approval",
+                crate::i18n::text("filters-needs-approval"),
+                f.needs_approval,
+            ),
+            ("done", crate::i18n::text("filters-done"), f.done),
         ] {
             items.push(MenuAction::new(id, label).checked(on).into());
         }
@@ -95,8 +102,16 @@ impl Monos {
             }
         }
         items.push(MenuItem::Separator);
-        items.push(MenuAction::new("reset", "Reset filters").into());
-        let menu = cx.new(|cx| Menu::new("Filter Mono sessions", items, window, cx).width(228.));
+        items.push(MenuAction::new("reset", crate::i18n::text("monos-reset-filters")).into());
+        let menu = cx.new(|cx| {
+            Menu::new(
+                crate::i18n::text("monos-menu-filter-mono-sessions"),
+                items,
+                window,
+                cx,
+            )
+            .width(228.)
+        });
         let events = cx.subscribe(&menu, |this, _, event: &MenuEvent, cx| {
             if let MenuEvent::Picked(id, _) = event {
                 let f = &mut this.session_filters;

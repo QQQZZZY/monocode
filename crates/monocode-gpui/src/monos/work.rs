@@ -65,10 +65,15 @@ impl Monos {
                     }
                     Ok(None) => {
                         this.forget_document(&id, cx);
-                        this.error = Some("Document unavailable. It may have been deleted.".into());
+                        this.error = Some(crate::i18n::text(
+                            "monos-document-unavailable-it-may-have-been-deleted",
+                        ));
                     }
                     Err(error) => {
-                        this.error = Some(format!("Could not open this document: {error}"))
+                        this.error = Some(crate::i18n::format(
+                            "monos-could-not-open-this-document",
+                            &[("error", (error).to_string())],
+                        ))
                     }
                 }
                 cx.notify();
@@ -113,7 +118,10 @@ impl Monos {
                 let (revision, data) = match result {
                     Ok(value) => value,
                     Err(error) => {
-                        this.error = Some(format!("Could not refresh this Mono’s work: {error}"));
+                        this.error = Some(crate::i18n::format(
+                            "monos-could-not-refresh-this-mono-s-work",
+                            &[("error", (error).to_string())],
+                        ));
                         cx.notify();
                         return;
                     }

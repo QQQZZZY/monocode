@@ -64,7 +64,12 @@ impl EventEmitter<Picked> for ColorPicker {}
 impl ColorPicker {
     pub(super) fn new(color: u32, cx: &mut Context<Self>) -> Self {
         let hex = cx.new(|cx| {
-            let mut field = Input::field("Hex color", "#rrggbb", content(0.35), cx);
+            let mut field = Input::field(
+                crate::i18n::text("monos-hex-color"),
+                crate::i18n::text("monos-rrggbb"),
+                content(0.35),
+                cx,
+            );
             field.set_font_size(12.);
             field.set_line_height(18.);
             field.set_text(format!("#{color:06x}"), cx);
@@ -178,7 +183,7 @@ impl gpui::Render for ColorPicker {
                 div()
                     .id("mono-color-sv")
                     .role(Role::Slider)
-                    .aria_label("Saturation and brightness")
+                    .aria_label(crate::i18n::text("monos-saturation-and-brightness"))
                     .relative()
                     .h(px(112.))
                     .w_full()
@@ -215,7 +220,7 @@ impl gpui::Render for ColorPicker {
                 div()
                     .id("mono-color-hue")
                     .role(Role::Slider)
-                    .aria_label("Hue")
+                    .aria_label(crate::i18n::text("monos-hue"))
                     .relative()
                     .mt_2()
                     .h(px(12.))

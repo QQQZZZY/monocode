@@ -149,7 +149,7 @@ impl Render for Overview {
             .id("mono-overview-panel")
             .debug_selector(|| "mono-overview-panel".into())
             .role(Role::Complementary)
-            .aria_label("Mono details")
+            .aria_label(crate::i18n::text("monos-mono-details"))
             .track_focus(&self.focus)
             .size_full()
             .min_w_0()

@@ -2012,6 +2012,10 @@ fn a_session_open_in_mono_details_keeps_its_history(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn long_habit_draft_keeps_fields_and_schedule_inside_the_scrolling_page(cx: &mut TestAppContext) {
+    #[cfg(target_os = "macos")]
+    let controlled = crate::system_format::controlled_test_locale();
+    #[cfg(not(target_os = "macos"))]
+    let controlled = false;
     let s = setup(cx);
     cx.update(|cx| {
         cx.set_reduce_motion(true);
@@ -2095,22 +2099,36 @@ fn long_habit_draft_keeps_fields_and_schedule_inside_the_scrolling_page(cx: &mut
         "6"
     );
     // Invalid schedules keep the full draft in place instead of navigating away.
+    for invalid in ["25:00", "0:30 PM", "00:30 AM", "9:30 PM junk"] {
+        s.manager.update(visual, |m, cx| {
+            m.fields["habit-time"].update(cx, |f, cx| f.set_text(invalid.into(), cx));
+        });
+        visual.run_until_parked();
+        visual.simulate_click(create.center(), Default::default());
+        visual.run_until_parked();
+        assert!(
+            s.manager
+                .read_with(visual, |m, _| m.route == Some(Route::NewHabit))
+        );
+        assert!(s.manager.read_with(visual, |m, cx| {
+            m.fields["habit-instructions"].read(cx).content.len() > 2000
+        }));
+        assert!(
+            habits::load(&s.root, &s.id).unwrap().is_empty(),
+            "{invalid}"
+        );
+    }
+    let time = if controlled {
+        if std::env::var("MONOCODE_TEST_12H").as_deref() == Ok("AM") {
+            "12:30 AM"
+        } else {
+            "12:30 PM"
+        }
+    } else {
+        "09:00"
+    };
     s.manager.update(visual, |m, cx| {
-        m.fields["habit-time"].update(cx, |f, cx| f.set_text("25:00".into(), cx));
-    });
-    visual.run_until_parked();
-    visual.simulate_click(create.center(), Default::default());
-    visual.run_until_parked();
-    assert!(
-        s.manager
-            .read_with(visual, |m, _| m.route == Some(Route::NewHabit))
-    );
-    assert!(s.manager.read_with(visual, |m, cx| {
-        m.fields["habit-instructions"].read(cx).content.len() > 2000
-    }));
-    assert!(habits::load(&s.root, &s.id).unwrap().is_empty());
-    s.manager.update(visual, |m, cx| {
-        m.fields["habit-time"].update(cx, |f, cx| f.set_text("09:00".into(), cx));
+        m.fields["habit-time"].update(cx, |f, cx| f.set_text(time.into(), cx));
     });
     visual.run_until_parked();
     visual.simulate_click(create.center(), Default::default());
@@ -2118,6 +2136,16 @@ fn long_habit_draft_keeps_fields_and_schedule_inside_the_scrolling_page(cx: &mut
     let saved = habits::load(&s.root, &s.id).unwrap();
     assert_eq!(saved.len(), 1);
     assert!(saved[0].instructions.len() > 2000);
+    assert_eq!(
+        saved[0].schedule.time,
+        if time == "12:30 AM" {
+            "00:30"
+        } else if time == "12:30 PM" {
+            "12:30"
+        } else {
+            "09:00"
+        }
+    );
     assert_eq!(saved[0].schedule.schedule_kind, "weekly");
     assert_eq!(saved[0].schedule.day_of_week, 6);
     assert!(s.manager.read_with(visual, |m, _| m.route.is_none()));

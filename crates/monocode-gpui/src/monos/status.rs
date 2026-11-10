@@ -79,7 +79,9 @@ impl Status {
         menu.setAutoenablesItems(false);
         if monos.is_empty() {
             let title = NSMenuItem::new(mtm);
-            title.setTitle(&NSString::from_str("No monos yet"));
+            title.setTitle(&NSString::from_str(&crate::i18n::text(
+                "monos-no-monos-yet",
+            )));
             title.setEnabled(false);
             menu.addItem(&title);
         }
@@ -90,12 +92,17 @@ impl Status {
         menu.addItem(&NSMenuItem::separatorItem(mtm));
         menu.addItem(&Item::new(
             mtm,
-            "Quick Composer",
+            &crate::i18n::text("monos-quick-composer"),
             "composer".into(),
             run.clone(),
         ));
         menu.addItem(&NSMenuItem::separatorItem(mtm));
-        menu.addItem(&Item::new(mtm, "Quit MonoCode", "quit".into(), run));
+        menu.addItem(&Item::new(
+            mtm,
+            &crate::i18n::text("monos-quit-monocode"),
+            "quit".into(),
+            run,
+        ));
         self.item.setMenu(Some(&menu));
     }
 }

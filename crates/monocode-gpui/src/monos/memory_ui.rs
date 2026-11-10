@@ -62,9 +62,15 @@ impl Monos {
                                 ),
                         )
                         .child(if dropped > 0 {
-                            format!("{dropped} lines not loading")
+                            crate::i18n::format(
+                                "monos-lines-not-loading",
+                                &[("dropped", crate::system_format::unsigned(dropped as u64))],
+                            )
                         } else {
-                            format!("{lines} / 200 lines")
+                            crate::i18n::format(
+                                "monos-200-lines",
+                                &[("lines", crate::system_format::unsigned(lines as u64))],
+                            )
                         }),
                 )
         });
@@ -76,37 +82,40 @@ impl Monos {
             .flex()
             .flex_col()
             .child(
-                Self::settings_page_header("Memory").when(files.is_some(), |d| {
-                    d.child(
-                        icon_button_enabled(
-                            "mono-add-memory",
-                            "Add memory",
-                            "plus",
-                            !self.memory_adding,
+                Self::settings_page_header(&crate::i18n::text("monos-memory")).when(
+                    files.is_some(),
+                    |d| {
+                        d.child(
+                            icon_button_enabled(
+                                "mono-add-memory",
+                                crate::i18n::text("monos-add-memory"),
+                                "plus",
+                                !self.memory_adding,
+                            )
+                            .size(px(28.))
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    if this.memory_adding {
+                                        return;
+                                    }
+                                    this.memory_edit = None;
+                                    this.memory_adding = true;
+                                    this.error = None;
+                                    let editor = this.field(
+                                        "memory-fact",
+                                        &crate::i18n::text("monos-new-memory"),
+                                        String::new(),
+                                        false,
+                                        cx,
+                                    );
+                                    editor.update(cx, |f, cx| f.set_text(String::new(), cx));
+                                    window.focus(&editor.focus_handle(cx), cx);
+                                    cx.notify();
+                                },
+                            )),
                         )
-                        .size(px(28.))
-                        .on_click(cx.listener(
-                            move |this, _, window, cx| {
-                                if this.memory_adding {
-                                    return;
-                                }
-                                this.memory_edit = None;
-                                this.memory_adding = true;
-                                this.error = None;
-                                let editor = this.field(
-                                    "memory-fact",
-                                    "New memory",
-                                    String::new(),
-                                    false,
-                                    cx,
-                                );
-                                editor.update(cx, |f, cx| f.set_text(String::new(), cx));
-                                window.focus(&editor.focus_handle(cx), cx);
-                                cx.notify();
-                            },
-                        )),
-                    )
-                }),
+                    },
+                ),
             )
             .child(
                 div()
@@ -127,7 +136,7 @@ impl Monos {
                                 .text_center()
                                 .text_size(px(12.))
                                 .text_color(content(0.45))
-                                .child("Loading…"),
+                                .child(crate::i18n::text("monos-loading")),
                         )
                     })
                     .when(files.is_some() && rows.is_empty(), |d| {
@@ -138,7 +147,7 @@ impl Monos {
                                 .text_center()
                                 .text_size(px(12.))
                                 .text_color(content(0.45))
-                                .child("Nothing remembered yet"),
+                                .child(crate::i18n::text("monos-nothing-remembered-yet")),
                         )
                     })
                     .children(rows),
@@ -175,17 +184,17 @@ impl Monos {
             .unwrap_or_else(|| "memory-fact".into());
         let editor = self.field(
             &key,
-            if original.is_some() {
-                "Edit memory"
+            &if original.is_some() {
+                crate::i18n::text("monos-edit-memory-2")
             } else {
-                "New memory"
+                crate::i18n::text("monos-new-memory")
             },
             original.map(memory::fact).unwrap_or_default(),
             false,
             cx,
         );
         editor.update(cx, |f, cx| {
-            f.set_placeholder("Something it should remember", cx)
+            f.set_placeholder(crate::i18n::text("monos-something-it-should-remember"), cx)
         });
         if self.field_blurs.insert(editor.entity_id()) {
             let (mono, row, field) = (mono.id.clone(), original.map(str::to_owned), key.clone());
@@ -260,7 +269,7 @@ impl Monos {
                 .trim_start_matches("~~")
                 .get(..10)
                 .and_then(|day| chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d").ok())
-                .map(|day| day.format("%b %-d").to_string());
+                .map(|day| crate::system_format::day(day, "MMMd", "%b %-d"));
             let edit = line.to_string();
             let remove = edit.clone();
             let edit_button = edit.clone();
@@ -276,7 +285,10 @@ impl Monos {
                         div()
                             .id(("memory-fact-body", index))
                             .role(Role::Button)
-                            .aria_label(format!("Edit memory: {fact}"))
+                            .aria_label(crate::i18n::format(
+                                "monos-edit-memory",
+                                &[("fact", fact.to_string())],
+                            ))
                             .flex_1()
                             .min_w_0()
                             .flex()
@@ -320,8 +332,13 @@ impl Monos {
                                     this.active.as_deref().unwrap_or_default(),
                                     mono::files::content_hash(&edit)
                                 );
-                                let field =
-                                    this.field(&key, "Edit memory", memory::fact(&edit), false, cx);
+                                let field = this.field(
+                                    &key,
+                                    &crate::i18n::text("monos-edit-memory-2"),
+                                    memory::fact(&edit),
+                                    false,
+                                    cx,
+                                );
                                 window.focus(&field.focus_handle(cx), cx);
                                 cx.notify();
                             })),
@@ -338,7 +355,7 @@ impl Monos {
                                 d.child(
                                     icon_button(
                                         "mono-memory-edit",
-                                        "Edit memory fact",
+                                        crate::i18n::text("monos-edit-memory-fact"),
                                         "pencil-edit",
                                     )
                                     .on_click(cx.listener(
@@ -352,7 +369,7 @@ impl Monos {
                                             );
                                             let field = this.field(
                                                 &key,
-                                                "Edit memory",
+                                                &crate::i18n::text("monos-edit-memory-2"),
                                                 memory::fact(&edit_button),
                                                 false,
                                                 cx,
@@ -364,10 +381,14 @@ impl Monos {
                                 )
                             })
                             .child(
-                                icon_button("mono-memory-forget", "Forget memory fact", "trash")
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.edit_memory_fact(&remove, None, cx)
-                                    })),
+                                icon_button(
+                                    "mono-memory-forget",
+                                    crate::i18n::text("monos-forget-memory-fact"),
+                                    "trash",
+                                )
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| this.edit_memory_fact(&remove, None, cx),
+                                )),
                             ),
                     )
                     .into_any_element(),
