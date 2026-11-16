@@ -304,17 +304,18 @@ impl Conversation {
             return true;
         }
         if !self.git_actions_ready() {
-            self.status = if self.busy || !self.follow_ups.state.messages.is_empty() {
-                crate::i18n::format(
-                    "conversation-wait-before-action",
-                    &[("value1", (action.id()).to_string())],
-                )
-            } else {
-                crate::i18n::format(
-                    "conversation-action-unavailable",
-                    &[("value1", (action.id()).to_string())],
-                )
-            };
+            self.status =
+                RunStatus::Raw(if self.busy || !self.follow_ups.state.messages.is_empty() {
+                    crate::i18n::format(
+                        "conversation-wait-before-action",
+                        &[("value1", (action.id()).to_string())],
+                    )
+                } else {
+                    crate::i18n::format(
+                        "conversation-action-unavailable",
+                        &[("value1", (action.id()).to_string())],
+                    )
+                });
             cx.notify();
             return true;
         }
@@ -530,7 +531,7 @@ mod tests {
         assert!(!shown(visual), "only another session's file is dirty");
         window
             .update(visual, |view, _, _| {
-                assert!(view.loaded, "{}", view.status);
+                assert!(view.loaded, "{}", view.status.stable());
                 assert_eq!(
                     view.session_edits,
                     [repo.0.join("own.rs").to_string_lossy()]

@@ -9565,6 +9565,7 @@ mod tests {
                 eprintln!("sidebar a11y={node}");
             })
             .unwrap();
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
     }
     #[gpui::test]
     fn window_state_is_saved_on_resize_and_restored_with_the_workspace(cx: &mut TestAppContext) {

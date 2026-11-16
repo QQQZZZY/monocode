@@ -6,6 +6,10 @@ use monocode_core::remote::{Connections, Machine};
 use serde::Deserialize;
 use serde_json::json;
 
+/// Marks a host directory the desktop could not read; the UI thread replaces
+/// it with localized copy and keeps the protocol detail.
+const INVALID_DIRECTORY: &str = "invalid host directory: ";
+
 pub(super) struct Open {
     picker: Entity<RemoteProjectPicker>,
     restore: Option<FocusHandle>,
@@ -147,7 +151,9 @@ impl RemoteProjectPicker {
         let work = cx.background_executor().spawn(async move {
             let value = remote.request(&machine_id, "projects.browse", browse_arguments(path))?;
             serde_json::from_value::<Directory>(value)
-                .map_err(|e| format!("Invalid host directory: {e}"))
+                // `browse` re-serializes the host's directory; a mismatch is a
+                // protocol detail, so it stays raw until the caller wraps it.
+                .map_err(|e| format!("{INVALID_DIRECTORY}{e}"))
         });
         cx.spawn(async move |this, cx| {
             let result = work.await;
@@ -162,7 +168,15 @@ impl RemoteProjectPicker {
                             .update(cx, |input, cx| input.set_text(directory.path.clone(), cx));
                         this.directory = Some(directory);
                     }
-                    Err(error) => this.error = error,
+                    Err(error) => {
+                        this.error = match error.strip_prefix(INVALID_DIRECTORY) {
+                            Some(detail) => crate::i18n::format(
+                                "shell-invalid-host-directory",
+                                &[("error", detail.to_owned())],
+                            ),
+                            None => error,
+                        }
+                    }
                 }
                 cx.notify();
             });

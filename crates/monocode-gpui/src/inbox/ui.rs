@@ -3121,6 +3121,7 @@ mod tests {
             "alice的审阅已被驳回"
         );
         assert_eq!(crate::i18n::text("inbox-closed"), "已关闭");
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
     }
 
     struct Fixture {
@@ -3198,6 +3199,7 @@ mod tests {
                 })
                 .unwrap();
         }
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
     }
 
     impl Render for Fixture {

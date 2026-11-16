@@ -159,7 +159,18 @@ impl Controller {
                         self.registration = Some(registration);
                         return Some(rx);
                     }
-                    Err(e) => self.error = Some(e),
+                    Err(e) => {
+                        self.error = Some(match e.strip_prefix(hotkey::REGISTER_FAILED) {
+                            Some(status) => {
+                                let status = status.trim_end_matches('.').to_owned();
+                                crate::i18n::format(
+                                    "quick-composer-could-not-register",
+                                    &[("status", status)],
+                                )
+                            }
+                            None => e,
+                        })
+                    }
                 }
             }
         }
@@ -729,7 +740,7 @@ impl QuickComposer {
                 self.attachments = all;
                 self.error = None;
             }
-            Err(error) => self.error = Some(error),
+            Err(error) => self.error = Some(crate::runtime_text::attachment_error(&error)),
         }
         cx.notify();
     }

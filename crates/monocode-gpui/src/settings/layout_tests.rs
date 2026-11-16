@@ -280,6 +280,7 @@ fn select_accessibility_short_list_reports_keyboard_activity(cx: &mut TestAppCon
         })
         .unwrap();
     assert_eq!(changes.get(), 1, "Space commits exactly once");
+    crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
 }
 
 #[gpui::test]
@@ -401,6 +402,7 @@ fn select_accessibility_search_list_reports_keyboard_activity(cx: &mut TestAppCo
         })
         .unwrap();
     assert_eq!(changes.get(), 2);
+    crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
 }
 
 #[gpui::test]
@@ -474,6 +476,7 @@ fn chinese_worktree_confirmation_previews_the_pending_action(cx: &mut TestAppCon
             visual.run_until_parked();
         }
     }
+    crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
 }
 
 #[gpui::test]

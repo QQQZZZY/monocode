@@ -300,6 +300,9 @@ pub(crate) fn tokens(count: u64) -> String {
     )
 }
 
+/// A duration or date without its unit. Callers put it in a catalog template
+/// (`notes-updated`, `usage-…`) that supplies the unit for the language, so the
+/// fragment itself must not be translated on its own.
 pub(crate) fn relative(value: u64, now: u64) -> String {
     if value == 0 {
         return String::new();
@@ -654,9 +657,11 @@ mod tests {
                 );
             }
         }
+        // The schedule bar reads "Repeats Weekly Monday 09:00": the pickers
+        // carry the whole meaning, with no on/at connectors to translate.
         for (bundle, expected) in [
-            (&en, "Repeats Weekly on Monday at 09:00"),
-            (&zh, "重复 每周 的 星期一 在 09:00"),
+            (&en, "Repeats Weekly Monday 09:00"),
+            (&zh, "重复 每周 星期一 09:00"),
         ] {
             let day = if std::ptr::eq(bundle, &en) {
                 "Monday"
@@ -666,9 +671,7 @@ mod tests {
             let joined = [
                 resolve(bundle, "monos-repeats", &[]),
                 resolve(bundle, "automations-weekly", &[]),
-                resolve(bundle, "monos-weekly-on", &[]),
                 day.into(),
-                resolve(bundle, "monos-at", &[]),
                 "09:00".into(),
             ]
             .join(" ");

@@ -150,16 +150,16 @@ impl Conversation {
             || self.busy
             || self.stopping
         {
-            self.status = crate::i18n::text(
+            self.status = RunStatus::Raw(crate::i18n::text(
                 "conversation-reconnect-and-wait-for-the-remote-turn-to-finish-before-building-this-plan",
-            );
+            ));
             cx.notify();
             return;
         }
         if !self.remote_state.capabilities.contains("sessions.plan") {
-            self.status = crate::i18n::text(
+            self.status = RunStatus::Raw(crate::i18n::text(
                 "conversation-update-monocode-host-in-connections-settings-to-build",
-            );
+            ));
             cx.notify();
             return;
         }

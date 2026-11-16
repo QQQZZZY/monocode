@@ -28,7 +28,7 @@ impl Conversation {
         if self.editing_last_turn.prepared.take().is_none() {
             return false;
         }
-        self.status = "Ready".into();
+        self.status = RunStatus::Ready;
         self.run_history_actions(cx);
         cx.notify();
         true
@@ -51,8 +51,9 @@ impl Conversation {
                 this.install_transfer(settings, None, cx);
             }
         }));
-        self.status =
-            crate::i18n::text("conversation-finish-or-cancel-the-current-message-edit-to");
+        self.status = RunStatus::Raw(crate::i18n::text(
+            "conversation-finish-or-cancel-the-current-message-edit-to",
+        ));
         cx.notify();
     }
     fn can_prepare_edit(&self, cx: &gpui::App) -> bool {
@@ -88,8 +89,9 @@ impl Conversation {
         cx: &mut Context<Self>,
     ) {
         if self.is_remote() {
-            self.status =
-                crate::i18n::text("conversation-editing-the-last-message-is-not-supported-by");
+            self.status = RunStatus::Raw(crate::i18n::text(
+                "conversation-editing-the-last-message-is-not-supported-by",
+            ));
             cx.notify();
             return;
         }
@@ -109,7 +111,7 @@ impl Conversation {
             .max_by_key(|(row, _)| **row)
             .and_then(|(_, info)| info.provider_turn_id.clone());
         self.editing_last_turn.active = true;
-        self.status = crate::i18n::text("conversation-preparing-edit");
+        self.status = RunStatus::PreparingEdit;
         self.response_menu = None;
         let store = self.store.clone();
         let id = self.summary.id;
@@ -135,20 +137,20 @@ impl Conversation {
                             .update(cx, |input, cx| input.set_text(edit.prompt.clone(), cx));
                         this.attachments = edit.attachments.clone();
                         this.editing_last_turn.prepared = Some(edit);
-                        this.status = crate::i18n::text(
+                        this.status = RunStatus::Raw(crate::i18n::text(
                             "conversation-editing-last-message-send-to-replace-its-turn",
-                        );
+                        ));
                     }
                     Ok(_) => {
-                        this.status = crate::i18n::text(
+                        this.status = RunStatus::Raw(crate::i18n::text(
                             "conversation-composer-or-conversation-changed-edit-cancelled",
-                        )
+                        ))
                     }
                     Err(error) => {
-                        this.status = crate::i18n::format(
+                        this.status = RunStatus::Raw(crate::i18n::format(
                             "conversation-could-not-edit-last-message",
                             &[("error", (error).to_string())],
-                        )
+                        ))
                     }
                 }
                 if !this.editing_last_turn.pending() {
@@ -173,15 +175,15 @@ impl Conversation {
         match recovery {
             Ok(Some(reason)) => {
                 self.editing_last_turn.blocked = true;
-                self.status = reason;
+                self.status = RunStatus::Raw(reason);
                 cx.notify();
                 return true;
             }
             Err(error) => {
-                self.status = crate::i18n::format(
+                self.status = RunStatus::Raw(crate::i18n::format(
                     "conversation-could-not-verify-conversation-history-your-draft",
                     &[("error", (error).to_string())],
-                );
+                ));
                 cx.notify();
                 return true;
             }
@@ -194,7 +196,7 @@ impl Conversation {
             // Clearing the recalled prompt cancels the edit without touching
             // either provider or history. The next new prompt sends normally.
             self.editing_last_turn.prepared = None;
-            self.status = "Ready".into();
+            self.status = RunStatus::Ready;
             self.run_history_actions(cx);
             cx.notify();
             return true;
@@ -207,9 +209,9 @@ impl Conversation {
                 .any(|command| monocode_core::composer::consume_command(text, command).is_some())
             || self.draft_active(cx)
         {
-            self.status = crate::i18n::text(
+            self.status = RunStatus::Raw(crate::i18n::text(
                 "conversation-cancel-message-editing-before-running-a-local-command",
-            );
+            ));
             cx.notify();
             return true;
         }
@@ -234,18 +236,18 @@ impl Conversation {
             || self.settings.account.id != edit.account_id
             || self.execution_cwd() != edit.cwd
         {
-            self.status = crate::i18n::text(
+            self.status = RunStatus::Raw(crate::i18n::text(
                 "conversation-conversation-changed-cancel-the-edit-before-sending",
-            );
+            ));
             cx.notify();
             return true;
         }
         let kind = Kind::from_id(&self.summary.provider);
         let Some(binary) = provider::resolve(kind) else {
-            self.status = crate::i18n::format(
+            self.status = RunStatus::Raw(crate::i18n::format(
                 "conversation-executable-was-not-found-edited-prompt-preserved",
                 &[("name", (kind.label()).to_string())],
-            );
+            ));
             cx.notify();
             return true;
         };
@@ -264,15 +266,22 @@ impl Conversation {
         let prompt = self.input.read(cx).content.to_string();
         let attachments = self.attachments.clone();
         let checked_attachments = attachments.clone();
+        // Validation errors are stable English and may name a path; resolve
+        // them on this thread so the worker never resolves UI copy.
+        let attachment_error = monocode_core::composer::validate_attachments(&checked_attachments)
+            .err()
+            .map(|error| crate::runtime_text::attachment_error(&error));
         self.editing_last_turn.active = true;
         // Keep the visible draft in place until confirmation, including on a
         // rejected RPC. IME composition was checked before making it read-only.
         self.input.update(cx, |input, _| input.set_read_only(true));
-        self.status = crate::i18n::text("conversation-rewinding-last-turn");
+        self.status = RunStatus::Raw(crate::i18n::text("conversation-rewinding-last-turn"));
         let store = self.store.clone();
         let id = self.summary.id;
         let work = cx.background_executor().spawn(async move {
-            monocode_core::composer::validate_attachments(&checked_attachments)?;
+            if let Some(error) = attachment_error {
+                return Err(error);
+            }
             locked(&store)?.validate_edit_last_turn(id, &edit)?;
             let binding =
                 match provider::rewind_last_turn(request, edit.provider_turn_id.as_deref()) {
@@ -329,15 +338,15 @@ impl Conversation {
                         if error.starts_with("Provider recovery required:") {
                             this.editing_last_turn.blocked = true;
                             this.editing_last_turn.prepared = None;
-                            this.status = crate::i18n::format(
+                            this.status = RunStatus::Raw(crate::i18n::format(
                                 "conversation-start-a-new-conversation-your-edited-draft",
                                 &[("error", (error).to_string())],
-                            );
+                            ));
                         } else {
-                            this.status = crate::i18n::format(
+                            this.status = RunStatus::Raw(crate::i18n::format(
                                 "conversation-could-not-rewind-last-turn-your-edited",
                                 &[("error", (error).to_string())],
-                            );
+                            ));
                         }
                     }
                 }
@@ -374,8 +383,9 @@ impl Conversation {
             self.follow_ups.state.messages.push(message);
         }
         self.save_follow_ups(cx);
-        self.status =
-            crate::i18n::text("conversation-last-turn-rewound-the-edited-prompt-was-saved");
+        self.status = RunStatus::Raw(crate::i18n::text(
+            "conversation-last-turn-rewound-the-edited-prompt-was-saved",
+        ));
     }
 }
 

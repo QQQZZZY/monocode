@@ -95,12 +95,12 @@ impl Conversation {
                     }
                     Err(error) if this.follow_ups.state.revision == revision => {
                         this.follow_ups.state.paused = true;
-                        this.status = crate::i18n::format(
+                        this.status = RunStatus::Raw(crate::i18n::format(
                             "conversation-could-not-save-messages",
                             &[("error", (error).to_string())],
-                        );
+                        ));
                         if let Some(head) = this.follow_ups.state.messages.first_mut() {
-                            head.error = Some(this.status.clone());
+                            head.error = Some(this.status.stable().to_owned());
                         }
                     }
                     Err(_) => {}
@@ -403,7 +403,7 @@ impl Conversation {
             self.launch_message(message, cx);
             self.settings.mono_message_id = None;
             if !self.busy {
-                self.fail_follow_up(&message_id, self.status.clone(), cx);
+                self.fail_follow_up(&message_id, self.status.stable().to_owned(), cx);
             }
         }
         cx.notify();
@@ -559,7 +559,7 @@ impl Conversation {
                             .child(queue_button("queue-cancel", crate::i18n::text("conversation-cancel-queued-message-edit"), "close").on_click(cx.listener(|this, _, window, cx| this.finish_queue_edit(false, window, cx))))
                     } else {
                         let (steer, edit, remove) = (id.clone(), id.clone(), id);
-                        row.child(div().flex_1().min_w_0().py_1().child(div().id("queued-message-text").role(Role::Label).aria_label(message_label(message)).truncate().text_color(content(0.75)).child(message_label(message))).when_some(message.error.clone(), |d, error| d.child(div().id("queue-error").role(Role::Alert).text_color(gpui::rgb(0xf87171)).child(error))))
+                        row.child(div().flex_1().min_w_0().py_1().child(div().id("queued-message-text").role(Role::Label).aria_label(message_label(message)).truncate().text_color(content(0.75)).child(message_label(message))).when_some(message.error.clone(), |d, error| d.child(div().id("queue-error").role(Role::Alert).text_color(gpui::rgb(0xf87171)).child(crate::runtime_text::status(&error)))))
                             .when(Kind::from_id(&self.summary.provider).can_steer(), |d| d.child(queue_button("queue-steer", crate::i18n::text("conversation-steer-queued-message"), "queue-steer").w_auto().px_2().gap(px(6.)).opacity(if sending { 0.4 } else { 1. }).child(crate::i18n::text("conversation-steer")).on_click(cx.listener(move |this, _, _, cx| {
                                 if !sending && let Some(message) = this.follow_ups.state.messages.iter_mut().find(|m| m.id == steer) {
                                     if !message.can_steer() && this.busy { return; }

@@ -59,8 +59,7 @@ impl Conversation {
             return false;
         }
         let Some(controls) = &self.controls else {
-            self.status =
-                crate::i18n::text("conversation-the-provider-is-no-longer-waiting-for-this");
+            self.status = RunStatus::ProviderNotWaiting;
             cx.notify();
             return false;
         };
@@ -71,20 +70,18 @@ impl Conversation {
             })
             .is_err()
         {
-            self.status =
-                crate::i18n::text("conversation-the-provider-is-no-longer-waiting-for-this");
+            self.status = RunStatus::ProviderNotWaiting;
             cx.notify();
             return false;
         }
         self.approvals.remove(index);
         self.status = if !self.approvals.is_empty() {
-            "Waiting for approval"
+            RunStatus::WaitingForApproval
         } else if !self.questions.is_empty() {
-            "Waiting for your answer"
+            RunStatus::WaitingForYourAnswer
         } else {
-            "Working…"
-        }
-        .into();
+            RunStatus::Working
+        };
         // Request-level observers need an update even if another request remains.
         cx.emit(SessionChanged);
         cx.notify();

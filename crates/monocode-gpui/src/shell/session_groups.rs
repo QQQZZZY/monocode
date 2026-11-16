@@ -2079,6 +2079,7 @@ mod tests {
                 })
                 .unwrap();
         }
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
     }
 
     #[gpui::test]
@@ -2132,6 +2133,7 @@ mod tests {
                 })
                 .unwrap();
         }
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
     }
 
     #[gpui::test]
@@ -2492,6 +2494,7 @@ mod tests {
                 );
             })
             .unwrap();
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
     }
 
     #[gpui::test]

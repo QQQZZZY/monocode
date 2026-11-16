@@ -1143,6 +1143,7 @@ mod message_tests {
             assert_eq!(window_label(&window), duration);
             assert_eq!(reset_label(&window, 0), format!("限额周期：{duration}"));
         }
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
     }
 
     #[test]

@@ -1056,7 +1056,7 @@ impl Monos {
         if finished {
             if let Some(mut sent) = self.inflight.remove(id) {
                 let (ok, status) = self.chats[id].read(cx).external_outcome(cx);
-                if !ok && !status.starts_with("Stopped") {
+                if !ok && !self.chats[id].read(cx).run_status().is_stopped() {
                     if let Some(mono) = self.roster.get_mut(id) {
                         if let Some(queued) = mono.outbox.iter_mut().find(|m| m.id == sent.id) {
                             queued.error = Some(status);

@@ -411,7 +411,7 @@ fn launched_state(session: &Conversation, cx: &App) -> &'static str {
         "draft"
     } else {
         match session.external_outcome(cx) {
-            (false, status) if status.starts_with("Stopped") => "stopped",
+            (false, _) if session.run_status().is_stopped() => "stopped",
             (false, _) => "failed",
             _ => "done",
         }

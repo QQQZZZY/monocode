@@ -111,13 +111,22 @@ protocol values stay raw. Shared core/runtime status values are mapped only at
 native presentation boundaries. Generated model prompts keep their original text.
 
 `src/runtime_text.rs` is that boundary for conversation status and saved error
-rows. The runtime keeps writing stable English text to `status`, to transcript
-`error` rows and to storage; the UI maps known values through `runtime_text::status`
-when it renders them, so switching language re-renders existing history rather
-than leaving a stale language in place. Provider text, storage details and
-protocol-consistency diagnostics (for example a receipt for another session) are
-not UX copy and pass through unchanged. The editor's `input::Rejected` notices
-follow the same rule through `runtime_text::editor_rejection`.
+rows. A conversation's status is a typed `RunStatus`; its table pairs each
+variant with the stable English text workers and storage already use and the
+catalog key that renders it, so `RunStatus::parse` (at the worker-to-view
+boundary) and `runtime_text::display` share one definition. Known variants never
+carry localized text in the view; `RunStatus::Raw` holds unknown runtime input
+and UI-thread notices that were localized where they were produced, and display
+resolves those through the provider/remote pipelines. The runtime keeps writing
+stable English text to transcript `error` rows and to storage; the UI maps known
+values through `runtime_text::status` when it renders them, so switching language
+re-renders existing history rather than leaving a stale language in place.
+Provider text, storage details and protocol-consistency diagnostics (for example
+a receipt for another session) are not UX copy and pass through unchanged.
+Attachment validation (`runtime_text::attachment_error`) and remote-transfer
+errors resolve on the UI thread or at display, keeping the path or OS detail
+raw. The editor's `input::Rejected` notices follow the same rule through
+`runtime_text::editor_rejection`.
 
 Failed tests must not change the process startup language. `i18n::configure`
 sets `START_LANGUAGE` once for the whole process, so a test that calls it leaves

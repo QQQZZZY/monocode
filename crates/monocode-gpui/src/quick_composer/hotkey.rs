@@ -1,5 +1,8 @@
 //! macOS application hotkeys via HIToolbox; no accessibility permission needed.
 use std::ffi::c_void;
+/// Stable marker for an InstallEventHandler failure; `Controller::configure`
+/// replaces it with localized copy and keeps the OSStatus.
+pub(super) const REGISTER_FAILED: &str = "quick composer registration failed: ";
 #[repr(C)]
 struct EventType {
     class: u32,
@@ -67,7 +70,9 @@ impl Registration {
                 &mut handler,
             );
             if error != 0 {
-                return Err(format!("Could not register Quick composer ({error})."));
+                // The OSStatus is raw; `Controller::configure` localizes the
+                // wrapper on the UI thread.
+                return Err(format!("{REGISTER_FAILED}{error}."));
             }
             let error = RegisterEventHotKey(
                 code,

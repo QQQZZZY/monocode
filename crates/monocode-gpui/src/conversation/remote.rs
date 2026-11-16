@@ -35,7 +35,7 @@ impl Conversation {
         if self.is_remote() && !self.busy {
             self.remote_state.online = false;
             self.remote_state.error = Some(error.into());
-            self.status = error.into();
+            self.status = RunStatus::parse(error);
             cx.notify();
         }
     }
@@ -176,7 +176,7 @@ impl Conversation {
                         }
                         this.loaded = true;
                         this.history_unloaded = false;
-                        this.status = "Ready".into();
+                        this.status = RunStatus::Ready;
                         let running = snapshot.as_ref().is_some_and(|s| s["status"] == "running");
                         if let Some(snapshot) = &snapshot {
                             this.context = snapshot["session"]
@@ -249,7 +249,7 @@ impl Conversation {
             None
         };
         if let Some(error) = error {
-            self.status = error;
+            self.status = RunStatus::Raw(error);
             cx.notify();
             return true;
         }
@@ -265,23 +265,23 @@ impl Conversation {
                 .capabilities
                 .contains("attachments.upload")
         {
-            self.status = crate::i18n::text(
+            self.status = RunStatus::Raw(crate::i18n::text(
                 "conversation-update-monocode-host-in-connections-settings-to-send",
-            );
+            ));
             cx.notify();
             return true;
         }
         if self.settings.plan && !self.remote_state.capabilities.contains("sessions.plan") {
-            self.status = crate::i18n::text(
+            self.status = RunStatus::Raw(crate::i18n::text(
                 "conversation-update-monocode-host-in-connections-settings-to-use",
-            );
+            ));
             cx.notify();
             return true;
         }
         if self.draft_active(cx) && !self.remote_state.capabilities.contains("sessions.draft") {
-            self.status = crate::i18n::text(
+            self.status = RunStatus::Raw(crate::i18n::text(
                 "conversation-update-monocode-host-in-connections-settings-to-save",
-            );
+            ));
             cx.notify();
             return true;
         }
@@ -297,14 +297,15 @@ impl Conversation {
                 .iter()
                 .any(|command| text == *command || text.starts_with(&format!("{command} ")))
         {
-            self.status = crate::i18n::text("conversation-remote-supported-commands");
+            self.status =
+                RunStatus::Raw(crate::i18n::text("conversation-remote-supported-commands"));
             cx.notify();
             return true;
         }
         if self.settings.operator || self.settings.orchestrator {
-            self.status = crate::i18n::text(
+            self.status = RunStatus::Raw(crate::i18n::text(
                 "conversation-operator-and-orchestration-are-not-available-on-remote",
-            );
+            ));
             cx.notify();
             return true;
         }
@@ -411,7 +412,7 @@ impl Conversation {
     }
     fn retry_remote(&mut self, cx: &mut Context<Self>) {
         if let Some(error) = self.remote_state.legacy_recovery_error() {
-            self.status = error;
+            self.status = RunStatus::Raw(error);
             cx.notify();
             return;
         }
@@ -430,14 +431,14 @@ impl Conversation {
     }
     fn restore_remote_message(&mut self, cx: &mut Context<Self>) {
         if let Some(error) = self.remote_state.legacy_recovery_error() {
-            self.status = error;
+            self.status = RunStatus::Raw(error);
             cx.notify();
             return;
         }
         if !self.input.read(cx).content.trim().is_empty() || !self.attachments.is_empty() {
-            self.status = crate::i18n::text(
+            self.status = RunStatus::Raw(crate::i18n::text(
                 "conversation-clear-the-composer-before-restoring-the-rejected-message",
-            );
+            ));
             cx.notify();
             return;
         }

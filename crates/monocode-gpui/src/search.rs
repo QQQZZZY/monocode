@@ -1345,6 +1345,7 @@ mod tests {
                 .title,
             "New Codex session"
         );
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
     }
 
     struct TempDir(std::path::PathBuf);

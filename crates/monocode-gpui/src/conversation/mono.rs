@@ -181,7 +181,7 @@ impl Conversation {
             .map(|m| crate::transcript::PendingMessage {
                 id: m.id.clone(),
                 text: m.text.clone().into(),
-                error: m.error.clone(),
+                error: m.error.as_deref().map(crate::runtime_text::status),
                 sent_at: m.sent_at,
                 attachments: m.attachments.iter().map(PathBuf::from).collect(),
             })

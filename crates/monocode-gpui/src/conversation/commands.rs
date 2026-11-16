@@ -41,8 +41,9 @@ impl Conversation {
             return;
         }
         if self.busy || self.stopping || !self.follow_ups.state.messages.is_empty() {
-            self.status =
-                crate::i18n::text("conversation-wait-for-the-current-turn-and-queued-messages");
+            self.status = RunStatus::Raw(crate::i18n::text(
+                "conversation-wait-for-the-current-turn-and-queued-messages",
+            ));
             cx.notify();
             return;
         }
@@ -54,7 +55,7 @@ impl Conversation {
             || self.settings.mono.is_some()
             || self.settings.worktree_removed
         {
-            self.status = crate::i18n::text("conversation-visualize-unavailable");
+            self.status = RunStatus::Raw(crate::i18n::text("conversation-visualize-unavailable"));
             cx.notify();
             return;
         }
@@ -87,23 +88,25 @@ impl Conversation {
             return;
         }
         if self.busy || !self.follow_ups.state.messages.is_empty() {
-            self.status =
-                crate::i18n::text("conversation-wait-for-the-current-turn-and-queued-messages-2");
+            self.status = RunStatus::Raw(crate::i18n::text(
+                "conversation-wait-for-the-current-turn-and-queued-messages-2",
+            ));
             cx.notify();
             return;
         }
         let kind = Kind::from_id(&self.summary.provider);
         if !provider::supports_compact(kind) {
-            self.status = crate::i18n::format(
+            self.status = RunStatus::Raw(crate::i18n::format(
                 "conversation-context-compaction-is-not-supported-by-the",
                 &[("name", (kind.label()).to_string())],
-            );
+            ));
             cx.notify();
             return;
         }
         if self.summary.provider_id.is_none() {
-            self.status =
-                crate::i18n::text("conversation-send-a-message-before-compacting-this-chat");
+            self.status = RunStatus::Raw(crate::i18n::text(
+                "conversation-send-a-message-before-compacting-this-chat",
+            ));
             cx.notify();
             return;
         }
@@ -112,12 +115,12 @@ impl Conversation {
         }
         match locked(&self.store).and_then(|store| store.edit_recovery_reason(self.summary.id)) {
             Ok(Some(reason)) => {
-                self.status = reason;
+                self.status = RunStatus::parse(&reason);
                 cx.notify();
                 return;
             }
             Err(error) => {
-                self.status = error;
+                self.status = RunStatus::parse(&error);
                 cx.notify();
                 return;
             }
@@ -138,7 +141,7 @@ impl Conversation {
         self.busy = true;
         self.submission_generation = self.submission_generation.wrapping_add(1);
         let generation = self.submission_generation;
-        self.status = crate::i18n::text("conversation-compacting-context");
+        self.status = RunStatus::Compacting;
         let compact_start = self.transcript.read(cx).source_rows().len();
         let mut compact_tool = ToolCall::new(
             &format!(
@@ -245,12 +248,12 @@ impl Conversation {
                                 input.take(cx);
                             });
                         }
-                        "Ready".into()
+                        RunStatus::Ready
                     }
-                    Err(error) if error == "Stopped" => "Ready".into(),
-                    Err(error) => error,
+                    Err(error) if error == "Stopped" => RunStatus::Ready,
+                    Err(error) => RunStatus::parse(&error),
                 };
-                if this.status == "Ready" {
+                if this.status.is_ready() {
                     this.run_history_actions(cx);
                     this.pump_follow_ups(cx);
                 }
@@ -306,7 +309,11 @@ mod tests {
                 assert!(view.follow_ups.state.messages.is_empty());
                 assert_eq!(view.input.read(cx).content, "/visualize");
                 assert_eq!(view.attachments.len(), 1);
-                assert!(view.status.contains("Wait for the current turn"));
+                assert!(
+                    view.status.stable().contains("Wait for the current turn"),
+                    "{}",
+                    view.status.stable()
+                );
 
                 view.busy = false;
                 view.attachments.clear();

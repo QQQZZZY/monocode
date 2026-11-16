@@ -1355,7 +1355,7 @@ impl Automations {
                             .pb(px(8.))
                             .text_size(px(11.))
                             .text_color(content(0.5))
-                            .child(error.clone()),
+                            .child(crate::runtime_text::status(error)),
                     );
                 }
             }

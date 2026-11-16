@@ -514,6 +514,8 @@ impl Notes {
         let store = self.store.clone();
         self.image_busy = true;
         self.image_drag = false;
+        // Resolve UI copy on this thread; the worker must not pick a language.
+        let drop_image = crate::i18n::text("notes-drop-a-png-jpg-gif-webp-or-svg-image");
         let work = cx.background_executor().spawn(async move {
             let store = locked(&store)?;
             let mut images = Vec::new();
@@ -525,9 +527,7 @@ impl Notes {
                 }
             }
             if images.is_empty() {
-                return Err(failure.unwrap_or_else(|| {
-                    crate::i18n::text("notes-drop-a-png-jpg-gif-webp-or-svg-image")
-                }));
+                return Err(failure.unwrap_or(drop_image));
             }
             Ok((id, images))
         });
@@ -1421,6 +1421,7 @@ fn copy_review_chinese_note_age_and_date() {
         crate::i18n::format("notes-updated", &[("value", date.clone())]),
         format!("更新：{date}")
     );
+    crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
 }
 
 #[cfg(all(test, target_os = "macos"))]

@@ -174,7 +174,7 @@ impl Btw {
             if let Some(value) = store.setting(&format!("btw:{session}"))? {
                 return serde_json::from_str::<Saved>(&value)
                     .map(Some)
-                    .map_err(|error| format!("Could not restore side questions: {error}"));
+                    .map_err(|error| error.to_string());
             }
             let imported = store.desktop_side_threads(session)?;
             let accounts = store.provider_accounts()?;
@@ -245,7 +245,12 @@ impl Btw {
                         this.threads = saved.threads;
                     }
                     Ok(None) => {}
-                    Err(error) => this.error = Some(error),
+                    Err(error) => {
+                        this.error = Some(crate::i18n::format(
+                            "conversation-could-not-restore-side-questions",
+                            &[("error", error)],
+                        ))
+                    }
                 }
                 if let Some(text) = this.pending_submit.take()
                     && this.input.read(cx).content == text
@@ -615,7 +620,10 @@ impl Btw {
         cx.spawn(async move |this, cx| {
             if let Err(error) = work.await {
                 let _ = this.update(cx, |this, cx| {
-                    this.error = Some(format!("Could not save side questions: {error}"));
+                    this.error = Some(crate::i18n::format(
+                        "conversation-could-not-save-side-questions",
+                        &[("error", error.to_string())],
+                    ));
                     cx.notify();
                 });
             }
@@ -838,7 +846,11 @@ impl Btw {
             Ok(models) => models,
             Err(error) => {
                 items.push(MenuItem::Note(
-                    format!("Couldn't load models: {error}").into(),
+                    crate::i18n::format(
+                        "conversation-couldn-t-load-models",
+                        &[("error", error.to_string())],
+                    )
+                    .into(),
                 ));
                 return items;
             }
@@ -1877,9 +1889,9 @@ impl Conversation {
         }
         self.attach_account(cx);
         let Some(target) = self.btw_target(cx) else {
-            self.status = crate::i18n::text(
+            self.status = RunStatus::Raw(crate::i18n::text(
                 "conversation-finish-a-supported-conversation-turn-before-asking-a-side",
-            );
+            ));
             cx.notify();
             return false;
         };

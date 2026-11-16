@@ -1091,6 +1091,7 @@ mod tests {
             up_next_when("14:30", now + 60_000, now),
             format!("14:30 · {}分钟后", crate::system_format::unsigned(1))
         );
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
     }
 
     fn day(count: u32) -> Day {

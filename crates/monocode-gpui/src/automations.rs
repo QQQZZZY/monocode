@@ -269,10 +269,10 @@ impl Automations {
         let service = self.service.clone();
         let selected = self.selected.clone();
         let selected_for_work = selected.clone();
+        // Resolve UI copy on this thread; the worker must not pick a language.
+        let unavailable = crate::i18n::text("automations-automations-unavailable");
         let work = cx.background_executor().spawn(async move {
-            let mut service = service
-                .lock()
-                .map_err(|_| crate::i18n::text("automations-automations-unavailable"))?;
+            let mut service = service.lock().map_err(|_| unavailable)?;
             let list = service.list()?;
             let runs = selected_for_work
                 .as_deref()
@@ -548,12 +548,10 @@ impl Automations {
         self.saving = true;
         self.error = None;
         let service = self.service.clone();
-        let work = cx.background_executor().spawn(async move {
-            service
-                .lock()
-                .map_err(|_| crate::i18n::text("automations-automations-unavailable"))?
-                .upsert(draft)
-        });
+        let unavailable = crate::i18n::text("automations-automations-unavailable");
+        let work = cx
+            .background_executor()
+            .spawn(async move { service.lock().map_err(|_| unavailable)?.upsert(draft) });
         cx.spawn(async move |this, cx| {
             let result = work.await;
             let _ = this.update(cx, |this, cx| {
@@ -574,10 +572,11 @@ impl Automations {
     }
     fn toggle(&mut self, id: String, enabled: bool, cx: &mut Context<Self>) {
         let service = self.service.clone();
+        let unavailable = crate::i18n::text("automations-automations-unavailable");
         let work = cx.background_executor().spawn(async move {
             service
                 .lock()
-                .map_err(|_| crate::i18n::text("automations-automations-unavailable"))?
+                .map_err(|_| unavailable)?
                 .set_enabled(&id, enabled)
         });
         cx.spawn(async move |this, cx| {
@@ -613,10 +612,11 @@ impl Automations {
         };
         self.running = true;
         let service = self.service.clone();
+        let unavailable = crate::i18n::text("automations-automations-unavailable");
         let work = cx.background_executor().spawn(async move {
             let run = service
                 .lock()
-                .map_err(|_| crate::i18n::text("automations-automations-unavailable"))?
+                .map_err(|_| unavailable)?
                 .run_now(&automation.id, monocode_core::time::now_ms() as i64)?;
             Ok::<_, String>(DueAutomationRun { automation, run })
         });
@@ -658,12 +658,10 @@ impl Automations {
             return;
         };
         let service = self.service.clone();
-        let work = cx.background_executor().spawn(async move {
-            service
-                .lock()
-                .map_err(|_| crate::i18n::text("automations-automations-unavailable"))?
-                .delete(&id)
-        });
+        let unavailable = crate::i18n::text("automations-automations-unavailable");
+        let work = cx
+            .background_executor()
+            .spawn(async move { service.lock().map_err(|_| unavailable)?.delete(&id) });
         cx.spawn(async move |this, cx| {
             let result = work.await;
             let _ = this.update(cx, |this, cx| {

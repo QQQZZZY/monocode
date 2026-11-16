@@ -203,7 +203,9 @@ fn localized_run_error(error: &str) -> String {
     } else if error == habits::ERROR_APP_CLOSED {
         crate::i18n::text("monos-the-app-closed-before-this-run-finished")
     } else {
-        error.to_owned()
+        // A run that recorded the conversation's stable status localizes here;
+        // provider diagnostics pass through.
+        crate::runtime_text::status(error)
     }
 }
 fn same_day(a: u64, b: u64) -> bool {
@@ -1311,11 +1313,6 @@ impl Monos {
             ))
             .when(kind == "weekly", |d| {
                 d.child(
-                    div()
-                        .text_color(content(0.45))
-                        .child(crate::i18n::text("monos-weekly-on")),
-                )
-                .child(
                     self.schedule_picker(
                         "habit-weekday",
                         "monos-day",
@@ -1327,11 +1324,6 @@ impl Monos {
                     ),
                 )
             })
-            .child(
-                div()
-                    .text_color(content(0.45))
-                    .child(crate::i18n::text("monos-at")),
-            )
             .when(kind == "hourly", |d| {
                 d.child(
                     self.schedule_picker(

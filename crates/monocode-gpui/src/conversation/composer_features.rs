@@ -67,8 +67,9 @@ impl Conversation {
     }
     pub(crate) fn toggle_mode(&mut self, id: &str, cx: &mut Context<Self>) {
         if self.is_remote() && matches!(id, "operator" | "orchestrator") {
-            self.status =
-                crate::i18n::text("conversation-this-mode-is-not-available-on-remote-projects");
+            self.status = RunStatus::Raw(crate::i18n::text(
+                "conversation-this-mode-is-not-available-on-remote-projects",
+            ));
             cx.notify();
             return;
         }
@@ -289,7 +290,9 @@ impl Conversation {
                 }
                 self.attachment_error = None;
             }
-            Err(error) => self.attachment_error = Some(error),
+            Err(error) => {
+                self.attachment_error = Some(crate::runtime_text::attachment_error(&error))
+            }
         }
         let pending = std::mem::take(&mut self.pending_attachments);
         self.add_attachments(pending, cx);
@@ -462,8 +465,8 @@ impl Conversation {
         let start = rows.iter().rposition(|row| row.role == "user").unwrap_or(0);
         let text = monocode_core::response::prose(&rows[start..]);
         (
-            self.status == "Ready",
-            monocode_core::response::limit(&format!("{}\n{}", self.status, text), 12_000),
+            self.status.is_ready(),
+            monocode_core::response::limit(&format!("{}\n{}", self.status.stable(), text), 12_000),
         )
     }
     pub(crate) fn ready_for_external(&self, cx: &gpui::App) -> bool {

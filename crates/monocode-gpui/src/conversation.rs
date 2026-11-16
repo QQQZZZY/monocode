@@ -34,6 +34,7 @@ use crate::{
     },
     response_actions::{Request as ResponseRequest, Transfer},
     runtime::{Database, locked, run_turn},
+    runtime_text::RunStatus,
     theme::*,
     transcript::TranscriptView,
 };
@@ -169,7 +170,7 @@ pub(crate) struct Conversation {
     pub(crate) orchestration_plan: Option<monocode_core::orchestration::Plan>,
     orchestration_error: Option<String>,
     pub(crate) orchestration_progress: Option<String>,
-    status: String,
+    status: RunStatus,
     loaded: bool,
     history_unloaded: bool,
     history_actions: std::collections::VecDeque<history::HistoryAction>,
@@ -335,6 +336,9 @@ impl Conversation {
             || self.git_picker.is_some()
             || self.needs_approval()
             || self.input.read(cx).is_composing()
+    }
+    pub(crate) fn run_status(&self) -> &RunStatus {
+        &self.status
     }
     pub(crate) fn needs_approval(&self) -> bool {
         !self.approvals.is_empty() || !self.questions.is_empty()
@@ -630,7 +634,7 @@ impl Conversation {
             orchestration_plan: None,
             orchestration_error: None,
             orchestration_progress: None,
-            status: crate::i18n::text("conversation-loading-conversation"),
+            status: RunStatus::Loading,
             loaded: false,
             history_unloaded: false,
             history_actions: Default::default(),
@@ -780,7 +784,7 @@ impl Conversation {
                             .update(cx, |view, cx| view.set_saved_draft(draft, cx));
                     }
                     Err(error) => {
-                        this.status = error;
+                        this.status = RunStatus::parse(&error);
                         this.load_git(cx);
                         return;
                     }
@@ -824,7 +828,7 @@ impl Conversation {
                             v.install_prepared_history(history, cx);
                             v.set_history_pager(before.ok().flatten(), Some(pager));
                         });
-                        this.status = "Ready".into();
+                        this.status = RunStatus::Ready;
                         this.loaded = true;
                         if let Some((row, query)) = this.pending_search.take() {
                             this.reveal_search(row, query, cx);
@@ -833,7 +837,7 @@ impl Conversation {
                         this.run_history_actions(cx);
                         this.pump_follow_ups(cx);
                     }
-                    Err(e) => this.status = e,
+                    Err(e) => this.status = RunStatus::parse(&e),
                 }
                 // Git can take tens of milliseconds; history shows first.
                 if let Some(git) = crate::git_cache::get(this.execution_cwd()) {
@@ -920,8 +924,7 @@ impl Conversation {
             return;
         }
         if self.settings.worktree_removed {
-            self.status =
-                crate::i18n::text("conversation-select-a-branch-or-worktree-to-continue-this");
+            self.status = RunStatus::NotFoundBranchOrWorktree;
             cx.notify();
             return;
         }
@@ -1110,11 +1113,10 @@ impl Conversation {
         let source_provider = self.summary.provider.clone();
         let source_account = self.settings.account.id.clone();
         self.status = if self.settings.pending_provider_switch.is_some() {
-            "Preparing handoff…"
+            RunStatus::PreparingHandoff
         } else {
-            "Connecting…"
-        }
-        .into();
+            RunStatus::Connecting
+        };
         self.cancel = Arc::new(AtomicBool::new(false));
         let summary = self.summary.clone();
         let store = self.store.clone();
@@ -1175,7 +1177,7 @@ impl Conversation {
         self.preparing_worktree = settings.new_worktree && settings.worktree_cwd.is_none();
         if self.preparing_worktree {
             settings.worktree_base = settings.worktree_base.or(self.branch.clone());
-            self.status = crate::i18n::text("conversation-creating-worktree");
+            self.status = RunStatus::CreatingWorktree;
         }
         if settings.mono.is_none()
             && settings
@@ -1375,7 +1377,7 @@ impl Conversation {
                             }
                         }
                         if !stopping || finished {
-                            this.status = update.status;
+                            this.status = RunStatus::parse(&update.status);
                         }
                         if let Some(tasks) = update.background.filter(|_| !stopping) {
                             this.set_background(tasks, cx);
@@ -1415,9 +1417,7 @@ impl Conversation {
                                             })
                                             .is_err()
                                     }) {
-                                        this.status =
-                                            "The provider is no longer waiting for this answer"
-                                                .into();
+                                        this.status = RunStatus::ProviderNotWaiting;
                                         cx.notify();
                                         return;
                                     }
@@ -1425,13 +1425,12 @@ impl Conversation {
                                         this.question_overlay.release(card, cx);
                                     }
                                     this.status = if !this.approvals.is_empty() {
-                                        "Waiting for approval"
+                                        RunStatus::WaitingForApproval
                                     } else if !this.questions.is_empty() {
-                                        "Waiting for your answer"
+                                        RunStatus::WaitingForYourAnswer
                                     } else {
-                                        "Working…"
-                                    }
-                                    .into();
+                                        RunStatus::Working
+                                    };
                                     if before != this.needs_approval() {
                                         cx.emit(SessionChanged);
                                     }
@@ -1452,12 +1451,12 @@ impl Conversation {
                                 },
                             );
                             this.questions.push_back((card, vec![events, keep_open]));
-                            this.status = crate::i18n::text("conversation-waiting-for-your-answer");
+                            this.status = RunStatus::WaitingForYourAnswer;
                         }
                         if !finished && !this.approvals.is_empty() {
-                            this.status = crate::i18n::text("conversation-waiting-for-approval");
+                            this.status = RunStatus::WaitingForApproval;
                         } else if !finished && !this.questions.is_empty() {
-                            this.status = crate::i18n::text("conversation-waiting-for-your-answer");
+                            this.status = RunStatus::WaitingForYourAnswer;
                         }
                         if finished {
                             if this.is_remote() {
@@ -1483,7 +1482,7 @@ impl Conversation {
                             this.follow_ups.ready = false;
                             if this.follow_ups.resuming {
                                 this.follow_ups.resuming = false;
-                                if !stopping && this.status == "Ready" {
+                                if !stopping && this.status.is_ready() {
                                     this.follow_ups.state.paused = false;
                                     for message in &mut this.follow_ups.state.messages {
                                         message.error = None;
@@ -1498,7 +1497,7 @@ impl Conversation {
                                     cx,
                                 );
                             }
-                            if this.status != "Ready" && !this.follow_ups.state.messages.is_empty()
+                            if !this.status.is_ready() && !this.follow_ups.state.messages.is_empty()
                             {
                                 this.follow_ups.state.paused = true;
                                 this.save_follow_ups(cx);
@@ -1617,7 +1616,7 @@ impl Conversation {
         self.settings = settings;
         self.attach_account(cx);
         self.loaded = true;
-        self.status = "Ready".into();
+        self.status = RunStatus::Ready;
         self.refresh_catalog(cx);
         self.refresh_git(cx);
         if let Some(prompt) = prompt {
@@ -1758,7 +1757,7 @@ impl Conversation {
         self.summary = summary;
         self.settings = settings;
         self.context = None;
-        self.status = crate::i18n::text("conversation-worktree-deleted");
+        self.status = RunStatus::WorktreeDeleted;
         self.refresh_git(cx);
         cx.emit(SessionChanged);
         cx.notify();
@@ -1821,7 +1820,7 @@ impl Conversation {
     }
     fn prepare_worktree(&mut self, cx: &mut Context<Self>) {
         self.preparing_worktree = true;
-        self.status = crate::i18n::text("conversation-creating-worktree");
+        self.status = RunStatus::CreatingWorktree;
         let cwd = self.summary.cwd.clone();
         let base = self
             .settings
@@ -1850,7 +1849,7 @@ impl Conversation {
                         }
                     }
                     Err(error) => {
-                        this.status = error.clone();
+                        this.status = RunStatus::parse(&error);
                         if let Some(message) = this.follow_ups.state.messages.first() {
                             let id = message.id.clone();
                             this.fail_follow_up(&id, error, cx);
@@ -2251,7 +2250,7 @@ impl Conversation {
         picked: &ModelPicked,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.editing_last_turn.pending() || self.status == "Preparing handoff…" {
+        if self.editing_last_turn.pending() || self.status == RunStatus::PreparingHandoff {
             return false;
         }
         let changed_model = self.summary.provider != picked.0.id() || self.model != picked.1;
@@ -2298,7 +2297,7 @@ impl Conversation {
                 Ok(true) => self.summary.title = placeholder.expect("changed placeholder"),
                 Ok(false) => {}
                 Err(error) => {
-                    self.status = error;
+                    self.status = RunStatus::parse(&error);
                     cx.notify();
                     return false;
                 }
@@ -2810,7 +2809,7 @@ impl Conversation {
         self.approvals.clear();
         self.questions.clear();
         self.controls = None;
-        self.status = "Ready".into();
+        self.status = RunStatus::Ready;
         self.transcript
             .update(cx, |view, cx| view.stop_streaming(cx));
         self.review
@@ -3349,7 +3348,7 @@ impl Conversation {
                         )
                     })
                     .when(
-                        self.status != "Ready"
+                        !self.status.is_ready()
                             && !self.busy
                             && !self.loading
                             && self.settings.usage_limit.is_none(),
@@ -3359,12 +3358,12 @@ impl Conversation {
                                     .id("provider-status")
                                     .debug_selector(|| "provider-status".into())
                                     .role(Role::Status)
-                                    .aria_label(status_label(&self.status))
+                                    .aria_label(crate::runtime_text::display(&self.status))
                                     .max_w(px(220.))
                                     .truncate()
                                     .text_size(px(11.))
                                     .text_color(content(0.45))
-                                    .child(status_label(&self.status)),
+                                    .child(crate::runtime_text::display(&self.status)),
                             )
                         },
                     )
@@ -3710,7 +3709,7 @@ mod composer_motion_tests {
         window
             .update(cx, |c, w, cx| {
                 c.loaded = true;
-                c.status = "Ready".into();
+                c.status = RunStatus::Ready;
                 w.focus(&c.input.focus_handle(cx), cx);
                 c.input.update(cx, |i, cx| {
                     i.replace_text_in_range(None, "First message", w, cx)
@@ -4511,7 +4510,7 @@ mod menu_tests {
         window
             .update(visual, |c, _, cx| {
                 c.loading = false;
-                c.status = "Couldn't load".into();
+                c.status = RunStatus::Raw("Couldn't load".into());
                 cx.notify();
             })
             .unwrap();
@@ -5031,22 +5030,6 @@ pub(crate) fn fast_bolt() -> gpui::Div {
         .child(icon("zap", 12.).text_color(gpui::rgb(0xfbbf24)))
 }
 
-// Runtime status stays unchanged for persistence and mobile; resolve known UI captions here.
-fn status_label(status: &str) -> String {
-    crate::runtime_text::status(status)
-}
-
 pub(crate) fn access_label(mode: monocode_core::agent::AccessMode) -> String {
     crate::i18n::text(&format!("access-{}", mode.id()))
-}
-
-#[cfg(test)]
-#[test]
-fn status_translation_keeps_unknown_diagnostic_details() {
-    assert_eq!(status_label("Ready"), "Ready");
-    assert_eq!(status_label("Working…"), "Working…");
-    assert_eq!(
-        status_label("custom provider: raw detail Ω"),
-        "custom provider: raw detail Ω"
-    );
 }
