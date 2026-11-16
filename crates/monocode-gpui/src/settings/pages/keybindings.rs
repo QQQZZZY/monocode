@@ -30,8 +30,10 @@ pub(crate) const BINDINGS: &[Binding] = &[
     #[cfg(target_os = "macos")]
     Binding {
         command: "App: Focus Prompt",
+        label: "keybinding-app-focus-prompt",
         keys: "⌘L",
-        when: "Active chat or session",
+        // The scope text is the condition's own description, not a key.
+        when: "keybinding-scope-active-chat-or-session",
         fixed: false,
     },
     Binding {

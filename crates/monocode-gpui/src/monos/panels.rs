@@ -1639,10 +1639,7 @@ impl Monos {
                         .documents
                         .iter()
                         .find(|d| d.id == id)
-                        .map_or_else(
-                            || crate::i18n::text("monos-document"),
-                            |d| d.title.clone(),
-                        );
+                        .map_or_else(|| crate::i18n::text("monos-document"), |d| d.title.clone());
                     return div()
                         .size_full()
                         .flex()
