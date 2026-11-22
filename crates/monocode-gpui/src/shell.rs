@@ -10506,7 +10506,8 @@ mod tests {
                     .unwrap();
                 assert_eq!(background.effect, Effect::GradientBlur);
                 assert_eq!(background.scope, Scope::Empty);
-                assert!((background.empty_opacity - 0.36).abs() < 0.001);
+                // The 0.05..=1.0 slider's midpoint stores 0.52; Right adds 0.01.
+                assert!((background.empty_opacity - 0.53).abs() < 0.001);
                 let restored = Workspace::restore(
                     Some(&serde_json::to_string(&shell.workspace).unwrap()),
                     &[(active, "/work/monocode".into())],

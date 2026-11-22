@@ -263,8 +263,8 @@ impl Shell {
                 } else {
                     Scope::All
                 },
-                empty_opacity: p.chat_background_empty.clamp(5, 65) as f32 / 100.,
-                session_opacity: p.chat_background_session.clamp(5, 65) as f32 / 100.,
+                empty_opacity: p.chat_background_empty.clamp(5, 100) as f32 / 100.,
+                session_opacity: p.chat_background_session.clamp(5, 100) as f32 / 100.,
             });
         }
         let classic = self.workspace.boxy_layout();

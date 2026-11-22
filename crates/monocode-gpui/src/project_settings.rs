@@ -791,7 +791,7 @@ impl BackgroundDialog {
         } else {
             self.background.session_opacity
         };
-        let fraction = (value - 0.05) / 0.60;
+        let fraction = (value - 0.05) / 0.95;
         let bounds = AnchorSlot::default();
         let movement = bounds.clone();
         let probe = bounds.clone();
@@ -880,7 +880,7 @@ impl BackgroundDialog {
                                             0.05 + ((event.position.x - bounds.left()).as_f32()
                                                 - 6.)
                                                 / (bounds.size.width.as_f32() - 12.)
-                                                * 0.60,
+                                                * 0.95,
                                             cx,
                                         );
                                     }
@@ -898,7 +898,7 @@ impl BackgroundDialog {
                                             0.05 + ((event.position.x - bounds.left()).as_f32()
                                                 - 6.)
                                                 / (bounds.size.width.as_f32() - 12.)
-                                                * 0.60,
+                                                * 0.95,
                                             cx,
                                         );
                                     }
@@ -915,7 +915,7 @@ impl BackgroundDialog {
                                         "left" | "down" => old - 0.01,
                                         "right" | "up" => old + 0.01,
                                         "home" => 0.05,
-                                        "end" => 0.65,
+                                        "end" => 1.0,
                                         _ => return,
                                     };
                                     this.set_opacity(empty, next, cx);
