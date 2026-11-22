@@ -37,6 +37,8 @@ fn update(status: impl Into<String>, finished: bool) -> Update {
         questions_resolved: vec![],
         handoff: None,
         status: status.into(),
+        prompt_suggestion: None,
+        suggestion_request: None,
         finished,
     }
 }

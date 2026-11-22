@@ -44,9 +44,10 @@ pub fn discard_worktree(path: &Path) {
     opencode::discard_worktree(path);
 }
 pub fn forget_session(kind: Kind, provider_id: &str, account_id: &str, cwd: &Path) {
-    parked::forget_session(kind, provider_id, account_id, cwd);
+    let cwd = crate::scm::expand_home(cwd);
+    parked::forget_session(kind, provider_id, account_id, &cwd);
     if kind == Kind::OpenCode {
-        opencode::forget_session(provider_id, account_id, cwd);
+        opencode::forget_session(provider_id, account_id, &cwd);
     }
 }
 mod questions;
@@ -109,6 +110,7 @@ pub enum Event {
         model: Option<String>,
         model_settings: HashMap<String, String>,
     },
+    PromptSuggestion(String),
     Done,
 }
 
@@ -377,7 +379,10 @@ impl Protocol {
                     }
                     return Ok(vec![Event::QuestionResolved(question.id)]);
                 }
-                if id.starts_with("native-answer-") || id.starts_with("native-interrupt-") {
+                if id.starts_with("native-answer-")
+                    || id.starts_with("native-interrupt-")
+                    || id.starts_with("native-prompt-suggest-")
+                {
                     return Ok(Vec::new());
                 }
             }
@@ -716,6 +721,12 @@ impl Protocol {
                                 events.push(Event::Tool(tool.clone()));
                             }
                         }
+                        if self.active_turn.is_none() {
+                            self.active_turn = p["turnId"]
+                                .as_str()
+                                .or_else(|| p["turn"]["id"].as_str())
+                                .map(str::to_owned);
+                        }
                         events.push(Event::Done);
                         self.done = true;
                     }
@@ -1005,6 +1016,14 @@ impl Protocol {
                                 stdin,
                                 json!({"type":"control_response","response":{"subtype":"error","request_id":v["request_id"],"error":"Unsupported host request"}}),
                             )?;
+                        }
+                    }
+                    "prompt_suggestion" => {
+                        if let Some(suggestion) = v["suggestion"]
+                            .as_str()
+                            .and_then(crate::text_generator::sanitize_prompt_suggestion)
+                        {
+                            events.push(Event::PromptSuggestion(suggestion));
                         }
                     }
                     _ => {}
@@ -1337,6 +1356,160 @@ pub fn run_text(mut request: Request, cancel: Arc<AtomicBool>) -> Result<String,
     Ok(output)
 }
 
+pub const PROMPT_SUGGESTION_INSTRUCTIONS: &str = "Predict the single most likely short follow-up prompt the user will send next in this coding session. Output ONLY the prompt text itself with no quotes, markdown fences, labels, or explanations. If no obvious follow-up applies, output NONE.";
+
+const PROMPT_SUGGESTION_TIMEOUT: Duration = Duration::from_secs(6);
+
+/// Parameters for sampling/harvesting a post-turn prompt suggestion from an
+/// idle parked Claude or Codex process without disturbing the conversation.
+#[derive(Clone, Debug)]
+pub struct PromptSuggestionRequest {
+    pub kind: Kind,
+    pub cwd: PathBuf,
+    pub provider_id: Option<String>,
+    pub expected_turn_id: Option<String>,
+    pub model: Option<String>,
+    pub settings: Settings,
+}
+
+/// Fetches a suggested next user prompt from the conversation's parked Claude
+/// or Codex process when available.
+pub fn suggest_next_prompt(
+    req: PromptSuggestionRequest,
+    cancel: Arc<AtomicBool>,
+) -> Option<String> {
+    let binary = resolve(req.kind)?;
+    suggest_next_prompt_using(req, binary, cancel)
+}
+
+pub(crate) fn suggest_next_prompt_using(
+    req: PromptSuggestionRequest,
+    binary: PathBuf,
+    cancel: Arc<AtomicBool>,
+) -> Option<String> {
+    if cancel.load(Ordering::Relaxed)
+        || !matches!(req.kind, Kind::Claude | Kind::Codex)
+        || req.settings.mono.is_some()
+        || req.settings.text_only
+        || !req.settings.prompt_suggestions
+    {
+        return None;
+    }
+    let expected_turn_id = req.expected_turn_id;
+    let mut settings = req.settings;
+    settings.prepared_prompt = None;
+    settings.internal_message = false;
+    let request = Request {
+        kind: req.kind,
+        binary,
+        cwd: crate::scm::expand_home(&req.cwd),
+        prompt: String::new(),
+        provider_id: req.provider_id,
+        model: req.model,
+        settings,
+    };
+    let mut parked = parked::take(&parked::key(&request))?;
+    let started = Instant::now();
+    match req.kind {
+        Kind::Claude => {
+            while started.elapsed() < PROMPT_SUGGESTION_TIMEOUT && !cancel.load(Ordering::Relaxed) {
+                match parked.wire.rx.recv_timeout(TICK) {
+                    Ok(Ok(line)) => {
+                        if let Ok(v) = serde_json::from_slice::<Value>(&line) {
+                            if v["type"] == "prompt_suggestion" {
+                                let suggestion = v["suggestion"]
+                                    .as_str()
+                                    .and_then(crate::text_generator::sanitize_prompt_suggestion);
+                                parked::put(parked.wire, parked.protocol);
+                                return suggestion;
+                            }
+                        }
+                    }
+                    Ok(Err(_)) | Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                }
+            }
+            parked::put(parked.wire, parked.protocol);
+            None
+        }
+        Kind::Codex => {
+            let thread_id = parked
+                .protocol
+                .request
+                .provider_id
+                .clone()
+                .or_else(|| request.provider_id.clone());
+            let turn_id = parked.protocol.active_turn.clone().or(expected_turn_id);
+            let (Some(thread_id), Some(turn_id)) = (thread_id, turn_id) else {
+                parked::put(parked.wire, parked.protocol);
+                return None;
+            };
+            let req_id = format!("native-prompt-suggest-{}", crate::time::now_ms());
+            let payload = json!({
+                "id": req_id,
+                "method": "thread/sample",
+                "params": {
+                    "threadId": thread_id,
+                    "expectedTurnId": turn_id,
+                    "prompt": PROMPT_SUGGESTION_INSTRUCTIONS,
+                    "effort": "low",
+                    "disableMcp": true,
+                }
+            });
+            if write_json(&mut parked.wire.stdin, payload).is_err() {
+                return None;
+            }
+            while started.elapsed() < PROMPT_SUGGESTION_TIMEOUT {
+                if cancel.load(Ordering::Relaxed) {
+                    let _ = write_json(
+                        &mut parked.wire.stdin,
+                        json!({"id": format!("{req_id}-cancel"), "method": "thread/sample/cancel", "params": {"requestId": req_id}}),
+                    );
+                    parked::put(parked.wire, parked.protocol);
+                    return None;
+                }
+                match parked.wire.rx.recv_timeout(TICK) {
+                    Ok(Ok(line)) => {
+                        let Ok(v) = serde_json::from_slice::<Value>(&line) else {
+                            continue;
+                        };
+                        if v["method"] == "currentTime/read" && v.get("id").is_some() {
+                            let _ = write_json(
+                                &mut parked.wire.stdin,
+                                json!({"id": v["id"], "result": {"currentTimeAt": crate::time::now_ms() / 1000}}),
+                            );
+                            continue;
+                        }
+                        if v["id"].as_str() == Some(req_id.as_str()) {
+                            let suggestion = if v.get("error").is_some_and(|e| !e.is_null()) {
+                                None
+                            } else {
+                                v["result"]["text"]
+                                    .as_str()
+                                    .and_then(crate::text_generator::sanitize_prompt_suggestion)
+                            };
+                            parked::put(parked.wire, parked.protocol);
+                            return suggestion;
+                        }
+                    }
+                    Ok(Err(_)) | Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                }
+            }
+            let _ = write_json(
+                &mut parked.wire.stdin,
+                json!({"id": format!("{req_id}-cancel"), "method": "thread/sample/cancel", "params": {"requestId": req_id}}),
+            );
+            parked::put(parked.wire, parked.protocol);
+            None
+        }
+        _ => {
+            parked::put(parked.wire, parked.protocol);
+            None
+        }
+    }
+}
+
 pub(crate) fn catalog_for(kind: Kind, account: crate::accounts::Profile) -> Result<Value, String> {
     let binary = resolve(kind).ok_or_else(|| kind.unavailable_hint())?;
     let cwd = std::env::var_os("HOME")
@@ -1376,7 +1549,7 @@ fn run_process(
 }
 
 fn run_operation(
-    request: Request,
+    mut request: Request,
     cancel: Arc<AtomicBool>,
     controls: Option<mpsc::Receiver<Control>>,
     probe: bool,
@@ -1387,6 +1560,7 @@ fn run_operation(
     if cancel.load(Ordering::Relaxed) {
         return Err("Stopped".into());
     }
+    request.cwd = crate::scm::expand_home(&request.cwd);
     if request.kind == Kind::OpenCode {
         return opencode::run(request, cancel, controls, probe, compact, emit);
     }
@@ -1459,6 +1633,16 @@ fn run_operation(
                     "--mcp-config",
                     "{\"mcpServers\":{}}",
                 ]);
+            }
+            if settings.prompt_suggestions
+                && !settings.text_only
+                && settings.mono.is_none()
+                && !probe
+                && !command_probe
+                && !compact
+                && (parked::limit() > 0 || cfg!(test))
+            {
+                command.args(["--prompt-suggestions", "true"]);
             }
             let visual_server = (!settings.text_only)
                 .then(|| crate::visual_bridge::mcp_server(&settings.environment))
@@ -2398,5 +2582,225 @@ for line in sys.stdin:
         let (_tmp, request) = fixture("#!/bin/sh\nIFS= read -r init\nprintf '{invalid json\\n'\n");
         let error = run(request, Arc::new(AtomicBool::new(false)), |_| Ok(())).unwrap_err();
         assert!(error.starts_with("Invalid provider JSON:"), "{error}");
+    }
+
+    #[test]
+    fn claude_prompt_suggestion_frame_emits_sanitized_suggestion() {
+        let mut p = Protocol::new(Request {
+            kind: Kind::Claude,
+            binary: "unused".into(),
+            cwd: "/tmp".into(),
+            prompt: "Hello".into(),
+            provider_id: None,
+            model: None,
+            settings: Default::default(),
+        });
+        let mut stdin = std::io::sink();
+        let events = p
+            .frame(
+                json!({"type":"prompt_suggestion","suggestion":"  \"Run cargo test now\" \nextra"}),
+                &mut stdin,
+            )
+            .unwrap();
+        assert_eq!(
+            events,
+            vec![Event::PromptSuggestion("Run cargo test now".into())]
+        );
+    }
+
+    #[test]
+    fn codex_late_prompt_suggestion_and_error_frames_are_ignored() {
+        let mut p = Protocol::new(Request {
+            kind: Kind::Codex,
+            binary: "unused".into(),
+            cwd: "/tmp".into(),
+            prompt: "Hello".into(),
+            provider_id: None,
+            model: None,
+            settings: Default::default(),
+        });
+        let mut stdin = std::io::sink();
+        let ok_events = p
+            .frame(
+                json!({"id":"native-prompt-suggest-123","result":{"text":"Verify tests"}}),
+                &mut stdin,
+            )
+            .unwrap();
+        assert!(ok_events.is_empty());
+        let err_events = p
+            .frame(
+                json!({"id":"native-prompt-suggest-123-cancel","error":{"code":-1,"message":"cancelled"}}),
+                &mut stdin,
+            )
+            .unwrap();
+        assert!(err_events.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn suggest_next_prompt_harvests_from_parked_codex_and_claude_and_reparks() {
+        const CHILD: &str = "MONOCODE_PROMPT_SUGGESTION_TEST_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "provider::tests::suggest_next_prompt_harvests_from_parked_codex_and_claude_and_reparks",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr),
+            );
+            return;
+        }
+        use std::os::unix::fs::PermissionsExt;
+        parked::configure(2);
+
+        // Codex fixture: responds to thread/sample using expectedTurnId and gets re-parked.
+        let dir = tempfile::tempdir().unwrap();
+        let codex_bin = dir.path().join("codex-fixture");
+        let codex_starts = dir.path().join("codex-starts");
+        std::fs::write(
+            &codex_bin,
+            format!(
+                r#"#!/usr/bin/env python3
+import json, os, sys
+with open({:?}, 'a') as f: f.write(str(os.getpid()) + '\n')
+def send(v): print(json.dumps(v), flush=True)
+for line in sys.stdin:
+    v = json.loads(line)
+    if v.get('id') == 1: send({{'id': 1, 'result': {{}}}})
+    elif v.get('id') == 2: send({{'id': 2, 'result': {{'thread': {{'id': 'codex-t1'}}}}}})
+    elif v.get('id') == 3:
+        send({{'method': 'turn/started', 'params': {{'turn': {{'id': 'turn-1'}}}}}})
+        send({{'method': 'item/agentMessage/delta', 'params': {{'itemId': 'm1', 'delta': 'Done'}}}})
+        send({{'method': 'turn/completed', 'params': {{'turn': {{'id': 'turn-1', 'status': 'completed'}}}}}})
+    elif v.get('method') == 'thread/sample':
+        assert v['params']['threadId'] == 'codex-t1'
+        assert v['params']['expectedTurnId'] == 'turn-1'
+        send({{'id': v['id'], 'result': {{'responseId': 'r1', 'sourceTurnId': 'turn-1', 'text': 'Run cargo check'}}}})
+"#,
+                codex_starts.to_str().unwrap()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&codex_bin, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        let mut codex_req = Request {
+            kind: Kind::Codex,
+            binary: codex_bin.clone(),
+            cwd: dir.path().into(),
+            prompt: "hi".into(),
+            provider_id: None,
+            model: None,
+            settings: Settings {
+                prompt_suggestions: true,
+                ..Default::default()
+            },
+        };
+        run(codex_req.clone(), Arc::new(AtomicBool::new(false)), |_| {
+            Ok(())
+        })
+        .unwrap();
+        let suggested = suggest_next_prompt_using(
+            PromptSuggestionRequest {
+                kind: Kind::Codex,
+                cwd: dir.path().into(),
+                provider_id: Some("codex-t1".into()),
+                expected_turn_id: None,
+                model: None,
+                settings: Settings {
+                    prompt_suggestions: true,
+                    ..Default::default()
+                },
+            },
+            codex_bin.clone(),
+            Arc::new(AtomicBool::new(false)),
+        );
+        assert_eq!(suggested.as_deref(), Some("Run cargo check"));
+        // Next turn reuses the same parked process (only 1 PID logged).
+        codex_req.provider_id = Some("codex-t1".into());
+        run(codex_req, Arc::new(AtomicBool::new(false)), |_| Ok(())).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&codex_starts)
+                .unwrap()
+                .lines()
+                .count(),
+            1
+        );
+
+        // Claude fixture: emits prompt_suggestion right after result.
+        let claude_bin = dir.path().join("claude-fixture");
+        let claude_args = dir.path().join("claude-args");
+        std::fs::write(
+            &claude_bin,
+            format!(
+                r#"#!/usr/bin/env python3
+import json, sys, time
+with open({:?}, 'w') as f: f.write(' '.join(sys.argv[1:]))
+def send(v): print(json.dumps(v), flush=True)
+for line in sys.stdin:
+    v = json.loads(line)
+    if v.get('type') == 'control_request':
+        send({{'type': 'control_response', 'response': {{'request_id': v['request_id']}}}})
+    elif v.get('type') == 'user':
+        send({{'type': 'system', 'subtype': 'init', 'session_id': 'claude-s1'}})
+        send({{'type': 'result', 'subtype': 'success', 'result': 'OK', 'session_id': 'claude-s1'}})
+        time.sleep(0.05)
+        send({{'type': 'prompt_suggestion', 'suggestion': 'Write unit tests', 'session_id': 'claude-s1'}})
+"#,
+                claude_args.to_str().unwrap()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&claude_bin, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        let claude_req = Request {
+            kind: Kind::Claude,
+            binary: claude_bin.clone(),
+            cwd: dir.path().into(),
+            prompt: "hi".into(),
+            provider_id: None,
+            model: None,
+            settings: Settings {
+                prompt_suggestions: true,
+                ..Default::default()
+            },
+        };
+        let mut session_id = None;
+        run(claude_req, Arc::new(AtomicBool::new(false)), |events| {
+            for ev in events {
+                if let Event::SessionId(id) = ev {
+                    session_id = Some(id);
+                }
+            }
+            Ok(())
+        })
+        .unwrap();
+        assert!(std::fs::read_to_string(&claude_args)
+            .unwrap()
+            .contains("--prompt-suggestions true"));
+        let suggested = suggest_next_prompt_using(
+            PromptSuggestionRequest {
+                kind: Kind::Claude,
+                cwd: dir.path().into(),
+                provider_id: session_id,
+                expected_turn_id: None,
+                model: None,
+                settings: Settings {
+                    prompt_suggestions: true,
+                    ..Default::default()
+                },
+            },
+            claude_bin,
+            Arc::new(AtomicBool::new(false)),
+        );
+        assert_eq!(suggested.as_deref(), Some("Write unit tests"));
+        parked::configure(0);
     }
 }

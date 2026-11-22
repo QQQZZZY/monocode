@@ -8,9 +8,9 @@ impl Conversation {
     pub(super) fn background_text_model(&self, cx: &gpui::App) -> TextModel {
         let kind = Kind::from_id(&self.summary.provider);
         let account = self.settings.account.clone();
-        let chosen = cx
-            .try_global::<crate::settings::Preferences>()
-            .and_then(|p| p.background_text_model());
+        let prefs = cx.try_global::<crate::settings::Preferences>();
+        let chosen = prefs.and_then(|p| p.background_text_model());
+        let http = prefs.and_then(|p| p.http_text_generator());
         match chosen {
             Some((chosen, model)) => TextModel {
                 account: if chosen == kind {
@@ -22,8 +22,9 @@ impl Conversation {
                 },
                 kind: chosen,
                 model,
+                http,
             },
-            None => TextModel::automatic(kind, account),
+            None => TextModel::automatic(kind, account).with_http(http),
         }
     }
     /// Tauri's sessionDisplayTitle: the harness prefix belongs to persistence,

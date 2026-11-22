@@ -376,6 +376,7 @@ pub(crate) fn git_action(
     root: &Path,
     params: &Value,
     chosen: Option<(Kind, Option<String>)>,
+    http: Option<monocode_core::text_generator::TextGeneratorConfig>,
 ) -> Result<Value, String> {
     // The harness picked in the phone's composer writes the commit message and
     // pull request, as the desktop's panel uses its session's.
@@ -383,7 +384,11 @@ pub(crate) fn git_action(
         .as_str()
         .and_then(Kind::parse)
         .unwrap_or(Kind::Claude);
-    let harness = || crate::changes::pick_text_harness(preferred, chosen.clone());
+    let backend = || {
+        let http = http.clone().filter(|c| c.is_ready());
+        let cli = crate::changes::pick_text_harness(preferred, chosen.clone());
+        (http.is_some() || cli.is_some()).then_some(crate::changes::TextBackend { http, cli })
+    };
     let paths = params["paths"]
         .as_array()
         .map(|paths| paths.iter().filter_map(Value::as_str).collect::<Vec<_>>())
@@ -406,10 +411,10 @@ pub(crate) fn git_action(
         "stageAll" => scm::stage_all(root).map(|()| json!({})),
         "unstageAll" => scm::unstage_all(root).map(|()| json!({})),
         "generate" => {
-            let harness =
-                harness().ok_or("No provider CLI is installed to write a commit message.")?;
+            let backend =
+                backend().ok_or("No provider CLI is installed to write a commit message.")?;
             let message = crate::changes::generate_commit_message(
-                harness,
+                backend,
                 root.to_path_buf(),
                 Arc::new(AtomicBool::new(false)),
             )?;
@@ -424,7 +429,7 @@ pub(crate) fn git_action(
             }
             scm::push(root)?;
             if create_pr {
-                Ok(json!({ "url": create_pr_url(root, harness())? }))
+                Ok(json!({ "url": create_pr_url(root, backend())? }))
             } else {
                 Ok(json!({}))
             }
@@ -434,7 +439,7 @@ pub(crate) fn git_action(
             if scm::diff_index(root)?.ahead > 0 {
                 scm::push(root)?;
             }
-            Ok(json!({ "url": create_pr_url(root, harness())? }))
+            Ok(json!({ "url": create_pr_url(root, backend())? }))
         }
         _ => Err("Unsupported git action".into()),
     }
@@ -444,9 +449,9 @@ pub(crate) fn git_action(
 /// commits, when no provider can write them), then `gh pr create`.
 fn create_pr_url(
     root: &Path,
-    harness: Option<crate::changes::TextHarness>,
+    backend: Option<crate::changes::TextBackend>,
 ) -> Result<String, String> {
-    crate::changes::create_pr_blocking(harness, root).map(|url| url.trim().to_string())
+    crate::changes::create_pr_blocking(backend, root).map(|url| url.trim().to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -969,9 +974,9 @@ mod tests {
         assert_eq!(status["remote"], false);
         assert_eq!(status["canGenerate"], true);
 
-        git_action(root, &json!({ "action": "stageAll" }), None).unwrap();
+        git_action(root, &json!({ "action": "stageAll" }), None, None).unwrap();
         assert_eq!(changes(root, None).unwrap()["files"][0]["staged"], true);
-        assert!(git_action(root, &json!({ "action": "nope" }), None).is_err());
+        assert!(git_action(root, &json!({ "action": "nope" }), None, None).is_err());
         assert!(resolve_root(root, Some("/not/a/worktree")).is_err());
         assert_eq!(worktrees(root).unwrap()["worktrees"], json!([]));
     }

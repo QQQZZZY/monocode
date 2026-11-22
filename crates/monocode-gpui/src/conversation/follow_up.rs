@@ -21,7 +21,7 @@ pub(super) struct QueueEdit {
     _submit: Subscription,
 }
 
-fn message_label(message: &Message) -> String {
+pub(super) fn message_label(message: &Message) -> String {
     if message.text.trim().is_empty() {
         crate::i18n::format(
             if message.attachments.len() == 1 {
@@ -587,7 +587,7 @@ impl Conversation {
     }
 }
 
-fn queue_button(
+pub(super) fn queue_button(
     id: &'static str,
     label: impl Into<gpui::SharedString>,
     glyph: &'static str,

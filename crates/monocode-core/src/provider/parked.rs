@@ -244,6 +244,9 @@ pub fn configure(limit: usize) {
     LIMIT.store(limit.min(5), Ordering::Relaxed);
     thread::spawn(enforce_idle_limit);
 }
+pub(super) fn limit() -> usize {
+    LIMIT.load(Ordering::Relaxed)
+}
 
 /// The desktop registry applies one idle-child budget across every provider.
 /// Serialize eviction decisions, but never hold either pool while reaping.
@@ -311,6 +314,7 @@ pub(super) fn key(request: &Request) -> String {
             .as_ref()
             .map(|mono| (&mono.root, &mono.mono.id)),
         request.settings.disable_claude_hooks,
+        request.settings.prompt_suggestions,
         crate::accounts::claude_entrypoint()
     ])
     .to_string()

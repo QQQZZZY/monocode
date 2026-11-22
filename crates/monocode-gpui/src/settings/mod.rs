@@ -176,7 +176,7 @@ impl SliderKind {
             SliderKind::Saturation => (0, 100),
             SliderKind::DarkLightness => (0, 30),
             SliderKind::SidebarOpacity => (15, 100),
-            SliderKind::BackgroundEmpty | SliderKind::BackgroundSession => (5, 65),
+            SliderKind::BackgroundEmpty | SliderKind::BackgroundSession => (5, 100),
         }
     }
     fn get(self, p: &Preferences) -> u32 {
@@ -264,6 +264,8 @@ pub(crate) struct SettingsView {
     accent_custom_open: bool,
     accent_anchor: AnchorSlot,
     mobile: pages::MobileState,
+    pub(super) text_gen_testing: bool,
+    pub(super) text_gen_status: Option<Result<String, String>>,
     _subscriptions: Vec<Subscription>,
 }
 impl EventEmitter<SettingsEvent> for SettingsView {}
@@ -443,6 +445,8 @@ impl SettingsView {
             accent_custom_open: false,
             accent_anchor: AnchorSlot::default(),
             mobile: pages::MobileState::default(),
+            text_gen_testing: false,
+            text_gen_status: None,
             _subscriptions: subscriptions,
         };
         this.watch_mobile(cx);
@@ -501,6 +505,10 @@ impl SettingsView {
     }
     pub(crate) fn set_preferences(&mut self, prefs: &Preferences, cx: &mut Context<Self>) {
         if &self.prefs != prefs {
+            if self.prefs.text_generator != prefs.text_generator {
+                self.text_gen_status = None;
+                self.sync_text_generator_fields(&prefs.text_generator, cx);
+            }
             self.prefs = prefs.clone();
             self.notification_deadline(cx);
             cx.notify();

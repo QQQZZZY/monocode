@@ -813,14 +813,14 @@ impl Shell {
                 let result = Arc::new(Mutex::new(None));
                 let slot = result.clone();
                 let params = request.params.clone();
-                let chosen = cx
-                    .try_global::<crate::settings::Preferences>()
-                    .and_then(|p| p.background_text_model());
+                let prefs = cx.try_global::<crate::settings::Preferences>();
+                let chosen = prefs.and_then(|p| p.background_text_model());
+                let http = prefs.and_then(|p| p.http_text_generator());
                 cx.background_executor()
                     .spawn(async move {
                         let cwd = PathBuf::from(cwd);
                         let outcome = project::resolve_root(&cwd, params["worktreePath"].as_str())
-                            .and_then(|root| project::git_action(&root, &params, chosen));
+                            .and_then(|root| project::git_action(&root, &params, chosen, http));
                         if let Ok(mut slot) = slot.lock() {
                             *slot = Some(outcome);
                         }

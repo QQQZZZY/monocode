@@ -42,12 +42,13 @@ pub fn supports_rewind(kind: Kind) -> bool {
 /// provider binding to persist with the confirmed local truncation. Pi forks to
 /// a new session; Codex keeps the current thread. No prompt is sent here.
 pub fn rewind_last_turn(
-    request: Request,
+    mut request: Request,
     before_turn: Option<&str>,
 ) -> Result<String, RewindError> {
     if !supports_rewind(request.kind) || request.settings.text_only {
         return Err("This provider does not support editing the last turn".into());
     }
+    request.cwd = crate::scm::expand_home(&request.cwd);
     if request.kind == Kind::OpenCode {
         return super::opencode::rewind(&request, before_turn);
     }

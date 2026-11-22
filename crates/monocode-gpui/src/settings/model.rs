@@ -445,6 +445,12 @@ pub(crate) const INDEX: &[(&str, Section, &str, &str)] = &[
         "settings-search-composer-autocorrect",
     ),
     (
+        "prompt-suggestions",
+        Section::Chat,
+        "settings-prompt-suggestions",
+        "settings-search-prompt-suggestions",
+    ),
+    (
         "composer-mascot",
         Section::Chat,
         "settings-composer-mascot",
@@ -479,6 +485,12 @@ pub(crate) const INDEX: &[(&str, Section, &str, &str)] = &[
         Section::Providers,
         "settings-background-model",
         "settings-search-background-model",
+    ),
+    (
+        "text-generator",
+        Section::Providers,
+        "settings-text-generator",
+        "settings-search-text-generator",
     ),
     (
         "provider-accounts",

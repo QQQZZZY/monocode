@@ -1,4 +1,5 @@
 use crate::{
+    input::{self, Input},
     settings::{
         ModelChoice, SettingsView,
         widgets::{note, secondary_button},
@@ -6,9 +7,18 @@ use crate::{
     theme::*,
 };
 use gpui::{AnyElement, Context, SharedString, div, prelude::*, px};
-use monocode_core::provider::Kind;
+use monocode_core::{
+    provider::Kind,
+    text_generator::{self, TextGeneratorConfig, TextGeneratorKind},
+};
+
+const TEXT_GEN_URL: &str = "text-gen-base-url";
+const TEXT_GEN_MODEL: &str = "text-gen-model";
+const TEXT_GEN_KEY: &str = "text-gen-api-key";
+
 impl SettingsView {
     pub(super) fn providers_page(&mut self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        self.ensure_text_generator_fields(cx);
         let p = self.prefs.clone();
         let accounts = if let Some(center) = crate::accounts::get(cx) {
             center.update(cx, |center, cx| {
@@ -348,6 +358,32 @@ impl SettingsView {
                 Some(provider_icon(&choice.provider, 14.).into_any_element()),
             ));
         }
+        let tg = &p.text_generator;
+        let url_input = self.fields[TEXT_GEN_URL].clone();
+        let model_input = self.fields[TEXT_GEN_MODEL].clone();
+        let key_input = self.fields[TEXT_GEN_KEY].clone();
+        let test_description: SharedString = match &self.text_gen_status {
+            Some(Ok(reply)) => {
+                let preview: String = reply.chars().take(48).collect();
+                crate::i18n::format("settings-text-generator-connected", &[("reply", preview)])
+                    .into()
+            }
+            Some(Err(err)) => err.clone().into(),
+            None => crate::i18n::text("settings-text-generator-test-hint").into(),
+        };
+        let test_button = secondary_button(
+            "test-text-generator",
+            if self.text_gen_testing {
+                crate::i18n::text("settings-text-generator-testing")
+            } else {
+                crate::i18n::text("settings-text-generator-test-action")
+            },
+            false,
+            self.text_gen_testing,
+        )
+        .when(!self.text_gen_testing, |button| {
+            button.on_click(cx.listener(|this, _, _, cx| this.test_text_generator(cx)))
+        });
         let background = vec![
             self.row(
                 Some("background-model"),
@@ -376,6 +412,84 @@ impl SettingsView {
                         })
                     },
                 )],
+            ),
+            self.row(
+                Some("text-generator"),
+                false,
+                crate::i18n::text("settings-text-generator"),
+                Some(
+                    crate::i18n::text(
+                        "settings-use-external-http-endpoint-for-titles-branches-commits-and-suggestions",
+                    )
+                    .into(),
+                ),
+                vec![self.toggle(
+                    "text-generator",
+                    crate::i18n::text("settings-text-generator"),
+                    tg.enabled,
+                    false,
+                    cx,
+                    |this, on, cx| {
+                        this.text_gen_status = None;
+                        this.update(cx, |p| p.text_generator.enabled = on);
+                    },
+                )],
+            ),
+            self.row(
+                Some("text-generator-kind"),
+                false,
+                crate::i18n::text("settings-text-generator-protocol"),
+                None,
+                vec![self.segmented(
+                    "text-generator-kind",
+                    crate::i18n::text("settings-text-generator-protocol"),
+                    tg.kind.id(),
+                    &[
+                        (
+                            TextGeneratorKind::OpenaiCompatible.id(),
+                            &crate::i18n::text("settings-openai-compatible"),
+                        ),
+                        (
+                            TextGeneratorKind::Anthropic.id(),
+                            &crate::i18n::text("settings-anthropic-api"),
+                        ),
+                    ],
+                    cx,
+                    |this, value, cx| {
+                        this.text_gen_status = None;
+                        this.update(cx, |p| {
+                            p.text_generator.kind = TextGeneratorKind::from_id(value)
+                        });
+                    },
+                )],
+            ),
+            self.row(
+                Some("text-generator-base-url"),
+                false,
+                crate::i18n::text("settings-text-generator-base-url"),
+                Some(crate::i18n::text("settings-text-generator-base-url-hint").into()),
+                vec![text_gen_input_box(url_input)],
+            ),
+            self.row(
+                Some("text-generator-model"),
+                false,
+                crate::i18n::text("settings-text-generator-model"),
+                Some(crate::i18n::text("settings-text-generator-model-hint").into()),
+                vec![text_gen_input_box(model_input)],
+            ),
+            self.row(
+                Some("text-generator-api-key"),
+                false,
+                crate::i18n::text("settings-text-generator-api-key"),
+                Some(crate::i18n::text("settings-text-generator-api-key-hint").into()),
+                vec![text_gen_input_box(key_input)],
+            ),
+            self.row(
+                Some("text-generator-test"),
+                false,
+                crate::i18n::text("settings-text-generator-test"),
+                Some(test_description),
+                vec![test_button.into_any_element()],
             ),
         ];
         let advanced = vec![
@@ -485,4 +599,130 @@ impl SettingsView {
             ),
         ]
     }
+
+    fn ensure_text_generator_fields(&mut self, cx: &mut Context<Self>) {
+        let kind = self.prefs.text_generator.kind;
+        let url_placeholder = match kind {
+            TextGeneratorKind::OpenaiCompatible => "https://api.openai.com/v1",
+            TextGeneratorKind::Anthropic => "https://api.anthropic.com",
+        };
+        let model_placeholder = match kind {
+            TextGeneratorKind::OpenaiCompatible => "gpt-4o-mini",
+            TextGeneratorKind::Anthropic => "claude-haiku-4-5",
+        };
+        for (key, label, placeholder, secret, initial) in [
+            (
+                TEXT_GEN_URL,
+                crate::i18n::text("settings-text-generator-base-url"),
+                url_placeholder.to_string(),
+                false,
+                self.prefs.text_generator.base_url.clone(),
+            ),
+            (
+                TEXT_GEN_MODEL,
+                crate::i18n::text("settings-text-generator-model"),
+                model_placeholder.to_string(),
+                false,
+                self.prefs.text_generator.model.clone(),
+            ),
+            (
+                TEXT_GEN_KEY,
+                crate::i18n::text("settings-text-generator-api-key"),
+                "sk-...".to_string(),
+                true,
+                self.prefs.text_generator.api_key.clone(),
+            ),
+        ] {
+            if let Some(existing) = self.fields.get(key) {
+                existing.update(cx, |input, cx| input.set_placeholder(placeholder, cx));
+                continue;
+            }
+            let input = cx.new(|cx| {
+                let mut input = Input::field(label, placeholder, content(0.35), cx);
+                input.set_font_size(12.5);
+                input.set_secret(secret);
+                if !initial.is_empty() {
+                    input.set_text(initial, cx);
+                }
+                input
+            });
+            self._subscriptions.push(cx.subscribe(
+                &input,
+                move |this, input, _: &input::Changed, cx| {
+                    let value = input.read(cx).content.to_string();
+                    let changed = match key {
+                        TEXT_GEN_URL => this.prefs.text_generator.base_url != value,
+                        TEXT_GEN_MODEL => this.prefs.text_generator.model != value,
+                        TEXT_GEN_KEY => this.prefs.text_generator.api_key != value,
+                        _ => false,
+                    };
+                    if changed {
+                        this.text_gen_status = None;
+                        this.update(cx, |p| match key {
+                            TEXT_GEN_URL => p.text_generator.base_url = value.clone(),
+                            TEXT_GEN_MODEL => p.text_generator.model = value.clone(),
+                            TEXT_GEN_KEY => p.text_generator.api_key = value.clone(),
+                            _ => {}
+                        });
+                    }
+                },
+            ));
+            self.fields.insert(key, input);
+        }
+    }
+
+    pub(in crate::settings) fn sync_text_generator_fields(
+        &mut self,
+        config: &TextGeneratorConfig,
+        cx: &mut Context<Self>,
+    ) {
+        for (key, value) in [
+            (TEXT_GEN_URL, &config.base_url),
+            (TEXT_GEN_MODEL, &config.model),
+            (TEXT_GEN_KEY, &config.api_key),
+        ] {
+            if let Some(input) = self.fields.get(key)
+                && input.read(cx).content.as_ref() != value
+            {
+                input.update(cx, |input, cx| input.set_text(value.clone(), cx));
+            }
+        }
+    }
+
+    fn test_text_generator(&mut self, cx: &mut Context<Self>) {
+        if self.text_gen_testing {
+            return;
+        }
+        self.text_gen_testing = true;
+        self.text_gen_status = None;
+        let config = self.prefs.text_generator.clone();
+        cx.notify();
+        let task = cx
+            .background_executor()
+            .spawn(async move { text_generator::test_connection(&config) });
+        cx.spawn(async move |this, cx| {
+            let result = task.await;
+            let _ = this.update(cx, |this, cx| {
+                this.text_gen_testing = false;
+                this.text_gen_status = Some(result);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+}
+
+fn text_gen_input_box(input: gpui::Entity<Input>) -> AnyElement {
+    div()
+        .w(px(260.))
+        .h(px(32.))
+        .rounded_lg()
+        .border_1()
+        .border_color(content(0.15))
+        .bg(content(0.03))
+        .px(px(10.))
+        .flex()
+        .items_center()
+        .child(input)
+        .into_any_element()
 }

@@ -54,6 +54,10 @@ pub(crate) struct Update {
     pub(crate) questions_resolved: Vec<String>,
     pub(crate) handoff: Option<Option<monocode_core::agent::Handoff>>,
     pub(crate) status: String,
+    /// A provider-predicted next user prompt for the composer's ghost text.
+    pub(crate) prompt_suggestion: Option<String>,
+    /// Set on the final update when the composer may harvest a suggestion.
+    pub(crate) suggestion_request: Option<provider::PromptSuggestionRequest>,
     pub(crate) finished: bool,
 }
 fn publish(
@@ -150,6 +154,10 @@ fn run_turn_using(
         .and_then(|s| s.context_usage(summary.id).ok().flatten())
         .unwrap_or_default();
     let mut usage_limit = None;
+    let mut final_prompt_suggestion = None;
+    // The exact launch request, so a post-turn harvest finds the parked process.
+    let mut suggestion_base: Option<Request> = None;
+    let mut last_turn_id = None;
     let result = (|| {
         if let Some(reason) = locked(&store)?.edit_recovery_reason(summary.id)? {
             return Err(reason);
@@ -262,6 +270,8 @@ fn run_turn_using(
                     "Connecting…"
                 }
                 .into(),
+                prompt_suggestion: None,
+                suggestion_request: None,
                 finished: false,
             },
         )?;
@@ -310,6 +320,8 @@ fn run_turn_using(
                     questions_resolved: Vec::new(),
                     handoff: None,
                     status: "Connecting…".into(),
+                    prompt_suggestion: None,
+                    suggestion_request: None,
                     finished: false,
                 },
             )?;
@@ -358,6 +370,8 @@ fn run_turn_using(
                     questions_resolved: Vec::new(),
                     handoff: None,
                     status: "Preparing handoff…".into(),
+                    prompt_suggestion: None,
+                    suggestion_request: None,
                     finished: false,
                 },
             )?;
@@ -418,6 +432,8 @@ fn run_turn_using(
                     questions_resolved: Vec::new(),
                     handoff: Some(Some(prepared)),
                     status: "Connecting…".into(),
+                    prompt_suggestion: None,
+                    suggestion_request: None,
                     finished: false,
                 },
             )?;
@@ -594,6 +610,10 @@ fn run_turn_using(
             model: settings.model.clone(),
             settings,
         };
+        if request.settings.prompt_suggestions && matches!(request.kind, Kind::Claude | Kind::Codex)
+        {
+            suggestion_base = Some(request.clone());
+        }
         let mut tool_rows = std::collections::HashMap::new();
         // The running-work list attributes the provider and its tools to this session.
         let result = monocode_core::process::owned_by(summary.id, || {
@@ -630,6 +650,7 @@ fn run_turn_using(
                 let mut boundary = false;
                 let mut commands = None;
                 let mut provider_turn_id = None;
+                let mut prompt_suggestion = None;
                 for event in events {
                     match event {
                         Event::Commands(discovered) => commands = Some(discovered),
@@ -637,6 +658,7 @@ fn run_turn_using(
                             if let Some((_, info)) = &mut turn_receipt {
                                 info.provider_turn_id = Some(id.clone());
                             }
+                            last_turn_id = Some(id.clone());
                             provider_turn_id = Some(id);
                         }
                         Event::Ready => {
@@ -847,6 +869,10 @@ fn run_turn_using(
                         Event::Status(text) => status = text,
                         Event::Background(tasks) => background = Some(tasks),
                         Event::UsageLimited(limit) => usage_limit = Some(limit),
+                        Event::PromptSuggestion(text) => {
+                            final_prompt_suggestion = Some(text.clone());
+                            prompt_suggestion = Some(text);
+                        }
                         Event::Done => {
                             status = "Ready".into();
                             boundary = true;
@@ -895,6 +921,8 @@ fn run_turn_using(
                             questions_resolved,
                             handoff,
                             status,
+                            prompt_suggestion,
+                            suggestion_request: None,
                             finished: false,
                         },
                     )
@@ -929,6 +957,8 @@ fn run_turn_using(
     })();
     let cancelled =
         cancel.load(Ordering::Relaxed) || result.as_ref().is_err_and(|error| error == "Stopped");
+    let result_ok = result.is_ok();
+    let provider_id_for_suggestion = provider_id.clone();
     let handoff = prepared_handoff.map(|mut ready| {
         if handoff_accepted {
             None
@@ -1088,8 +1118,38 @@ fn run_turn_using(
         questions_resolved: Vec::new(),
         handoff,
         status,
+        prompt_suggestion: if cancelled {
+            None
+        } else {
+            final_prompt_suggestion.clone()
+        },
+        suggestion_request: suggestion_request(
+            suggestion_base,
+            provider_id_for_suggestion,
+            last_turn_id,
+            !cancelled && result_ok && final_prompt_suggestion.is_none(),
+        ),
         finished: true,
     });
+}
+
+/// A harvest request for the turn's parked Claude/Codex process, when the
+/// provider did not stream a suggestion of its own.
+fn suggestion_request(
+    base: Option<Request>,
+    provider_id: Option<String>,
+    turn_id: Option<String>,
+    wanted: bool,
+) -> Option<provider::PromptSuggestionRequest> {
+    let base = base.filter(|_| wanted && provider_id.is_some())?;
+    Some(provider::PromptSuggestionRequest {
+        kind: base.kind,
+        cwd: base.cwd,
+        provider_id,
+        expected_turn_id: turn_id,
+        model: base.model,
+        settings: base.settings,
+    })
 }
 
 /// checkpointEdits.ts's sessionEditPaths: files named by successful edit tools.

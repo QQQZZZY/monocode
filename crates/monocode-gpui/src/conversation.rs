@@ -14,6 +14,7 @@ mod history;
 mod mobile;
 mod mono;
 mod notifications;
+mod prompt_assist;
 mod remote;
 pub(crate) mod remote_plans;
 mod response_menu;
@@ -240,6 +241,11 @@ pub(crate) struct Conversation {
     runner: Option<Entity<crate::composer_runner::Runner>>,
     cancel: Arc<AtomicBool>,
     title_cancel: Option<Arc<AtomicBool>>,
+    /// Cancels the pending background next-prompt suggestion.
+    suggestion_cancel: Option<Arc<AtomicBool>>,
+    /// Whether the prompt stash shelf lists its drafts.
+    stashes_open: bool,
+    _stash_requests: Subscription,
     worktree_name_cancel: Option<Arc<AtomicBool>>,
     _submission: Subscription,
     _alternate_submission: Subscription,
@@ -573,6 +579,7 @@ impl Conversation {
             view.file_link_base = Some(summary.cwd.clone());
             view
         });
+        let stash_requests = Self::install_prompt_assist(&input, &transcript, cx);
         let account = crate::accounts::get(cx)
             .map(|center| {
                 center
@@ -699,6 +706,9 @@ impl Conversation {
             runner: None,
             cancel: Arc::new(AtomicBool::new(false)),
             title_cancel: None,
+            suggestion_cancel: None,
+            stashes_open: false,
+            _stash_requests: stash_requests,
             worktree_name_cancel: None,
             _submission: submission,
             _alternate_submission: alternate_submission,
@@ -1155,6 +1165,10 @@ impl Conversation {
         settings.disable_claude_hooks = cx
             .try_global::<crate::settings::Preferences>()
             .is_some_and(|p| !p.claude_hooks);
+        settings.prompt_suggestions = cx
+            .try_global::<crate::settings::Preferences>()
+            .is_some_and(|p| p.prompt_suggestions);
+        self.clear_prompt_suggestion(cx);
         settings.model = self.model.clone();
         settings.environment.extend(self.app_environment.clone());
         if settings.remote_action.as_ref().is_none_or(|action| {
@@ -1282,6 +1296,9 @@ impl Conversation {
                         if let Some(id) = update.provider_turn_id {
                             this.transcript
                                 .update(cx, |view, _| view.record_provider_turn(id));
+                        }
+                        if let Some(text) = update.prompt_suggestion.clone() {
+                            this.show_prompt_suggestion(text, cx);
                         }
                         if let Some(id) = update.provider_id {
                             if let Some(pending) = this.settings.pending_provider_switch.as_mut()
@@ -1473,6 +1490,9 @@ impl Conversation {
                             this.preparing_worktree = false;
                             if !stopping && let Some(limit) = update.usage_limit {
                                 this.settings.usage_limit = Some(limit);
+                            }
+                            if !stopping && update.prompt_suggestion.is_none() {
+                                this.harvest_prompt_suggestion(update.suggestion_request, cx);
                             }
                             if !this.is_remote() {
                                 this.detect_usage_limit(cx);
@@ -2910,6 +2930,7 @@ impl Conversation {
             .child(self.changes_shelf(window, cx))
             .child(self.background_shelf(window, cx))
             .child(self.message_queue(window, cx))
+            .child(self.stash_shelf(cx))
             .children(if self.is_remote() {
                 None
             } else {

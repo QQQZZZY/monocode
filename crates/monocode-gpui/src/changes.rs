@@ -20,6 +20,7 @@ use monocode_core::{
     agent::{AccessMode, Settings},
     provider::{self, Event, Kind, Request},
     scm::{self, ChangedFile, DiffIndex, Pr},
+    text_generator::{self, TextGeneratorConfig},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -686,12 +687,19 @@ impl Changes {
             .and_then(|p| p.background_text_model());
         pick_text_harness(self.text_provider, chosen)
     }
+    fn text_backend(&self, cx: &App) -> Option<TextBackend> {
+        let http = cx
+            .try_global::<crate::settings::Preferences>()
+            .and_then(|p| p.http_text_generator());
+        let cli = self.text_harness(cx);
+        (http.is_some() || cli.is_some()).then_some(TextBackend { http, cli })
+    }
     fn generate(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let has_files = self.index(cx).is_some_and(|i| !i.files.is_empty());
         if !has_files || self.busy.is_some() || self.generate_cancel.is_some() {
             return;
         }
-        let Some(harness) = self.text_harness(cx) else {
+        let Some(backend) = self.text_backend(cx) else {
             Self::fail(
                 crate::i18n::text("changes-no-provider-cli-is-installed-to-write-a"),
                 window,
@@ -707,7 +715,7 @@ impl Changes {
         let flag = cancel.clone();
         let work = cx
             .background_executor()
-            .spawn(async move { generate_commit_message(harness, cwd, flag) });
+            .spawn(async move { generate_commit_message(backend, cwd, flag) });
         cx.spawn_in(window, async move |this, cx| {
             let result = work.await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -822,7 +830,7 @@ impl Changes {
     ) {
         let message = self.message.read(cx).content.to_string();
         let amend = self.amend.is_some();
-        let pr = create_pr.then(|| self.text_harness(cx));
+        let pr = create_pr.then(|| self.text_backend(cx));
         self.run_git(
             if create_pr { "pr" } else { "commit" }.into(),
             move |path| {
@@ -836,8 +844,8 @@ impl Changes {
                 this.amend = None;
                 this.message
                     .update(cx, |m, cx| m.set_text(String::new(), cx));
-                if let Some(harness) = pr {
-                    this.open_created_pr(harness, window, cx);
+                if let Some(backend) = pr {
+                    this.open_created_pr(backend, window, cx);
                 }
             },
             window,
@@ -847,7 +855,7 @@ impl Changes {
     /// generatePrContent, `gh pr create`, then the browser.
     fn open_created_pr(
         &mut self,
-        harness: Option<TextHarness>,
+        backend: Option<TextBackend>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -856,7 +864,7 @@ impl Changes {
         let cwd = PathBuf::from(&self.cwd);
         let work = cx
             .background_executor()
-            .spawn(async move { create_pr_blocking(harness, &cwd) });
+            .spawn(async move { create_pr_blocking(backend, &cwd) });
         cx.spawn_in(window, async move |this, cx| {
             let result = work.await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -897,7 +905,7 @@ impl Changes {
                 )],
             )
         });
-        let harness = self.text_harness(cx);
+        let backend = self.text_backend(cx);
         cx.spawn_in(window, async move |this, cx| {
             if let Some(question) = question {
                 let Ok(ask) = this.update_in(cx, |_, window, cx| {
@@ -914,12 +922,12 @@ impl Changes {
                     this.run_git(
                         "pr".into(),
                         |path| scm::push(&path),
-                        move |this, window, cx| this.open_created_pr(harness, window, cx),
+                        move |this, window, cx| this.open_created_pr(backend, window, cx),
                         window,
                         cx,
                     );
                 } else {
-                    this.open_created_pr(harness, window, cx);
+                    this.open_created_pr(backend, window, cx);
                 }
             });
         })
@@ -1973,6 +1981,14 @@ impl Changes {
 /// A provider CLI and model for one-off text, `None` for its default model.
 pub(crate) type TextHarness = (Kind, PathBuf, Option<String>);
 
+/// Text backend for commit messages and PR text: configured HTTP endpoint
+/// first, with provider CLI fallback.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct TextBackend {
+    pub http: Option<TextGeneratorConfig>,
+    pub cli: Option<TextHarness>,
+}
+
 /// pickTextHarness: `chosen` (the background model picked in Settings) when
 /// installed, else `preferred`, then Claude Code, then Codex on their default
 /// models.
@@ -1989,18 +2005,17 @@ pub(crate) fn pick_text_harness(
         })
 }
 
-/// generateCommitMessage: a message for the staged changes, written by a
-/// read-only turn of `kind`. Blocking.
+/// generateCommitMessage: a message for the staged changes, written via HTTP
+/// text generator or a read-only turn of `kind`. Blocking.
 pub(crate) fn generate_commit_message(
-    harness: TextHarness,
+    backend: TextBackend,
     cwd: PathBuf,
     cancel: Arc<AtomicBool>,
 ) -> Result<String, String> {
-    let kind = harness.0;
     let context = scm::staged_context(&cwd)?;
     let prompt =
         scm::commit_message_prompt(context.branch.as_deref(), &context.summary, &context.patch);
-    let output = text_prompt(harness, cwd, prompt, cancel)?;
+    let (kind, output) = text_prompt_with(backend, cwd, prompt, 256, cancel)?;
     scm::parse_commit_message(&output).ok_or_else(|| {
         let snippet: String = output
             .split_whitespace()
@@ -2009,10 +2024,13 @@ pub(crate) fn generate_commit_message(
             .chars()
             .take(240)
             .collect();
+        let name = kind
+            .map(|k| k.label().to_string())
+            .unwrap_or_else(|| "HTTP".to_string());
         if snippet.is_empty() {
             crate::i18n::format(
                 "changes-could-not-generate-a-commit-message-returned",
-                &[("name", (kind.label()).to_string())],
+                &[("name", name)],
             )
         } else {
             crate::i18n::format(
@@ -2026,15 +2044,16 @@ pub(crate) fn generate_commit_message(
 /// generatePrContent, falling back to the commits, then `gh pr create`; the
 /// new pull request's URL. Blocking.
 pub(crate) fn create_pr_blocking(
-    harness: Option<TextHarness>,
+    backend: Option<TextBackend>,
     cwd: &std::path::Path,
 ) -> Result<String, String> {
     let range = scm::range_context(cwd)?;
-    let parsed = harness.and_then(|harness| {
-        let output = text_prompt(
-            harness,
+    let parsed = backend.and_then(|backend| {
+        let (_, output) = text_prompt_with(
+            backend,
             cwd.to_path_buf(),
             scm::pr_content_prompt(&range),
+            512,
             Arc::new(AtomicBool::new(false)),
         )
         .ok()?;
@@ -2052,6 +2071,35 @@ pub(crate) fn create_pr_blocking(
         .filter(|b| !b.is_empty())
         .unwrap_or_else(|| range.commit_summary.trim().to_owned());
     scm::pr_create(cwd, &title, &body, &range.base, &range.head)
+}
+
+fn text_prompt_with(
+    backend: TextBackend,
+    cwd: PathBuf,
+    prompt: String,
+    max_tokens: u32,
+    cancel: Arc<AtomicBool>,
+) -> Result<(Option<Kind>, String), String> {
+    let http_err = if let Some(http) = backend.http.as_ref().filter(|c| c.is_ready()) {
+        match text_generator::generate(http, None, &prompt, max_tokens, cancel.clone()) {
+            Ok(text) => return Ok((None, text)),
+            Err(err) => Some(err),
+        }
+    } else {
+        None
+    };
+    if cancel.load(Ordering::SeqCst) {
+        return Err("Cancelled".into());
+    }
+    match backend.cli {
+        Some(harness) => {
+            let kind = harness.0;
+            text_prompt(harness, cwd, prompt, cancel).map(|text| (Some(kind), text))
+        }
+        None => Err(http_err.unwrap_or_else(|| {
+            crate::i18n::text("changes-no-provider-cli-is-installed-to-write-a")
+        })),
+    }
 }
 
 /// A read-only one-shot turn, as the React text harness runs: the final

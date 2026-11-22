@@ -158,7 +158,7 @@ impl Input {
             );
         }
         let text = if self.content.is_empty() {
-            &self.placeholder
+            self.ghost.as_ref().unwrap_or(&self.placeholder)
         } else {
             &self.content
         };

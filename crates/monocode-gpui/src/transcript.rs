@@ -922,6 +922,88 @@ impl TranscriptView {
     }
     /// The rows of the store's window, numbered as the store numbers them.
     /// Older pages above it are read-only and never part of a save.
+    /// Every loaded message as (role, text), continuation rows joined and
+    /// user attachment markup reduced to what the user typed.
+    fn joined_messages(&self) -> Vec<(&str, String)> {
+        let mut messages = Vec::new();
+        let mut at = 0;
+        while at < self.source.len() {
+            let mut end = at + 1;
+            while end < self.source.len() && !self.source[end].first {
+                end += 1;
+            }
+            let role = self.source[at].role.as_str();
+            if matches!(role, "user" | "assistant") {
+                let text: String = self.source[at..end]
+                    .iter()
+                    .map(|r| r.text.as_str())
+                    .collect();
+                let text = if role == "user" {
+                    attachments::message(&self.source, end, &text)
+                        .0
+                        .unwrap_or(text)
+                } else {
+                    text
+                };
+                if let Some((last_role, last)) = messages.last_mut()
+                    && *last_role == role
+                    && role == "assistant"
+                {
+                    // One reply can span several assistant messages around tools.
+                    let last: &mut String = last;
+                    last.push_str("\n\n");
+                    last.push_str(&text);
+                } else {
+                    messages.push((role, text));
+                }
+            }
+            at = end;
+        }
+        messages
+    }
+    /// Prompts the user sent in this session, oldest first, for Up recall.
+    pub(crate) fn user_prompts(&self) -> Vec<String> {
+        self.joined_messages()
+            .into_iter()
+            .filter(|(role, text)| *role == "user" && !text.trim().is_empty())
+            .map(|(_, text)| text.trim().to_string())
+            .collect()
+    }
+    /// The latest `limit` (prompt, reply) pairs, oldest first, each clipped,
+    /// for a background next-prompt suggestion.
+    pub(crate) fn recent_exchanges(&self, limit: usize) -> Vec<(String, String)> {
+        fn clip(text: &str, max: usize) -> String {
+            let text = text.trim();
+            if text.chars().count() <= max {
+                return text.to_string();
+            }
+            let tail: String = text
+                .chars()
+                .rev()
+                .take(max)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect();
+            format!("…{tail}")
+        }
+        let messages = self.joined_messages();
+        let mut pairs = Vec::new();
+        let mut index = 0;
+        while index < messages.len() {
+            if messages[index].0 == "user" {
+                let reply = messages
+                    .get(index + 1)
+                    .filter(|(role, _)| *role == "assistant")
+                    .map(|(_, text)| text.as_str())
+                    .unwrap_or_default();
+                pairs.push((clip(&messages[index].1, 2_000), clip(reply, 4_000)));
+            }
+            index += 1;
+        }
+        let skip = pairs.len().saturating_sub(limit);
+        pairs.split_off(skip)
+    }
     pub(crate) fn source_rows(&self) -> &[Row] {
         &self.source[self.base..]
     }

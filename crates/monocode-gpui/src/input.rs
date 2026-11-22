@@ -15,9 +15,13 @@ mod code;
 mod command;
 mod context_menu;
 mod mention;
+mod prompt_assist;
 mod spelling;
 pub(crate) use command::{Command, CommandRemoved};
 use mention::{DisplayLayout, MentionIcon};
+pub(crate) use prompt_assist::{
+    AcceptGhost, DismissGhost, PromptHistory, StashDraft, StashRequested,
+};
 
 const MAX_BYTES: usize = 64 * 1024;
 const LINE_HEIGHT: f32 = 22.;
@@ -113,6 +117,8 @@ pub fn bind(cx: &mut App) {
         KeyBinding::new("shift-end", SelectEnd, Some("Composer")),
         KeyBinding::new("shift-enter", Newline, Some("Composer")),
         KeyBinding::new("enter", Submit, Some("Composer")),
+        KeyBinding::new("tab", AcceptGhost, Some("Composer")),
+        KeyBinding::new("escape", DismissGhost, Some("Composer")),
     ]);
     let modifier = if cfg!(target_os = "macos") {
         "cmd"
@@ -138,6 +144,7 @@ pub fn bind(cx: &mut App) {
         KeyBinding::new(&format!("{modifier}-c"), Copy, Some("Composer")),
         KeyBinding::new(&format!("{modifier}-v"), Paste, Some("Composer")),
         KeyBinding::new(&format!("{modifier}-x"), Cut, Some("Composer")),
+        KeyBinding::new(&format!("{modifier}-s"), StashDraft, Some("Composer")),
         KeyBinding::new(
             &format!("{modifier}-enter"),
             SubmitSecondary,
@@ -238,12 +245,21 @@ pub struct Input {
     selecting: bool,
     drag_position: Option<Point<Pixels>>,
     autoscroll: Option<gpui::Task<()>>,
+    /// Suggested next prompt painted in place of the placeholder; Tab accepts.
+    ghost: Option<SharedString>,
+    /// Supplies submitted prompts (oldest first) for Up/Down recall.
+    history: Option<PromptHistory>,
+    /// Active recall: the shown history index and the draft it replaced.
+    recall: Option<prompt_assist::Recall>,
+    /// Cmd/Ctrl+S emits [`StashRequested`] instead of propagating.
+    stash_enabled: bool,
 }
 impl EventEmitter<Submitted> for Input {}
 impl EventEmitter<AlternateSubmitted> for Input {}
 impl EventEmitter<Changed> for Input {}
 impl EventEmitter<Rejected> for Input {}
 impl EventEmitter<CodeAction> for Input {}
+impl EventEmitter<StashRequested> for Input {}
 impl Focusable for Input {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus.clone()
@@ -291,6 +307,10 @@ impl Input {
             selecting: false,
             drag_position: None,
             autoscroll: None,
+            ghost: None,
+            history: None,
+            recall: None,
+            stash_enabled: false,
         }
     }
     pub fn search(cx: &mut Context<Self>) -> Self {
@@ -541,6 +561,10 @@ impl Input {
         self.reveal_pending = self.reveal_in_parent;
         self.clear_folds();
         self.content = text.into();
+        if !self.content.is_empty() {
+            self.ghost = None;
+        }
+        self.recall = None;
         self.lines.clear();
         self.code_changed();
         self.selection = self.content.len()..self.content.len();
@@ -953,12 +977,12 @@ impl Input {
         self.select_to(self.next_word(), cx);
     }
     fn up(&mut self, _: &Up, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.completion_step(true, cx) {
+        if !self.completion_step(true, cx) && !self.recall_step(true, cx) {
             self.move_to(self.vertical(false), cx);
         }
     }
     fn down(&mut self, _: &Down, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.completion_step(false, cx) {
+        if !self.completion_step(false, cx) && !self.recall_step(false, cx) {
             self.move_to(self.vertical(true), cx);
         }
     }
@@ -1353,6 +1377,7 @@ impl EntityInputHandler for Input {
         self.reversed = false;
         self.marked = None;
         self.command_removed(previous_command, cx);
+        self.user_edited();
         cx.emit(Changed);
         cx.notify();
     }
@@ -1408,6 +1433,7 @@ impl EntityInputHandler for Input {
             .unwrap_or(r.start + text.len()..r.start + text.len());
         self.selection = self.clip_range(selection);
         self.reversed = false;
+        self.user_edited();
         cx.emit(Changed);
         cx.notify();
     }
@@ -1919,6 +1945,9 @@ impl Render for Input {
             .on_action(cx.listener(Self::delete_to_end))
             .on_action(cx.listener(Self::up))
             .on_action(cx.listener(Self::down))
+            .on_action(cx.listener(Self::accept_ghost))
+            .on_action(cx.listener(Self::dismiss_ghost))
+            .on_action(cx.listener(Self::stash_draft))
             .on_action(cx.listener(Self::paste))
             .on_action(cx.listener(Self::copy))
             .on_action(cx.listener(Self::cut))

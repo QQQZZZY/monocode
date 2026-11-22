@@ -79,6 +79,7 @@ pub struct TextModel {
     pub kind: Kind,
     pub model: Option<String>,
     pub account: crate::accounts::Profile,
+    pub http: Option<crate::text_generator::TextGeneratorConfig>,
 }
 impl TextModel {
     /// The harness's own quick model, on the session's account.
@@ -92,7 +93,14 @@ impl TextModel {
             kind,
             model,
             account,
+            http: None,
         }
+    }
+
+    /// Attaches an HTTP text generator configuration when ready for requests.
+    pub fn with_http(mut self, config: Option<crate::text_generator::TextGeneratorConfig>) -> Self {
+        self.http = config.filter(|c| c.is_ready());
+        self
     }
 }
 
@@ -188,6 +196,18 @@ pub fn generate_for(
     message: &str,
     cancel: Arc<AtomicBool>,
 ) -> Option<GeneratedTitle> {
+    if let Some(http) = text.http.as_ref().filter(|c| c.is_ready()) {
+        if let Ok(output) =
+            crate::text_generator::generate(http, None, &prompt(message), 160, cancel.clone())
+        {
+            if let Some(parsed) = parse(&output, message) {
+                return Some(parsed);
+            }
+        }
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            return None;
+        }
+    }
     if !supports(text.kind) {
         return None;
     }
@@ -253,5 +273,63 @@ mod tests {
             .replace_title(99_999, "Initial prompt", "Generated name")
             .unwrap());
         assert_eq!(db.sessions().unwrap()[0].title, "Manual name");
+    }
+    #[test]
+    fn http_text_generator_creates_title_for_any_kind() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let mut read = Vec::new();
+            loop {
+                let n = stream.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                read.extend_from_slice(&buf[..n]);
+                let raw = String::from_utf8_lossy(&read);
+                if let Some((head, rest)) = raw.split_once("\r\n\r\n") {
+                    let len = head
+                        .lines()
+                        .find_map(|l| {
+                            let (k, v) = l.split_once(':')?;
+                            k.eq_ignore_ascii_case("content-length")
+                                .then(|| v.trim().parse::<usize>().ok())
+                                .flatten()
+                        })
+                        .unwrap_or(0);
+                    if rest.len() >= len {
+                        break;
+                    }
+                }
+            }
+            let body = r#"{"choices":[{"message":{"content":"{\"title\":\"Add HTTP text client\",\"workItem\":null}"}}]}"#;
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(resp.as_bytes());
+            let _ = stream.flush();
+        });
+        let http = crate::text_generator::TextGeneratorConfig {
+            enabled: true,
+            kind: crate::text_generator::TextGeneratorKind::OpenaiCompatible,
+            base_url: format!("http://{addr}/v1"),
+            api_key: String::new(),
+            model: "qwen2.5:7b".into(),
+        };
+        let text = TextModel::automatic(Kind::Hermes, Default::default()).with_http(Some(http));
+        let generated = generate_for(
+            text,
+            Path::new("/tmp"),
+            "Build an HTTP client for session titles",
+            Arc::new(AtomicBool::new(false)),
+        )
+        .unwrap();
+        assert_eq!(generated.title, "Add HTTP text client");
+        let _ = handle.join();
     }
 }

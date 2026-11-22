@@ -132,6 +132,22 @@ impl SettingsView {
                     |this, on, cx| this.update(cx, |p| p.autocorrect = on),
                 )],
             ),
+            self.row(
+                Some("prompt-suggestions"),
+                false,
+                crate::i18n::text("settings-prompt-suggestions"),
+                Some(
+                    crate::i18n::text("settings-show-predicted-follow-up-prompt-ghost-text").into(),
+                ),
+                vec![self.toggle(
+                    "prompt-suggestions",
+                    crate::i18n::text("settings-prompt-suggestions"),
+                    p.prompt_suggestions,
+                    false,
+                    cx,
+                    |this, on, cx| this.update(cx, |p| p.prompt_suggestions = on),
+                )],
+            ),
         ];
         let editor = vec![
             self.row(
