@@ -1796,7 +1796,7 @@ fn azure_devops_repo_for(root: &Path, organization_url: &str) -> Result<String, 
     crate::scm::shell::apply_gui_env(&mut cmd);
     let output = cmd
         .args(["config", "--get-regexp", r"^remote\..*\.url$"])
-        .current_dir(root)
+        .current_dir(crate::scm::expand_home(root))
         .output()
         .map_err(|_| "Could not run git".to_string())?;
     if !output.status.success() && output.status.code() != Some(1) {
