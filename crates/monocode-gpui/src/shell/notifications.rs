@@ -399,7 +399,7 @@ impl Shell {
                 let chat = view.read(cx);
                 SessionInputs {
                     session_id: chat.summary.id.to_string(),
-                    title: chat.display_title().to_owned(),
+                    title: chat.localized_title(),
                     provider: chat.summary.provider.clone(),
                     harness: Kind::from_id(&chat.summary.provider).label().to_owned(),
                     pending: chat.pending_notification_inputs(cx),
@@ -427,7 +427,7 @@ impl Shell {
             {
                 let summary = view.read(cx).summary.clone();
                 let body = if input.kind == approvals::InputKind::Approval {
-                    format!("Approve: {}", input.label)
+                    crate::i18n::format("shell-approve", &[("value", (input.label).to_string())])
                 } else {
                     input.label
                 };
@@ -507,7 +507,7 @@ impl Shell {
             let mono_visible = self.mono_active(cx) && self.notice_session_visible(id, cx);
             snapshots.push(SessionInputs {
                 session_id: id.to_string(),
-                title: chat.display_title().to_owned(),
+                title: chat.localized_title(),
                 provider: chat.summary.provider.clone(),
                 harness: Kind::from_id(&chat.summary.provider).label().to_owned(),
                 pending: chat.pending_notification_inputs(cx),
@@ -633,7 +633,7 @@ impl Shell {
                     session_id: id,
                     due_at,
                 },
-                &summary.title,
+                &crate::i18n::session_title(&summary.title, &summary.provider),
                 None,
                 cx,
             );
@@ -675,16 +675,19 @@ impl Shell {
         }
         self.notification_state.sequence = self.notification_state.sequence.wrapping_add(1);
         let body = if body.trim().is_empty() && category == "agentFinished" {
-            format!("{} finished", Kind::from_id(&summary.provider).label())
+            crate::i18n::format(
+                "notice-agent-finished",
+                &[("agent", Kind::from_id(&summary.provider).label().to_owned())],
+            )
         } else {
             body.to_owned()
         };
         let receiver = platform::show(platform::Notification {
             tag: target.tag(self.notification_state.sequence),
             subtitle: if category == "reminders" {
-                "Session reminder".into()
+                crate::i18n::text("shell-session-reminder")
             } else {
-                summary.title.clone()
+                crate::i18n::session_title(&summary.title, &summary.provider)
             },
             body: delivery::clip_body(&body),
             sound: prefs.sounds,
@@ -961,23 +964,31 @@ impl Shell {
                 stack.child(errors::card(
                     "app-error",
                     message,
-                    icon_button("dismiss-error", "Dismiss error", "close")
-                        .debug_selector(|| "dismiss-error".into())
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.error = None;
-                            cx.notify();
-                        })),
+                    icon_button(
+                        "dismiss-error",
+                        crate::i18n::text("shell-dismiss-error"),
+                        "close",
+                    )
+                    .debug_selector(|| "dismiss-error".into())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.error = None;
+                        cx.notify();
+                    })),
                 ))
             })
             .when_some(mono_error, |stack, (monos, message)| {
                 stack.child(errors::card(
                     "mono-error",
                     message,
-                    icon_button("mono-error-close", "Dismiss Mono error", "close")
-                        .debug_selector(|| "mono-error-close".into())
-                        .on_click(cx.listener(move |_, _, _, cx| {
-                            monos.update(cx, |monos, cx| monos.dismiss_error(cx));
-                        })),
+                    icon_button(
+                        "mono-error-close",
+                        crate::i18n::text("shell-dismiss-mono-error"),
+                        "close",
+                    )
+                    .debug_selector(|| "mono-error-close".into())
+                    .on_click(cx.listener(move |_, _, _, cx| {
+                        monos.update(cx, |monos, cx| monos.dismiss_error(cx));
+                    })),
                 ))
             })
             .when(state.file_error.read(cx).is_visible(), |stack| {
@@ -1026,6 +1037,7 @@ impl Shell {
                     .id("whats-new-overlay")
                     .absolute()
                     .inset_0()
+                    .occlude()
                     .flex()
                     .items_center()
                     .justify_center()
@@ -1331,9 +1343,18 @@ impl Shell {
                     let prompt = this.update_in(cx, |_, window, cx| {
                         window.prompt(
                             gpui::PromptLevel::Warning,
-                            "Delete this conversation permanently?",
-                            Some("Its messages and saved settings will be removed."),
-                            &["Delete", "Cancel"],
+                            crate::i18n::text("shell-prompt-delete-this-conversation-permanently")
+                                .as_str(),
+                            Some(
+                                crate::i18n::text(
+                                    "shell-prompt-its-messages-and-saved-settings-will",
+                                )
+                                .as_str(),
+                            ),
+                            &[
+                                crate::i18n::text("shell-prompt-delete").as_str(),
+                                crate::i18n::text("shell-prompt-cancel").as_str(),
+                            ],
                             cx,
                         )
                     });
@@ -1449,5 +1470,88 @@ mod tests {
                 assert!(shell.notification_state.whats_new.is_none());
             })
             .unwrap();
+    }
+}
+
+#[cfg(test)]
+mod whats_new_tests {
+    use super::*;
+    use gpui::{
+        ListOffset, Pixels, Point, ScrollDelta, ScrollWheelEvent, TestAppContext, TouchPhase,
+        VisualTestContext, point,
+    };
+
+    #[gpui::test]
+    fn wheel_over_whats_new_leaves_the_session_behind_it_in_place(cx: &mut TestAppContext) {
+        let (window, _, session) = crate::shell::tests::window(cx);
+        let visual = &mut VisualTestContext::from_window(window.into(), cx);
+        let transcript = window
+            .update(visual, |shell, _, cx| {
+                shell.sessions[&session].update(cx, |session, cx| {
+                    session.summary.has_messages = true;
+                    cx.notify();
+                    session.transcript.clone()
+                })
+            })
+            .unwrap();
+        transcript.update(visual, |view, cx| {
+            let rows = (0..200)
+                .map(|ix| monocode_core::transcript::Row {
+                    role: if ix % 2 == 0 { "user" } else { "assistant" }.into(),
+                    text: "A message in the history".into(),
+                    first: true,
+                    sent_at: None,
+                })
+                .collect();
+            view.patch(0, rows, cx);
+            view.list = view.list.clone().measure_all();
+        });
+        visual.run_until_parked();
+        visual.refresh().unwrap();
+        transcript.update(visual, |view, _| {
+            view.list.pause_following_tail();
+            view.list.scroll_to(ListOffset {
+                item_ix: 100,
+                offset_in_item: px(0.),
+            });
+        });
+        visual.refresh().unwrap();
+
+        let offset = |visual: &mut VisualTestContext| {
+            transcript.read_with(visual, |view, _| {
+                view.list.scroll_px_offset_for_scrollbar().y
+            })
+        };
+        let wheel = |visual: &mut VisualTestContext, position: Point<Pixels>| {
+            visual.simulate_event(ScrollWheelEvent {
+                position,
+                delta: ScrollDelta::Pixels(point(px(0.), px(40.))),
+                modifiers: Default::default(),
+                touch_phase: TouchPhase::Moved,
+            });
+            visual.run_until_parked();
+            visual.refresh().unwrap();
+        };
+
+        let pane = visual.debug_bounds("main-pane-frame").unwrap();
+        let start = offset(visual);
+        wheel(visual, pane.center());
+        let open_position = offset(visual);
+        assert_ne!(
+            open_position, start,
+            "the wheel reaches an unblocked session"
+        );
+
+        window
+            .update(visual, |shell, _, cx| {
+                shell.open_whats_new(crate::notifications::updater::version().into(), cx);
+            })
+            .unwrap();
+        visual.run_until_parked();
+        visual.refresh().unwrap();
+        // The pane center falls on the card; its corner falls on the scrim.
+        wheel(visual, pane.center());
+        wheel(visual, pane.origin + point(px(8.), px(8.)));
+        assert_eq!(offset(visual), open_position);
     }
 }

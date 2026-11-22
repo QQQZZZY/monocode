@@ -45,7 +45,7 @@ use monocode_core::{
     provider::Kind,
     store::Session,
 };
-use panels::{OpenPicker, OverviewTab, Route, SettingsSection};
+use panels::{OpenPicker, OverviewTab, PanelView, Route, SettingsSection};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -104,6 +104,12 @@ pub(crate) struct Monos {
     contributions_loading: HashSet<String>,
     overview_reveal: Option<crate::project_tabs::TabReveal<OverviewTab>>,
     route: Option<Route>,
+    /// Each Mono's details-panel tab and open page, restored when it is
+    /// opened again.
+    panel_views: HashMap<String, PanelView>,
+    /// Drops a restored session page once it proves archived or deleted;
+    /// explicit navigation cancels it.
+    panel_check: Option<gpui::Task<()>>,
     settings: Option<SettingsSection>,
     settings_focus: gpui::FocusHandle,
     fields: HashMap<String, Entity<Input>>,
@@ -338,6 +344,8 @@ impl Monos {
             contributions_loading: HashSet::new(),
             overview_reveal: None,
             route: None,
+            panel_views: HashMap::new(),
+            panel_check: None,
             settings: None,
             settings_focus: cx.focus_handle(),
             fields: HashMap::new(),
@@ -496,9 +504,9 @@ impl Monos {
             .map(|chat| chat.read(cx).mono_status())
             .unwrap_or("idle");
         let status = match state {
-            "working" => "Working",
-            "needs-you" => "Needs you",
-            _ => "Idle",
+            "working" => crate::i18n::text("monos-working"),
+            "needs-you" => crate::i18n::text("monos-needs-you"),
+            _ => crate::i18n::text("monos-idle"),
         };
         div()
             .id("original-mono-title")
@@ -675,7 +683,7 @@ impl Monos {
         let work = cx.background_executor().spawn(async move {
             let db = locked(&store)?;
             if let Some(missing) = &mono.unavailable_session {
-                return Err(format!("This Mono's saved conversation ({missing}) is unavailable. Its identity and history have been preserved."));
+                return Err(crate::i18n::format("monos-this-mono-s-saved-conversation-is-unavailable", &[("missing", (missing).to_string())]));
             }
             if let Some(session) = mono.session_id {
                 let summary = db.mono_session(session)?
@@ -787,7 +795,7 @@ impl Monos {
                         if empty {
                             this.enqueue(
                                 &source,
-                                "Continue from where you left off.".into(),
+                                crate::i18n::text("monos-continue-from-where-you-left-off"),
                                 Vec::new(),
                                 false,
                                 cx,
@@ -1048,7 +1056,7 @@ impl Monos {
         if finished {
             if let Some(mut sent) = self.inflight.remove(id) {
                 let (ok, status) = self.chats[id].read(cx).external_outcome(cx);
-                if !ok && !status.starts_with("Stopped") {
+                if !ok && !self.chats[id].read(cx).run_status().is_stopped() {
                     if let Some(mono) = self.roster.get_mut(id) {
                         if let Some(queued) = mono.outbox.iter_mut().find(|m| m.id == sent.id) {
                             queued.error = Some(status);
@@ -1072,21 +1080,8 @@ impl Monos {
         if !self.prefs.monos || self.roster.get(id).is_none() {
             return;
         }
-        if self.active.as_deref() != Some(id) {
-            self.save_open_file(cx);
-            self.pause_changes(cx);
-            self.route = None;
-            self.details.update(cx, |details, cx| details.reset(cx));
-            self.fields.retain(|k, _| k.starts_with("file:"));
-            self.files = None;
-            self.activity_turn = None;
-            self.memory_adding = false;
-            self.memory_edit = None;
-            self.settings = None;
-        }
-        self.active = Some(id.into());
+        self.make_active(id, cx);
         self.ensure_chat(id, cx);
-        self.reload_files(id, cx);
         cx.emit(TabOpened(id.into()));
         self.focus_active(window, cx);
         if let Some(view) = self.chats.get(id) {
@@ -1096,6 +1091,35 @@ impl Monos {
             }
         }
         self.save(cx);
+    }
+    /// Makes `id` the active Mono: on a switch, saves the previous Mono's
+    /// state, restores `id`'s panel view, and drops the previous Mono's files
+    /// and habits so nothing acts on them while `id`'s reload.
+    pub(super) fn make_active(&mut self, id: &str, cx: &mut Context<Self>) {
+        let switched = self.active.as_deref() != Some(id);
+        if switched {
+            self.save_open_file(cx);
+            self.pause_changes(cx);
+            self.remember_panel_view();
+            self.restore_panel_view(id, cx);
+            self.details.update(cx, |details, cx| details.reset(cx));
+            self.fields.retain(|k, _| k.starts_with("file:"));
+            self.files = None;
+            self.habits.clear();
+            self.activity_turn = None;
+            self.memory_adding = false;
+            self.memory_edit = None;
+            self.settings = None;
+        }
+        self.active = Some(id.into());
+        // A refresh may have evicted a restored document's body meanwhile.
+        if switched
+            && let Some(Route::Document(document)) = self.route.clone()
+            && !self.work.documents.contains_key(&document)
+        {
+            self.open_document(&document, cx);
+        }
+        self.reload_files(id, cx);
     }
     pub(crate) fn focus_active(&self, window: &mut Window, cx: &mut Context<Self>) {
         if self.settings.is_none()
@@ -1110,6 +1134,7 @@ impl Monos {
         self.save_open_file(cx);
         self.pause_changes(cx);
         self.hide_html(cx);
+        self.remember_panel_view();
         if self.active.take().is_some() {
             self.details.update(cx, |details, cx| details.reset(cx));
             self.settings = None;
@@ -1238,15 +1263,15 @@ impl Monos {
                             .text_size(px(12.))
                             .line_height(px(20.))
                             .text_color(content(0.5))
-                            .child("Monos"),
+                            .child(crate::i18n::text("monos-monos")),
                     )
                 })
         } else {
-            section_label("Monos")
+            section_label(crate::i18n::text("monos-monos"))
         }
         .when(has, |d| {
             d.child(
-                icon_button("new-mono", "New mono", "plus")
+                icon_button("new-mono", crate::i18n::text("monos-new-mono"), "plus")
                     .debug_selector(|| "sidebar-mono-button".into())
                     .size(px(20.))
                     // Centred on the sidebar's trailing column, with the
@@ -1270,7 +1295,7 @@ impl Monos {
                         .id("new-mono-row")
                         .debug_selector(|| "new-mono".into())
                         .role(Role::Button)
-                        .aria_label("New mono")
+                        .aria_label(crate::i18n::text("monos-new-mono"))
                         .h(px(32.))
                         .when(original, |d| {
                             d.ml(px(6.)).mr_2().font_weight(gpui::FontWeight::MEDIUM)
@@ -1284,7 +1309,7 @@ impl Monos {
                         .text_color(content(0.5))
                         .hover(|s| s.bg(content(0.1)).text_color(content(1.)))
                         .child(icon("plus", 16.))
-                        .child("New mono")
+                        .child(crate::i18n::text("monos-new-mono"))
                         .on_click(cx.listener(move |this, _, w, cx| {
                             this.create(project.clone().into_iter().collect(), w, cx)
                         })),
@@ -1315,13 +1340,30 @@ impl Monos {
                 // Activity belongs on the mascot, rather than an idle dot at
                 // the end of every row.
                 let unread = if active { 0 } else { unread };
+                let state_text = crate::i18n::text(match state {
+                    "working" => "monos-state-working",
+                    "needs-you" => "monos-state-needs-you",
+                    _ => "monos-state-idle",
+                });
                 let label = if unread == 0 {
-                    format!("{}, {state}", mono.label())
+                    format!("{}, {state_text}", mono.label())
                 } else {
-                    format!(
-                        "{}, {state}, {unread} new {}",
-                        mono.label(),
-                        if unread == 1 { "reply" } else { "replies" }
+                    crate::i18n::format(
+                        "monos-unread-replies",
+                        &[
+                            ("value1", (mono.label()).to_string()),
+                            ("state", state_text),
+                            ("unread", crate::system_format::unsigned((unread) as u64)),
+                            (
+                                "value2",
+                                (if unread == 1 {
+                                    crate::i18n::text("monos-unread-replies-reply")
+                                } else {
+                                    crate::i18n::text("monos-unread-replies-replies")
+                                })
+                                .to_string(),
+                            ),
+                        ],
                     )
                 };
                 let id = mono.id.clone();
@@ -1337,7 +1379,7 @@ impl Monos {
                     })
                     .group("mono-rail-row")
                     .role(Role::Button)
-                    .aria_label(label)
+                    .aria_label(&label)
                     .h(px(32.))
                     .when(original && !compact, |d| d.ml(px(6.)).mr_2())
                     .when(original && !compact && index + 1 < count, |d| d.mb_px())
@@ -1438,18 +1480,24 @@ impl Monos {
                                 .invisible()
                                 .group_hover("mono-rail-row", |s| s.visible())
                                 .child(
-                                    icon_button("mono-options", "Mono options", "more-horizontal")
-                                        .debug_selector({
-                                            let id = mono.id.clone();
-                                            move || format!("mono-rail-options-{id}")
-                                        })
-                                        .on_mouse_down(MouseButton::Left, |_, _, cx| {
-                                            cx.stop_propagation()
-                                        })
-                                        .on_click(cx.listener(move |this, _, w, cx| {
+                                    icon_button(
+                                        "mono-options",
+                                        crate::i18n::text("monos-mono-options"),
+                                        "more-horizontal",
+                                    )
+                                    .debug_selector({
+                                        let id = mono.id.clone();
+                                        move || format!("mono-rail-options-{id}")
+                                    })
+                                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                        cx.stop_propagation()
+                                    })
+                                    .on_click(cx.listener(
+                                        move |this, _, w, cx| {
                                             cx.stop_propagation();
                                             this.open_options(&options, None, w, cx);
-                                        })),
+                                        },
+                                    )),
                                 ),
                         )
                     })
@@ -1532,7 +1580,7 @@ impl Monos {
                         .id("close-mono-tab")
                         .debug_selector(|| "close-mono-tab-button".into())
                         .role(Role::Button)
-                        .aria_label("Close Mono tab")
+                        .aria_label(crate::i18n::text("monos-close-mono-tab"))
                         .absolute()
                         .right_1()
                         .top(px(10.))

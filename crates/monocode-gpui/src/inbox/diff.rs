@@ -100,7 +100,7 @@ pub(super) fn models(diff: &Diff) -> Vec<DiffFile> {
                 binary,
                 too_large: diff.truncated && section.is_empty(),
                 empty_message: if section.is_empty() && !diff.truncated {
-                    Some("No textual diff".into())
+                    Some(crate::i18n::text("inbox-no-textual-diff"))
                 } else {
                     None
                 },

@@ -22,7 +22,7 @@ pub(crate) enum Section {
 
 pub(crate) const GROUPS: [(&str, &[Section]); 3] = [
     (
-        "App",
+        "settings-app",
         &[
             Section::General,
             Section::Connections,
@@ -31,7 +31,7 @@ pub(crate) const GROUPS: [(&str, &[Section]); 3] = [
         ],
     ),
     (
-        "Agents",
+        "settings-agents",
         &[
             Section::Chat,
             Section::Providers,
@@ -41,7 +41,7 @@ pub(crate) const GROUPS: [(&str, &[Section]); 3] = [
         ],
     ),
     (
-        "Workspace",
+        "settings-workspace",
         &[Section::Inbox, Section::Archive, Section::Worktrees],
     ),
 ];
@@ -77,76 +77,92 @@ impl Section {
             Section::Worktrees => "worktrees",
         }
     }
-    pub(crate) fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> String {
         match self {
-            Section::General => "General",
-            Section::Connections => "Connections",
-            Section::Appearance => "Appearance",
-            Section::Keybindings => "Keybindings",
-            Section::Chat => "Chat",
-            Section::Providers => "Providers",
-            Section::Mcp => "MCP",
-            Section::Skills => "Skills",
-            Section::Monos => "Monos",
-            Section::Inbox => "Inbox",
-            Section::Archive => "Archive",
-            Section::Worktrees => "Worktrees",
+            Section::General => crate::i18n::text("settings-general"),
+            Section::Connections => crate::i18n::text("settings-connections"),
+            Section::Appearance => crate::i18n::text("settings-appearance"),
+            Section::Keybindings => crate::i18n::text("settings-keybindings"),
+            Section::Chat => crate::i18n::text("settings-chat"),
+            Section::Providers => crate::i18n::text("settings-providers"),
+            Section::Mcp => crate::i18n::text("settings-mcp"),
+            Section::Skills => crate::i18n::text("settings-skills"),
+            Section::Monos => crate::i18n::text("settings-monos"),
+            Section::Inbox => crate::i18n::text("settings-inbox"),
+            Section::Archive => crate::i18n::text("settings-archive"),
+            Section::Worktrees => crate::i18n::text("settings-worktrees"),
         }
     }
-    pub(crate) fn description(self) -> &'static str {
+    pub(crate) fn description(self) -> String {
         match self {
             Section::General => {
-                "The build you are running, how MonoCode reaches you, and the panels it shows."
+                crate::i18n::text("settings-the-build-you-are-running-how-monocode")
             }
-            Section::Connections => "Connect your machines and run agents remotely through SSH.",
-            Section::Appearance => {
-                "Theme, tint, translucency, workspace layout, and conversation backgrounds."
+            Section::Connections => {
+                crate::i18n::text("settings-connect-your-machines-and-run-agents-remotely")
             }
+            Section::Appearance => crate::i18n::text(
+                "settings-theme-tint-translucency-workspace-layout-and-conversation",
+            ),
             Section::Keybindings => {
-                "Every shortcut the workspace handles, from the app menu and the key handler."
+                crate::i18n::text("settings-every-shortcut-the-workspace-handles-from-the")
             }
             Section::Chat => {
-                "How transcripts read, what the composer does with a follow-up, how files save, and how diffs open."
+                crate::i18n::text("settings-how-transcripts-read-what-the-composer-does")
             }
             Section::Providers => {
-                "Provider accounts, agent CLIs MonoCode can drive, and the model new sessions start with."
-            }
-            Section::Mcp => "Find MCP servers across providers and manage their connections.",
-            Section::Skills => {
-                "Discover and manage file skills from project, personal, and harness folders."
-            }
-            Section::Monos => "The resident agent beside your tabs, and which projects have one.",
-            Section::Inbox => {
-                "Manage Inbox services and notification preferences for each project."
-            }
-            Section::Archive => "Projects and conversations you have archived.",
-            Section::Worktrees => "Manage additional worktrees for each project.",
-        }
-    }
-    fn keywords(self) -> &'static str {
-        match self {
-            Section::General => "version update sounds notifications notes rail",
-            Section::Connections => "ssh remote host machine server environment always on",
-            Section::Appearance => {
-                "theme dark light color accent glass blur zoom scale wallpaper rail sidebar"
-            }
-            Section::Keybindings => "shortcut hotkey keyboard binding",
-            Section::Chat => {
-                "transcript composer prompt message diff review layout format save editor"
-            }
-            Section::Providers => {
-                "account sign in login model harness claude codex gemini cli default hooks"
+                crate::i18n::text("settings-provider-accounts-agent-clis-monocode-can-drive")
             }
             Section::Mcp => {
-                "tools servers connections oauth authenticate login claude codex cursor opencode"
+                crate::i18n::text("settings-find-mcp-servers-across-providers-and-manage")
             }
-            Section::Skills => "skill instructions prompt",
-            Section::Monos => "mono resident agent mascot claim project title bar",
+            Section::Skills => {
+                crate::i18n::text("settings-discover-and-manage-file-skills-from-project")
+            }
+            Section::Monos => crate::i18n::text("settings-the-resident-agent-beside-your-tabs-and"),
             Section::Inbox => {
-                "github gitlab linear jira atlassian azure devops connect token integration"
+                crate::i18n::text("settings-manage-inbox-services-and-notification-preferences-for")
             }
-            Section::Archive => "archived restore delete hidden",
-            Section::Worktrees => "git branch worktree working copy project create delete",
+            Section::Archive => {
+                crate::i18n::text("settings-projects-and-conversations-you-have-archived")
+            }
+            Section::Worktrees => {
+                crate::i18n::text("settings-manage-additional-worktrees-for-each-project")
+            }
+        }
+    }
+    fn keywords(self) -> String {
+        match self {
+            Section::General => {
+                crate::i18n::text("settings-version-update-sounds-notifications-notes-rail")
+            }
+            Section::Connections => {
+                crate::i18n::text("settings-ssh-remote-host-machine-server-environment-always")
+            }
+            Section::Appearance => {
+                crate::i18n::text("settings-theme-dark-light-color-accent-glass-blur")
+            }
+            Section::Keybindings => crate::i18n::text("settings-shortcut-hotkey-keyboard-binding"),
+            Section::Chat => {
+                crate::i18n::text("settings-transcript-composer-prompt-message-diff-review-layout")
+            }
+            Section::Providers => {
+                crate::i18n::text("settings-account-sign-in-login-model-harness-claude")
+            }
+            Section::Mcp => crate::i18n::text(
+                "settings-tools-servers-connections-oauth-authenticate-login-claude",
+            ),
+            Section::Skills => crate::i18n::text("settings-skill-instructions-prompt"),
+            Section::Monos => {
+                crate::i18n::text("settings-mono-resident-agent-mascot-claim-project-title")
+            }
+            Section::Inbox => {
+                crate::i18n::text("settings-github-gitlab-linear-jira-atlassian-azure-devops")
+            }
+            Section::Archive => crate::i18n::text("settings-archived-restore-delete-hidden"),
+            Section::Worktrees => {
+                crate::i18n::text("settings-git-branch-worktree-working-copy-project-create")
+            }
         }
     }
     /// SettingsRail.tsx's SECTION_ICONS.
@@ -171,365 +187,388 @@ impl Section {
 /// SETTINGS_INDEX: (id, section, label, keywords).
 pub(crate) const INDEX: &[(&str, Section, &str, &str)] = &[
     (
+        "language",
+        Section::General,
+        "settings-language",
+        "settings-search-language",
+    ),
+    (
         "remote-machines",
         Section::Connections,
-        "Your machines",
-        "ssh remote connect host server environment",
+        "settings-your-machines",
+        "settings-search-remote-machines",
     ),
     (
         "mobile-access",
         Section::Connections,
-        "Your phones",
-        "phone iphone android mobile app pair qr code device revoke remove testflight",
+        "settings-your-phones",
+        "settings-search-mobile-access",
     ),
     (
         "mobile-remote",
         Section::Connections,
-        "Connect away from home",
-        "router port upnp nat remote address public hostname vpn wifi",
+        "settings-connect-away-from-home",
+        "settings-search-mobile-remote",
     ),
     (
         "mcp-servers",
         Section::Mcp,
-        "MCP servers",
-        "claude tools connections oauth authenticate login add remove",
+        "settings-mcp-servers",
+        "settings-search-mcp-servers",
     ),
     (
         "monos-enabled",
         Section::Monos,
-        "Show monos",
-        "mono agent rail hide",
+        "settings-show-monos",
+        "settings-search-monos-enabled",
     ),
     (
         "rail-monos-pinned",
         Section::Monos,
-        "Pin monos to the icon rail",
-        "mono rail compact collapsed icons top divider project picker",
+        "settings-pin-monos-to-the-icon-rail",
+        "settings-search-rail-monos-pinned",
     ),
     (
         "mono-list",
         Section::Monos,
-        "Your monos",
-        "mono reset soul name projects sessions sidebar visibility hidden show",
+        "settings-your-monos",
+        "settings-search-mono-list",
     ),
     (
         "project-worktrees",
         Section::Worktrees,
-        "Project worktrees",
-        "git branch working copy create delete manage",
+        "settings-project-worktrees",
+        "settings-search-project-worktrees",
     ),
     (
         "update",
         Section::General,
-        "Version",
-        "update upgrade release what's new build changelog",
+        "settings-version",
+        "settings-search-update",
     ),
     (
         "sounds",
         Section::General,
-        "Sounds",
-        "audio cue chime mute volume",
+        "settings-sounds",
+        "settings-search-sounds",
     ),
     (
         "notifications",
         Section::General,
-        "Notifications",
-        "notify alert toast permission reminder background",
+        "settings-notifications",
+        "settings-search-notifications",
     ),
     (
         "notes",
         Section::General,
-        "Notes",
-        "notebook markdown rail scratchpad",
+        "settings-notes",
+        "settings-search-notes",
     ),
     (
         "quick-composer",
         Section::General,
-        "Quick composer",
-        "spotlight global shortcut hotkey floating prompt anywhere",
+        "settings-quick-composer",
+        "settings-search-quick-composer",
     ),
     (
         "working-agents",
         Section::General,
-        "Working agents",
-        "live running sessions rail card",
+        "settings-working-agents",
+        "settings-search-working-agents",
     ),
     (
         "action-opens-terminal",
         Section::General,
-        "Show terminal for actions",
-        "actions commands run script dock background",
+        "settings-show-terminal-for-actions",
+        "settings-search-action-opens-terminal",
     ),
     (
         "terminal-placement",
         Section::General,
-        "Terminal",
-        "terminal placement dock bottom side right panel title bar tab shell focused layout",
+        "settings-terminal",
+        "settings-search-terminal-placement",
     ),
     (
         "file-tabs",
         Section::General,
-        "File tabs",
-        "editor open top workspace normal session pane beside chat",
+        "settings-file-tabs",
+        "settings-search-file-tabs",
     ),
     (
         "file-word-wrap",
         Section::General,
-        "Word wrap",
-        "files editor long lines horizontal scroll wrapping",
+        "settings-word-wrap",
+        "settings-search-file-word-wrap",
     ),
     (
         "tab-animations",
         Section::General,
-        "Tab animations",
-        "motion open close resize transition",
+        "settings-tab-animations",
+        "settings-search-tab-animations",
     ),
     (
         "theme",
         Section::Appearance,
-        "Theme",
-        "dark light system appearance mode",
+        "settings-theme",
+        "settings-search-theme",
     ),
     (
         "wayland-window-decorations",
         Section::Appearance,
-        "Wayland window decorations",
-        "wayland linux compositor title bar titlebar border decorations minimize maximize close",
+        "settings-wayland-window-decorations",
+        "settings-search-wayland-window-decorations",
     ),
     (
         "workspace-theme",
         Section::Appearance,
-        "Workspace theme",
-        "workspace theme color colour text accent syntax scheme preset harbor moss ember orchid",
+        "settings-workspace-theme",
+        "settings-search-workspace-theme",
     ),
     (
         "accent-color",
         Section::Appearance,
-        "Accent color",
-        "highlight bubble send button tint",
+        "settings-accent-color",
+        "settings-search-accent-color",
     ),
     (
         "diff-colors",
         Section::Appearance,
-        "Diff colors",
-        "colorblind color blind accessibility added removed red green blue orange high contrast changes",
+        "settings-diff-colors",
+        "settings-search-diff-colors",
     ),
-    ("hue", Section::Appearance, "Hue", "tint color chrome"),
+    (
+        "hue",
+        Section::Appearance,
+        "settings-hue",
+        "settings-search-hue",
+    ),
     (
         "saturation",
         Section::Appearance,
-        "Saturation",
-        "tint color neutral grey gray",
+        "settings-saturation",
+        "settings-search-saturation",
     ),
     (
         "dark-lightness",
         Section::Appearance,
-        "Dark-mode lightness",
-        "black brightness contrast background",
+        "settings-dark-mode-lightness",
+        "settings-search-dark-lightness",
     ),
     (
         "sidebar-opacity",
         Section::Appearance,
-        "Sidebar opacity",
-        "glass translucent transparency vibrancy",
+        "settings-sidebar-opacity",
+        "settings-search-sidebar-opacity",
     ),
     (
         "main-pane-glass",
         Section::Appearance,
-        "Main pane glass",
-        "translucent transparency body window",
+        "settings-main-pane-glass",
+        "settings-search-main-pane-glass",
     ),
     (
         "inset-layout",
         Section::Appearance,
-        "Layout",
-        "classic focused new preview sidebar navigation tabs inset workspace card rounded floating linear frame",
+        "settings-layout",
+        "settings-search-inset-layout",
     ),
     (
         "interface-scale",
         Section::Appearance,
-        "Interface scale",
-        "zoom font size bigger smaller ui",
+        "settings-interface-scale",
+        "settings-search-interface-scale",
     ),
     (
         "collapsed-project-rail",
         Section::Appearance,
-        "Collapsed project rail",
-        "sidebar compact icons hidden navigation layout",
+        "settings-collapsed-project-rail",
+        "settings-search-collapsed-project-rail",
     ),
     (
         "show-excluded-files",
         Section::Appearance,
-        "Show excluded files",
-        "explorer gitignore ignored hidden files tree",
+        "settings-show-excluded-files",
+        "settings-search-show-excluded-files",
     ),
     (
         "chat-background",
         Section::Appearance,
-        "Chat background",
-        "wallpaper image picture opacity backdrop",
+        "settings-chat-background",
+        "settings-search-chat-background",
     ),
     (
         "transcript-layout",
         Section::Chat,
-        "Transcript layout",
-        "full width chat bubble message",
+        "settings-transcript-layout",
+        "settings-search-transcript-layout",
     ),
     (
         "anchor-prompts",
         Section::Chat,
-        "Anchor prompts to top",
-        "scroll position sticky message",
+        "settings-anchor-prompts-to-top",
+        "settings-search-anchor-prompts",
     ),
     (
         "paced-reveal",
         Section::Chat,
-        "Smooth text reveal",
-        "streaming pacing immediate latency performance animation",
+        "settings-smooth-text-reveal",
+        "settings-search-paced-reveal",
     ),
     (
         "collapse-tool-groups",
         Section::Chat,
-        "Collapse tool groups",
-        "tool calls commands steps expand closed mobile compact activity",
+        "settings-collapse-tool-groups",
+        "settings-search-collapse-tool-groups",
     ),
     (
         "fold-finished-work",
         Section::Chat,
-        "Fold finished work",
-        "worked for collapse tool calls reply inline expanded history turns",
+        "settings-fold-finished-work",
+        "settings-search-fold-finished-work",
     ),
     (
         "follow-up",
         Section::Chat,
-        "Follow-up behavior",
-        "queue steer interrupt send while running",
+        "settings-follow-up-behavior",
+        "settings-search-follow-up",
     ),
     (
         "model-controls",
         Section::Chat,
-        "Model controls",
-        "effort thinking reasoning fast service tier model picker composer",
+        "settings-model-controls",
+        "settings-search-model-controls",
     ),
     (
         "composer-autocorrect",
         Section::Chat,
-        "Autocorrect",
-        "spelling spell check autocorrect typo macos composer",
+        "settings-autocorrect",
+        "settings-search-composer-autocorrect",
+    ),
+    (
+        "prompt-suggestions",
+        Section::Chat,
+        "settings-prompt-suggestions",
+        "settings-search-prompt-suggestions",
     ),
     (
         "composer-mascot",
         Section::Chat,
-        "Composer mascot",
-        "runner animation coin fun",
+        "settings-composer-mascot",
+        "settings-search-composer-mascot",
     ),
     (
         "format-on-save",
         Section::Chat,
-        "Format on save",
-        "prettier quotes editor save format",
+        "settings-format-on-save",
+        "settings-search-format-on-save",
     ),
     (
         "diff-view",
         Section::Chat,
-        "Diff view",
-        "unified editor review changes working tree",
+        "settings-diff-view",
+        "settings-search-diff-view",
     ),
     (
         "empty-session",
         Section::Chat,
-        "Empty session",
-        "ink dither trails ripple games pacman snake arcade fun",
+        "settings-empty-session",
+        "settings-search-empty-session",
     ),
     (
         "agent-clis",
         Section::Providers,
-        "Agent CLIs",
-        "codex opencode cursor grok pi omp fx hermes antigravity devin binary path",
+        "settings-agent-clis",
+        "settings-search-agent-clis",
     ),
     (
         "background-model",
         Section::Providers,
-        "Background model",
-        "title generation commit message branch worktree name pull request haiku fast small",
+        "settings-background-model",
+        "settings-search-background-model",
+    ),
+    (
+        "text-generator",
+        Section::Providers,
+        "settings-text-generator",
+        "settings-search-text-generator",
     ),
     (
         "provider-accounts",
         Section::Providers,
-        "Provider accounts",
-        "account sign in login rename remove delete credentials profile usage limit quota exhausted",
+        "settings-provider-accounts",
+        "settings-search-provider-accounts",
     ),
     (
         "show-remaining-usage",
         Section::Providers,
-        "Show remaining usage",
-        "usage limit meter bar left used quota percent",
+        "settings-show-remaining-usage",
+        "settings-search-show-remaining-usage",
     ),
     (
         "mask-emails",
         Section::Providers,
-        "Mask account emails",
-        "email privacy blur hide screenshot account",
+        "settings-mask-account-emails",
+        "settings-search-mask-emails",
     ),
     (
         "claude-hooks",
         Section::Providers,
-        "Claude Code hooks",
-        "pretooluse settings.json block command notification",
+        "settings-claude-code-hooks",
+        "settings-search-claude-hooks",
     ),
     (
         "claude-entrypoint",
         Section::Providers,
-        "Identify as Monocode to Claude",
-        "entrypoint sdk-cli label usage limit 5-hour window rate experimental",
+        "settings-identify-as-monocode-to-claude",
+        "settings-search-claude-entrypoint",
     ),
     (
         "idle-agents",
         Section::Providers,
-        "Keep idle agents ready",
-        "memory ram cpu performance process warm park background",
+        "settings-keep-idle-agents-ready",
+        "settings-search-idle-agents",
     ),
     (
         "project-notifications",
         Section::Inbox,
-        "Project notifications",
-        "mute resume sounds banners reminders categories",
+        "settings-project-notifications",
+        "settings-search-project-notifications",
     ),
     (
         "github",
         Section::Inbox,
-        "GitHub",
-        "gh cli connect pull request sign in",
+        "settings-github",
+        "settings-search-github",
     ),
     (
         "gitlab",
         Section::Inbox,
-        "GitLab",
-        "token self-managed merge request connect",
+        "settings-gitlab",
+        "settings-search-gitlab",
     ),
     (
         "azuredevops",
         Section::Inbox,
-        "ADO",
-        "azure devops boards repos pull request pat organization connect",
+        "settings-ado",
+        "settings-search-azuredevops",
     ),
     (
         "jira",
         Section::Inbox,
-        "Jira",
-        "atlassian cloud site email api token issues projects connect",
+        "settings-jira",
+        "settings-search-jira",
     ),
     (
         "linear",
         Section::Inbox,
-        "Linear",
-        "api key issues teams connect",
+        "settings-linear",
+        "settings-search-linear",
     ),
     (
         "show-archived",
         Section::Archive,
-        "Show archived in the sidebar",
-        "hidden conversations list",
+        "settings-show-archived-in-the-sidebar",
+        "settings-search-show-archived",
     ),
 ];
 
@@ -537,7 +576,7 @@ pub(crate) const INDEX: &[(&str, Section, &str, &str)] = &[
 pub(crate) struct SearchResult {
     pub section: Section,
     pub setting: Option<&'static str>,
-    pub label: &'static str,
+    pub label: String,
 }
 
 fn score(needle: &str, label: &str, keywords: &str) -> Option<f32> {
@@ -564,7 +603,9 @@ pub(crate) fn search(query: &str, compositor: &str) -> Vec<SearchResult> {
         if id == "wayland-window-decorations" && compositor != "Wayland" {
             continue;
         }
-        if let Some(s) = score(&needle, label, keywords) {
+        let label = crate::i18n::text(label);
+        let keywords = crate::i18n::text(keywords);
+        if let Some(s) = score(&needle, &label, &keywords) {
             scored.push((
                 s,
                 SearchResult {
@@ -577,7 +618,7 @@ pub(crate) fn search(query: &str, compositor: &str) -> Vec<SearchResult> {
     }
     for section in Section::ALL {
         let keywords = format!("{} {}", section.description(), section.keywords());
-        if let Some(s) = score(&needle, section.label(), &keywords) {
+        if let Some(s) = score(&needle, &section.label(), &keywords) {
             scored.push((
                 s + 0.5,
                 SearchResult {
@@ -598,6 +639,83 @@ pub(crate) fn search(query: &str, compositor: &str) -> Vec<SearchResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn chinese_startup_search_and_other_threads() {
+        const CHILD: &str = "MONOCODE_TEST_LANGUAGE_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "settings::model::tests::chinese_startup_search_and_other_threads",
+                ])
+                .env(CHILD, "1")
+                .status()
+                .unwrap();
+            assert!(status.success());
+            return;
+        }
+        let workspace = crate::workspace::Workspace::restore(
+            Some(r#"{"preferences":{"language":"zh-CN"}}"#),
+            &[],
+            "/project",
+        );
+        // This test owns the process-wide startup language on purpose: it
+        // checks that a thread which never configures still resolves Chinese
+        // and that needs_restart compares against the startup language. Other
+        // tests select their own thread's language and stay independent of it.
+        crate::i18n::configure(workspace.preferences.language());
+        crate::i18n::init();
+        let result = search("语言", "")
+            .into_iter()
+            .find(|row| row.setting == Some("language"))
+            .unwrap();
+        assert_eq!(result.label, "语言");
+        assert_eq!(crate::i18n::text("app-menu-window"), "窗口");
+        assert_eq!(
+            crate::i18n::text("quick-composer-close-composer"),
+            "关闭输入框"
+        );
+        assert_eq!(
+            crate::i18n::format("notice-agent-finished", &[("agent", "Ada".into())]),
+            "Ada已完成"
+        );
+        assert_eq!(
+            std::thread::spawn(|| crate::i18n::text("settings-language"))
+                .join()
+                .unwrap(),
+            "语言"
+        );
+        assert!(!crate::i18n::needs_restart("zh-CN"));
+        assert!(crate::i18n::needs_restart("en"));
+    }
+    #[test]
+    fn language_search_uses_the_stable_setting_id() {
+        let result = search("language", "")
+            .into_iter()
+            .find(|row| row.setting == Some("language"))
+            .unwrap();
+        assert_eq!(result.section, Section::General);
+        assert_eq!(result.label, crate::i18n::text("settings-language"));
+    }
+    #[test]
+    fn all_search_rows_share_resolved_english_labels() {
+        for &(id, _, label, keywords) in INDEX {
+            let label = crate::i18n::text(label);
+            assert!(!label.is_empty(), "{id}");
+            assert!(!crate::i18n::text(keywords).is_empty(), "{id}");
+        }
+        let result = search("Sounds", "Wayland")
+            .into_iter()
+            .find(|row| row.setting == Some("sounds"))
+            .unwrap();
+        assert_eq!(result.label, "Sounds");
+        assert!(
+            search("sounds", "Wayland")
+                .iter()
+                .any(|row| row.section == Section::General)
+        );
+    }
+
     #[test]
     fn wayland_decorations_are_searchable_only_on_wayland() {
         for query in ["Wayland", "window decorations", "compositor", "title bar"] {

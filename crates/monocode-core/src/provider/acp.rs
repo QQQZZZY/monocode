@@ -55,6 +55,9 @@ pub(super) fn configure(command: &mut Command, request: &Request) -> Result<(), 
             if cfg!(target_os = "linux") {
                 command.arg("--uid=");
             }
+            if settings.access == AccessMode::FullAccess && !settings.plan {
+                command.arg("--dangerously-skip-permissions");
+            }
         }
         Kind::Grok => {
             command.arg("--no-auto-update");
@@ -330,14 +333,43 @@ impl Protocol {
         let kind = self.request.kind;
         let settings = &self.request.settings;
         let planning = settings.plan || settings.access == AccessMode::ReadOnly;
+        let modes = setup["modes"]["availableModes"].as_array();
+        let has_mode = |id: &str| modes.is_some_and(|m| m.iter().any(|item| item["id"] == id));
         let mode = match kind {
             Kind::Antigravity => {
                 if planning {
-                    "default"
+                    if has_mode("plan") {
+                        "plan"
+                    } else {
+                        "default"
+                    }
                 } else {
                     match settings.access {
-                        AccessMode::FullAccess => "yolo",
-                        AccessMode::AutoAcceptEdits => "auto_edit",
+                        AccessMode::FullAccess => {
+                            if has_mode("yolo") {
+                                "yolo"
+                            } else if has_mode("auto") {
+                                "auto"
+                            } else {
+                                ""
+                            }
+                        }
+                        AccessMode::Auto => {
+                            if has_mode("auto") {
+                                "auto"
+                            } else {
+                                "default"
+                            }
+                        }
+                        AccessMode::AutoAcceptEdits => {
+                            if has_mode("accept-edits") {
+                                "accept-edits"
+                            } else if has_mode("auto_edit") {
+                                "auto_edit"
+                            } else {
+                                "default"
+                            }
+                        }
                         _ => "default",
                     }
                 }
@@ -383,13 +415,10 @@ impl Protocol {
             Kind::Cursor => "",
             _ => "",
         };
-        let modes = setup["modes"]["availableModes"].as_array();
         if !mode.is_empty()
-            && (modes.is_some_and(|modes| modes.iter().any(|m| m["id"] == mode))
-                || matches!(
-                    kind,
-                    Kind::Antigravity | Kind::Hermes | Kind::Devin | Kind::Fx
-                ))
+            && (has_mode(mode)
+                || (modes.is_none() && kind == Kind::Antigravity)
+                || matches!(kind, Kind::Hermes | Kind::Devin | Kind::Fx))
         {
             self.acp.mode = Some(mode);
         }
@@ -1699,6 +1728,59 @@ mod tests {
             let events = p.frame(json!({"id":"permission","method":"session/request_permission","params":{"toolCall":{"kind":"execute"},"options":[{"kind":"allow_once","optionId":"yes"},{"kind":"reject_once","optionId":"no"}]}}), &mut out).unwrap();
             assert!(events.is_empty());
             assert_eq!(last(&mut out)["result"]["outcome"]["optionId"], "no");
+        }
+    }
+    #[test]
+    fn antigravity_full_access_and_modes_match_advertised_agy_acp_modes() {
+        let mut p = protocol(Kind::Antigravity);
+        p.request.settings.access = AccessMode::FullAccess;
+        p.request.settings.plan = false;
+        let mut cmd = Command::new("unused");
+        configure(&mut cmd, &p.request).unwrap();
+        let args: Vec<_> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert!(args.iter().any(|a| a == "--dangerously-skip-permissions"));
+
+        for (access, plan) in [
+            (AccessMode::FullAccess, true),
+            (AccessMode::Supervised, false),
+        ] {
+            let mut other = protocol(Kind::Antigravity);
+            other.request.settings.access = access;
+            other.request.settings.plan = plan;
+            let mut cmd = Command::new("unused");
+            configure(&mut cmd, &other.request).unwrap();
+            let args: Vec<_> = cmd
+                .get_args()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect();
+            assert!(!args.iter().any(|a| a == "--dangerously-skip-permissions"));
+        }
+
+        let advertised = json!({
+            "modes": {
+                "availableModes": [
+                    {"id": "default"},
+                    {"id": "accept-edits"},
+                    {"id": "auto"},
+                    {"id": "plan"}
+                ]
+            }
+        });
+        for (access, plan, expected) in [
+            (AccessMode::FullAccess, false, Some("auto")),
+            (AccessMode::AutoAcceptEdits, false, Some("accept-edits")),
+            (AccessMode::Auto, false, Some("auto")),
+            (AccessMode::FullAccess, true, Some("plan")),
+            (AccessMode::Supervised, false, Some("default")),
+        ] {
+            let mut p = protocol(Kind::Antigravity);
+            p.request.settings.access = access;
+            p.request.settings.plan = plan;
+            p.acp_options(&advertised).unwrap();
+            assert_eq!(p.acp.mode, expected, "access={access:?} plan={plan}");
         }
     }
 }

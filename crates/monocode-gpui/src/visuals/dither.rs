@@ -364,20 +364,22 @@ impl Scale {
 
 /// 1.2K, 48K, 3.4M; plain numbers keep `step`'s decimals.
 pub(super) fn compact(value: f64, step: f64) -> String {
-    let trim = |s: String| {
-        if s.contains('.') {
-            s.trim_end_matches('0').trim_end_matches('.').to_owned()
-        } else {
-            s
-        }
-    };
     let abs = value.abs();
     if abs >= 1e9 {
-        format!("{}B", trim(format!("{:.1}", value / 1e9)))
+        crate::i18n::format(
+            "visuals-compact-b",
+            &[("value", crate::system_format::decimal(value / 1e9, 0, 1))],
+        )
     } else if abs >= 1e6 {
-        format!("{}M", trim(format!("{:.1}", value / 1e6)))
+        crate::i18n::format(
+            "visuals-compact-m",
+            &[("value", crate::system_format::decimal(value / 1e6, 0, 1))],
+        )
     } else if abs >= 1e4 {
-        format!("{}K", trim(format!("{:.1}", value / 1e3)))
+        crate::i18n::format(
+            "visuals-compact-k",
+            &[("value", crate::system_format::decimal(value / 1e3, 0, 1))],
+        )
     } else {
         // As many decimals as the step has: 0.25 needs two, 0.5 one.
         let decimals = (0..4)
@@ -386,7 +388,7 @@ pub(super) fn compact(value: f64, step: f64) -> String {
                 (scaled - scaled.round()).abs() < 1e-6
             })
             .unwrap_or(4) as usize;
-        trim(format!("{value:.decimals$}"))
+        crate::system_format::decimal(value, 0, decimals)
     }
 }
 
@@ -552,9 +554,18 @@ mod tests {
         assert_eq!(scale.ticks(), [0., 20., 40., 60., 80.]);
         let flat = Scale::nice([5., 5.], false);
         assert!(flat.max > flat.min);
-        assert_eq!(compact(48_210., 1.), "48.2K");
-        assert_eq!(compact(0.25, 0.25), "0.25");
-        assert_eq!(compact(2_500_000., 1.), "2.5M");
+        assert_eq!(
+            compact(48_210., 1.),
+            format!("{}K", crate::system_format::decimal(48.21, 0, 1))
+        );
+        assert_eq!(
+            compact(0.25, 0.25),
+            crate::system_format::decimal(0.25, 0, 2)
+        );
+        assert_eq!(
+            compact(2_500_000., 1.),
+            format!("{}M", crate::system_format::decimal(2.5, 0, 1))
+        );
     }
 
     #[test]

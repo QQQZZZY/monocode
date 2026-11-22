@@ -51,26 +51,44 @@ impl Target {
     fn items(&self) -> Vec<MenuItem> {
         match self {
             Self::Web(_) => vec![
-                MenuAction::new("open-web", "Open Link").into(),
-                MenuAction::new("copy-link", "Copy Link Address").into(),
+                MenuAction::new("open-web", crate::i18n::text("transcript-open-link")).into(),
+                MenuAction::new(
+                    "copy-link",
+                    crate::i18n::text("transcript-copy-link-address"),
+                )
+                .into(),
             ],
             Self::File { base, .. } => {
                 let reveal = if cfg!(target_os = "macos") {
-                    "Reveal in Finder"
+                    crate::i18n::text("transcript-reveal-in-finder")
                 } else if cfg!(target_os = "windows") {
-                    "Reveal in File Explorer"
+                    crate::i18n::text("transcript-reveal-in-file-explorer")
                 } else {
-                    "Open Containing Folder"
+                    crate::i18n::text("transcript-open-containing-folder")
                 };
                 let mut items = vec![
-                    MenuAction::new("open-monocode", "Open in MonoCode").into(),
-                    MenuAction::new("open-default", "Open in Default App").into(),
+                    MenuAction::new(
+                        "open-monocode",
+                        crate::i18n::text("transcript-open-in-monocode"),
+                    )
+                    .into(),
+                    MenuAction::new(
+                        "open-default",
+                        crate::i18n::text("transcript-open-in-default-app"),
+                    )
+                    .into(),
                     MenuAction::new("reveal", reveal).into(),
                     MenuItem::Separator,
-                    MenuAction::new("copy-path", "Copy Path").into(),
+                    MenuAction::new("copy-path", crate::i18n::text("transcript-copy-path")).into(),
                 ];
                 if base.is_some() {
-                    items.push(MenuAction::new("copy-relative-path", "Copy Relative Path").into());
+                    items.push(
+                        MenuAction::new(
+                            "copy-relative-path",
+                            crate::i18n::text("transcript-copy-relative-path"),
+                        )
+                        .into(),
+                    );
                 }
                 items
             }
@@ -96,9 +114,9 @@ impl TranscriptView {
             window.focus(focus, cx);
         }
         let label = if matches!(&target, Target::File { .. }) {
-            "File link actions"
+            crate::i18n::text("transcript-file-link-actions")
         } else {
-            "Link actions"
+            crate::i18n::text("transcript-link-actions")
         };
         let menu = cx.new(|cx| Menu::new(label, target.items(), window, cx));
         let events = cx.subscribe_in(
@@ -159,11 +177,17 @@ impl TranscriptView {
                     if let Err(error) = work.await {
                         let _ = this.update(cx, |this, cx| {
                             let action = if external {
-                                "open the file in its default app"
+                                crate::i18n::text("transcript-open-file-default-action")
                             } else {
-                                "complete the file action"
+                                crate::i18n::text("transcript-complete-file-action")
                             };
-                            this.links.error = Some(format!("Could not {action}: {error}"));
+                            this.links.error = Some(crate::i18n::format(
+                                "transcript-could-not",
+                                &[
+                                    ("action", (action).to_string()),
+                                    ("error", (error).to_string()),
+                                ],
+                            ));
                             cx.notify();
                         });
                     }
@@ -186,39 +210,214 @@ impl TranscriptView {
             .when_some(self.links.error.as_ref(), |d, error| {
                 d.child(
                     div()
-                        .id("transcript-link-error")
-                        .role(Role::Alert)
                         .absolute()
-                        .bottom(px(16.))
-                        .right(px(16.))
-                        .max_w(px(384.))
+                        .top(px(12.))
+                        .left_0()
+                        .w_full()
                         .flex()
-                        .items_start()
-                        .gap_3()
-                        .px_3()
-                        .py_2()
-                        .rounded(px(12.))
-                        .border_1()
-                        .border_color(rgb(0xf87171))
-                        .bg(rgb(0x252525))
-                        .text_size(px(12.))
-                        .text_color(rgb(0xfca5a5))
-                        .child(error.clone())
+                        .justify_center()
                         .child(
                             div()
-                                .id("dismiss-link-error")
-                                .role(Role::Button)
-                                .aria_label("Dismiss file action error")
-                                .flex_shrink_0()
-                                .cursor_pointer()
-                                .child("Dismiss")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.links.error = None;
-                                    cx.notify();
-                                })),
+                                .w_full()
+                                .max_w(px(COLUMN))
+                                .px(px(10.))
+                                .flex()
+                                .justify_end()
+                                .child(
+                                    div().w(px(360.)).max_w_full().child(
+                                        crate::notifications::errors::card(
+                                            "transcript-link-error",
+                                            error.clone(),
+                                            icon_button(
+                                                "dismiss-link-error",
+                                                crate::i18n::text(
+                                                    "transcript-dismiss-file-action-error",
+                                                ),
+                                                "close",
+                                            )
+                                            .debug_selector(|| "dismiss-link-error".into())
+                                            .on_click(
+                                                cx.listener(|this, _, _, cx| {
+                                                    this.links.error = None;
+                                                    cx.notify();
+                                                }),
+                                            ),
+                                        ),
+                                    ),
+                                ),
                         ),
                 )
             })
             .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{TestAppContext, VisualTestContext};
+
+    #[gpui::test]
+    fn file_action_error_fits_chat_and_dismisses(cx: &mut TestAppContext) {
+        let window = cx.update(|cx| {
+            cx.open_window(Default::default(), |_, cx| {
+                cx.new(|_| TranscriptView::new())
+            })
+            .unwrap()
+        });
+        let visual = &mut VisualTestContext::from_window(window.into(), cx);
+        for width in [320., 1280., 240.] {
+            let message = format!(
+                "Could not open file in default app: /fixture/{}END",
+                "unbrokenpath".repeat(60)
+            );
+            visual.simulate_resize(gpui::size(px(width), px(600.)));
+            window
+                .update(visual, |view, _, cx| {
+                    view.links.error = Some(message.clone());
+                    cx.notify();
+                })
+                .unwrap();
+            visual.run_until_parked();
+            visual.refresh().unwrap();
+            let card = visual
+                .debug_bounds("transcript-link-error")
+                .expect("error card");
+            let close = visual.debug_bounds("dismiss-link-error").expect("close");
+            let viewport = visual
+                .debug_bounds("transcript-link-error-message-viewport")
+                .expect("message viewport");
+            let text = visual
+                .debug_bounds("transcript-link-error-message")
+                .expect("message");
+            eprintln!(
+                "width={width}, card={card:?}, close={close:?}, viewport={viewport:?}, text={text:?}"
+            );
+            assert!(
+                card.left() >= px(0.) && card.right() <= px(width),
+                "card must fit chat"
+            );
+            assert_eq!(card.right(), px((width + width.min(COLUMN)) / 2. - 10.));
+            assert_eq!(card.top(), px(12.));
+            assert!(
+                close.left() >= card.left()
+                    && close.right() <= card.right()
+                    && close.top() >= card.top()
+                    && close.bottom() <= card.bottom(),
+                "close must fit card"
+            );
+            assert_eq!(close.size, gpui::size(px(24.), px(24.)));
+            assert!(
+                viewport.left() >= card.left()
+                    && viewport.right() <= card.right()
+                    && viewport.top() >= card.top()
+                    && viewport.bottom() <= card.bottom()
+            );
+            assert!(text.left() >= viewport.left() && text.right() <= viewport.right());
+            assert!(text.size.height > px(39.), "unbroken error must wrap");
+            assert!(
+                text.bottom() > viewport.bottom(),
+                "long error must remain scrollable"
+            );
+            visual.simulate_event(gpui::ScrollWheelEvent {
+                position: viewport.center(),
+                delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(-10000.))),
+                modifiers: Default::default(),
+                touch_phase: gpui::TouchPhase::Moved,
+            });
+            visual.run_until_parked();
+            visual.refresh().unwrap();
+            let scrolled = visual
+                .debug_bounds("transcript-link-error-message")
+                .expect("scrolled message");
+            assert!(
+                scrolled.top() < text.top() && scrolled.bottom() <= viewport.bottom() + px(1.),
+                "full error must be reachable"
+            );
+            assert_eq!(
+                window
+                    .update(visual, |view, _, _| view.links.error.clone())
+                    .unwrap(),
+                Some(message)
+            );
+            visual.simulate_click(close.center(), Default::default());
+            visual.run_until_parked();
+            visual.refresh().unwrap();
+            assert!(visual.debug_bounds("transcript-link-error").is_none());
+            assert!(
+                window
+                    .update(visual, |view, _, _| view.links.error.is_none())
+                    .unwrap()
+            );
+        }
+    }
+
+    #[gpui::test]
+    fn file_action_error_aligns_in_both_conversation_layouts(cx: &mut TestAppContext) {
+        use crate::conversation::Conversation;
+        use monocode_core::store::Store;
+        use std::sync::{Arc, Mutex};
+
+        for mono in [false, true] {
+            let store = Store::open(Path::new(":memory:")).unwrap();
+            let mut summary = store.create("codex", "/fixture").unwrap();
+            summary.has_messages = true;
+            let window = cx.update(|cx| {
+                crate::input::bind(cx);
+                cx.open_window(Default::default(), |_, cx| {
+                    cx.new(|cx| {
+                        let mut view = Conversation::new(summary, Arc::new(Mutex::new(store)), cx);
+                        if mono {
+                            view.configure_mono(
+                                monocode_core::mono::Mono::default(),
+                                "/fixture".into(),
+                                Default::default(),
+                                cx,
+                            );
+                        }
+                        view.transcript.update(cx, |view, cx| {
+                            view.links.error = Some(format!(
+                                "Could not open file: /fixture/{}",
+                                "longpath".repeat(80)
+                            ));
+                            cx.notify();
+                        });
+                        view
+                    })
+                })
+                .unwrap()
+            });
+            let visual = &mut VisualTestContext::from_window(window.into(), cx);
+            for width in [360., 1400.] {
+                visual.simulate_resize(gpui::size(px(width), px(800.)));
+                visual.run_until_parked();
+                visual.refresh().unwrap();
+                let card = visual
+                    .debug_bounds("transcript-link-error")
+                    .expect("error card");
+                let composer = visual
+                    .debug_bounds(if mono {
+                        "mono-composer"
+                    } else {
+                        "composer-box"
+                    })
+                    .expect("composer");
+                let close = visual.debug_bounds("dismiss-link-error").expect("close");
+                eprintln!(
+                    "mono={mono}, width={width}, card={card:?}, composer={composer:?}, close={close:?}"
+                );
+                assert_eq!(card.right(), composer.right());
+                assert!(
+                    card.bottom() <= composer.top(),
+                    "error must not cover composer"
+                );
+                assert!(close.right() <= card.right() && close.bottom() <= card.bottom());
+            }
+            let close = visual.debug_bounds("dismiss-link-error").unwrap();
+            visual.simulate_click(close.center(), Default::default());
+            visual.run_until_parked();
+            visual.refresh().unwrap();
+            assert!(visual.debug_bounds("transcript-link-error").is_none());
+        }
     }
 }

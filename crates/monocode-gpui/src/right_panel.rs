@@ -67,12 +67,12 @@ pub(crate) enum RightTab {
     Terminal,
 }
 impl RightTab {
-    fn label(self) -> &'static str {
+    fn label(self) -> String {
         match self {
-            Self::Files => "Explorer",
-            Self::Changes => "Changes",
-            Self::Graph => "History",
-            Self::Terminal => "Terminal",
+            Self::Files => crate::i18n::text("right-panel-explorer"),
+            Self::Changes => crate::i18n::text("right-panel-changes"),
+            Self::Graph => crate::i18n::text("right-panel-history"),
+            Self::Terminal => crate::i18n::text("right-panel-terminal"),
         }
     }
     /// loadRightPanelTabOrder: unique known tabs, the missing ones appended.
@@ -94,12 +94,12 @@ pub(crate) enum PanelEvent {
 }
 
 /// Tool headers share the open-file tab bar's height and bottom rule.
-pub(crate) fn pane_header(id: &'static str, label: &'static str) -> Stateful<gpui::Div> {
+pub(crate) fn pane_header(id: &'static str, label: &str) -> Stateful<gpui::Div> {
     div()
         .id(id)
         .debug_selector(move || id.into())
         .role(Role::Toolbar)
-        .aria_label(label)
+        .aria_label(label.to_owned())
         .h(px(PANE_HEADER_HEIGHT))
         .flex_shrink_0()
         .min_w_0()
@@ -160,22 +160,34 @@ pub(crate) fn spinner(id: impl Into<gpui::ElementId>, path: &'static str, side: 
 }
 
 pub(crate) fn format_integer(value: i64) -> String {
-    let digits = value.unsigned_abs().to_string();
-    let mut out = String::new();
-    for (i, ch) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(ch);
-    }
-    if value < 0 { format!("-{out}") } else { out }
+    crate::system_format::integer(value)
 }
 
-pub(crate) fn diff_stat_width(stats: Option<&monocode_core::scm::DiffStats>) -> f32 {
+pub(crate) fn diff_stat_width(
+    stats: Option<&monocode_core::scm::DiffStats>,
+    cx: &gpui::App,
+) -> f32 {
     let added = format_integer(stats.map_or(0, |s| s.additions.max(0)));
     let deleted = format_integer(stats.map_or(0, |s| s.deletions.max(0)));
-    // Tabular digits at 10px, the signs, a 6px gap and 6px padding per side.
-    (added.len() + deleted.len() + 2) as f32 * 6.5 + 18.
+    let text_system = gpui::WindowTextSystem::new(cx.text_system().clone());
+    let measure = |text: String| {
+        let mut font = gpui::font(crate::fonts::UI);
+        font.weight = FontWeight::MEDIUM;
+        font.features = tabular();
+        let run = gpui::TextRun {
+            len: text.len(),
+            font,
+            color: content(1.),
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        };
+        text_system
+            .shape_line(text.into(), px(10.), &[run], None)
+            .width
+            .as_f32()
+    };
+    measure(format!("+{added}")) + measure(format!("-{deleted}")) + 18.
 }
 
 /// Fit the complete diff label together so one number cannot push the other
@@ -187,16 +199,21 @@ pub(crate) fn diff_stat_scale(available: f32, natural: f32) -> f32 {
 pub(crate) fn diff_stat(
     stats: Option<&monocode_core::scm::DiffStats>,
     width: f32,
+    cx: &gpui::App,
 ) -> Stateful<gpui::Div> {
     let added = format_integer(stats.map_or(0, |s| s.additions.max(0)));
     let deleted = format_integer(stats.map_or(0, |s| s.deletions.max(0)));
-    let scale = diff_stat_scale(width - 18., diff_stat_width(stats) - 18.);
+    let scale = diff_stat_scale(width - 18., diff_stat_width(stats, cx) - 18.);
     div()
         .id("project-diff-stat")
         .debug_selector(|| "project-diff-stat".into())
         .role(Role::Button)
-        .aria_label(format!(
-            "Open Changes: {added} lines added, {deleted} lines deleted"
+        .aria_label(crate::i18n::format(
+            "right-panel-open-changes-lines-added-lines-deleted",
+            &[
+                ("added", added.to_string()),
+                ("deleted", deleted.to_string()),
+            ],
         ))
         .w(px(width))
         .h(px(24.))
@@ -214,12 +231,18 @@ pub(crate) fn diff_stat(
         .child(
             div()
                 .text_color(gpui::rgb(DIFF_ADD))
-                .child(format!("+{added}")),
+                .child(crate::i18n::format(
+                    "right-panel-added-lines",
+                    &[("added", added.to_string())],
+                )),
         )
         .child(
             div()
                 .text_color(gpui::rgb(DIFF_DEL))
-                .child(format!("-{deleted}")),
+                .child(crate::i18n::format(
+                    "right-panel-deleted-lines",
+                    &[("deleted", deleted.to_string())],
+                )),
         )
 }
 
@@ -566,7 +589,7 @@ impl RightPanel {
             .id("right-panel-tabs")
             .debug_selector(|| "right-panel-tabs".into())
             .role(Role::TabList)
-            .aria_label("Project")
+            .aria_label(crate::i18n::text("right-panel-project"))
             .h(px(TITLE_BAR_HEIGHT))
             .w_full()
             .flex_shrink_0()
@@ -614,7 +637,7 @@ impl Render for RightPanel {
             .id("right-panel")
             .track_focus(&self.focus)
             .role(Role::Group)
-            .aria_label("Project tools")
+            .aria_label(crate::i18n::text("right-panel-project-tools"))
             .size_full()
             .min_h_0()
             .flex()
@@ -645,7 +668,11 @@ mod tests {
             RightTab::normalize(&[RightTab::Changes, RightTab::Graph]),
             [RightTab::Graph, RightTab::Files]
         );
-        assert_eq!(format_integer(1234567), "1,234,567");
-        assert_eq!(format_integer(12), "12");
+        // macOS number semantics are checked against Foundation in system_format tests.
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert_eq!(format_integer(1234567), "1,234,567");
+            assert_eq!(format_integer(12), "12");
+        }
     }
 }

@@ -321,7 +321,7 @@ impl Accounts {
         let key = Key::new(kind, self.profile(id), None);
         let checking = Status {
             tone: Tone::Checking,
-            label: "Checking…".into(),
+            label: crate::i18n::text("accounts-checking"),
             detail: None,
         };
         let Some(state) = self.usage.get(&key) else {
@@ -334,23 +334,28 @@ impl Accounts {
             if headroom <= 0. {
                 return Status {
                     tone: Tone::Exhausted,
-                    label: "Exhausted".into(),
-                    detail: snapshot
-                        .exhausted_reset()
-                        .filter(|at| *at > now)
-                        .map(|at| format!("back in {}", usage::duration(at - now))),
+                    label: crate::i18n::text("accounts-exhausted"),
+                    detail: snapshot.exhausted_reset().filter(|at| *at > now).map(|at| {
+                        crate::i18n::format(
+                            "account-back-in",
+                            &[("duration", crate::i18n::duration(at - now))],
+                        )
+                    }),
                 };
             }
             if headroom <= 20. {
                 return Status {
                     tone: Tone::Low,
-                    label: "Running low".into(),
-                    detail: Some(format!("{headroom:.0}% left")),
+                    label: crate::i18n::text("accounts-running-low"),
+                    detail: Some(crate::i18n::format(
+                        "usage-percent-left",
+                        &[("percent", crate::system_format::percent(headroom))],
+                    )),
                 };
             }
             return Status {
                 tone: Tone::Ready,
-                label: "Ready".into(),
+                label: crate::i18n::text("accounts-ready"),
                 detail: None,
             };
         }
@@ -363,7 +368,7 @@ impl Accounts {
                 .error
                 .as_ref()
                 .map(|e| e.message.clone())
-                .unwrap_or_else(|| "Usage unavailable".into()),
+                .unwrap_or_else(|| crate::i18n::text("accounts-usage-unavailable")),
             detail: None,
         }
     }
@@ -566,12 +571,22 @@ impl Accounts {
             .unwrap_or_default();
         let input = cx.new(|cx| {
             let mut input = Input::field(
-                format!(
-                    "{} {} account",
-                    if id.is_some() { "Rename" } else { "New" },
-                    kind.label()
+                crate::i18n::format(
+                    "accounts-account",
+                    &[
+                        (
+                            "value",
+                            (if id.is_some() {
+                                crate::i18n::text("accounts-rename")
+                            } else {
+                                crate::i18n::text("accounts-new")
+                            })
+                            .to_string(),
+                        ),
+                        ("name", (kind.label()).to_string()),
+                    ],
                 ),
-                "Work or Personal",
+                crate::i18n::text("accounts-work-or-personal"),
                 crate::theme::content(0.25),
                 cx,
             );
@@ -784,7 +799,19 @@ impl Accounts {
         if self.working || account.is_default() {
             return;
         }
-        let answer=window.prompt(gpui::PromptLevel::Warning,&format!("Remove “{}”?",account.label),Some("Its stored credentials will be deleted and any running turns for this account will stop. Existing conversations stay in history, but cannot continue until you switch accounts."),&["Remove account","Cancel"],cx);
+        let answer = window.prompt(
+            gpui::PromptLevel::Warning,
+            &crate::i18n::format("accounts-remove", &[("value", (account.label).to_string())]),
+            Some(
+                crate::i18n::text("accounts-prompt-its-stored-credentials-will-be-deleted")
+                    .as_str(),
+            ),
+            &[
+                crate::i18n::text("accounts-prompt-remove-account").as_str(),
+                crate::i18n::text("accounts-prompt-cancel").as_str(),
+            ],
+            cx,
+        );
         cx.spawn_in(window, async move |this, cx| {
             if !matches!(answer.await, Ok(0)) {
                 return;

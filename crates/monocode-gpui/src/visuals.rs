@@ -900,9 +900,7 @@ impl VisualView {
                     .w_full()
                     .focusable()
                     .tab_stop(true)
-                    .aria_label(
-                        "3D scene; arrow keys orbit, plus and minus zoom, zero resets camera",
-                    )
+                    .aria_label(crate::i18n::text("visuals-3d-scene-arrow-keys-orbit-plus"))
                     .h(px(height))
                     .overflow_hidden()
                     .rounded_lg()
@@ -1021,14 +1019,14 @@ impl VisualView {
                     .child(
                         div()
                             .flex_1()
-                            .child("Drag to orbit · ⌘/Ctrl + scroll to zoom"),
+                            .child(crate::i18n::text("visuals-drag-to-orbit-ctrl-scroll-to")),
                     )
                     .child(
                         button(SharedString::from(format!(
                             "visual-camera-reset-{reset_key}"
                         )))
-                        .aria_label("Reset scene camera")
-                        .child("Reset camera")
+                        .aria_label(crate::i18n::text("visuals-reset-scene-camera"))
+                        .child(crate::i18n::text("visuals-reset-camera"))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.orbits.remove(&reset_key);
                             cx.notify();
@@ -1109,7 +1107,10 @@ impl Render for VisualView {
                     .border_color(color(&ThemeColor::Negative))
                     .text_size(px(12.))
                     .text_color(color(&ThemeColor::Negative))
-                    .child(format!("Visual could not update: {error}"))
+                    .child(crate::i18n::format(
+                        "visuals-visual-could-not-update",
+                        &[("error", error.to_string())],
+                    ))
             }))
             .child(
                 div()
@@ -1183,16 +1184,22 @@ fn node_at<'a>(mut node: &'a Node, key: &str) -> Option<&'a Node> {
 
 fn format_number(value: f64) -> String {
     if value.abs() >= 1_000_000. {
-        format!("{:.1}m", value / 1_000_000.)
+        crate::i18n::format(
+            "visuals-m",
+            &[(
+                "value",
+                crate::system_format::decimal(value / 1_000_000., 1, 1),
+            )],
+        )
     } else if value.abs() >= 10_000. {
-        format!("{:.1}k", value / 1_000.)
+        crate::i18n::format(
+            "visuals-lowercase-k",
+            &[("value", crate::system_format::decimal(value / 1_000., 1, 1))],
+        )
     } else if value.fract().abs() < 0.00001 {
-        format!("{value:.0}")
+        crate::system_format::decimal(value, 0, 0)
     } else {
-        format!("{value:.2}")
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_owned()
+        crate::system_format::decimal(value, 0, 2)
     }
 }
 fn paint_path(
@@ -1247,9 +1254,12 @@ fn paint_label(
     let line = window
         .text_system()
         .shape_line(text.into(), px(font_size), &[run], None);
+    // A label's y is its baseline, as in SVG text and canvas fillText. A line
+    // box of ascent + descent has no padding, so its top is one ascent above
+    // the baseline.
     let _ = line.paint(
-        at,
-        px(font_size * 1.4),
+        at - point(px(0.), line.ascent),
+        line.ascent + line.descent,
         gpui::TextAlign::Left,
         None,
         window,

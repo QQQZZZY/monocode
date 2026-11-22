@@ -159,7 +159,7 @@ impl TranscriptView {
                                             .text_size(px(12.))
                                             .text_color(content(0.5))
                                             .child(icon("circle-dashed-hi", 14.))
-                                            .child("Draft"),
+                                            .child(crate::i18n::text("transcript-draft")),
                                     )
                                     .child(
                                         div()
@@ -169,28 +169,29 @@ impl TranscriptView {
                                             .child(
                                                 draft_button(
                                                     "remove-message-draft",
-                                                    "Remove draft",
+                                                    &crate::i18n::text("transcript-remove-draft"),
                                                 )
                                                 .px_2()
                                                 .text_color(content(0.55))
                                                 .child(icon("trash", 14.))
-                                                .child("Remove")
+                                                .child(crate::i18n::text("transcript-remove"))
                                                 .on_click(cx.listener(|_, _, _, cx| {
                                                     cx.emit(ResponseRequest::Draft { send: false })
                                                 })),
                                             )
                                             .child(
-                                                draft_button("send-message-draft", "Send draft")
-                                                    .px(px(10.))
-                                                    .bg(white(1.))
-                                                    .text_color(black(1.))
-                                                    .child("Send")
-                                                    .child(icon("send", 14.).text_color(black(1.)))
-                                                    .on_click(cx.listener(|_, _, _, cx| {
-                                                        cx.emit(ResponseRequest::Draft {
-                                                            send: true,
-                                                        })
-                                                    })),
+                                                draft_button(
+                                                    "send-message-draft",
+                                                    &crate::i18n::text("transcript-send-draft"),
+                                                )
+                                                .px(px(10.))
+                                                .bg(white(1.))
+                                                .text_color(black(1.))
+                                                .child(crate::i18n::text("transcript-send"))
+                                                .child(icon("send", 14.).text_color(black(1.)))
+                                                .on_click(cx.listener(|_, _, _, cx| {
+                                                    cx.emit(ResponseRequest::Draft { send: true })
+                                                })),
                                             ),
                                     ),
                             ),
@@ -241,11 +242,11 @@ fn draft_dashes(radius: Option<f32>, color: gpui::Hsla) -> impl IntoElement {
     .left_0()
     .size_full()
 }
-fn draft_button(id: &'static str, label: &'static str) -> gpui::Stateful<gpui::Div> {
+fn draft_button(id: &'static str, label: &str) -> gpui::Stateful<gpui::Div> {
     div()
         .id(id)
         .role(Role::Button)
-        .aria_label(label)
+        .aria_label(label.to_owned())
         .h(px(28.))
         .rounded_md()
         .flex()

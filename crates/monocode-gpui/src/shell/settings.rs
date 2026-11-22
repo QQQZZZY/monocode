@@ -12,7 +12,8 @@ impl Shell {
             .filter(|s| s.archived && s.cwd == self.workspace.project)
             .map(|s| ArchivedSession {
                 id: s.id,
-                title: s.title.clone(),
+                // Stored titles are stable values; the page shows display text.
+                title: crate::i18n::session_title(&s.title, &s.provider),
                 provider: s.provider.clone(),
                 updated_at: s.updated_at,
             })
@@ -423,9 +424,9 @@ impl Shell {
                     Err(error) => {
                         let prompt = window.prompt(
                             gpui::PromptLevel::Critical,
-                            "Cannot use this image",
+                            crate::i18n::text("shell-prompt-cannot-use-this-image").as_str(),
                             Some(&error),
-                            &["OK"],
+                            &[crate::i18n::text("shell-prompt-ok").as_str()],
                             cx,
                         );
                         cx.spawn(async move |_, _| {
@@ -514,9 +515,12 @@ impl Shell {
     fn delete_from_settings(&mut self, id: i64, window: &mut Window, cx: &mut Context<Self>) {
         let prompt = window.prompt(
             gpui::PromptLevel::Warning,
-            "Delete this conversation permanently?",
-            Some("Its messages and saved settings will be removed."),
-            &["Delete", "Cancel"],
+            crate::i18n::text("shell-prompt-delete-this-conversation-permanently").as_str(),
+            Some(crate::i18n::text("shell-prompt-its-messages-and-saved-settings-will").as_str()),
+            &[
+                crate::i18n::text("shell-prompt-delete").as_str(),
+                crate::i18n::text("shell-prompt-cancel").as_str(),
+            ],
             cx,
         );
         cx.spawn(async move |this, cx| {
@@ -540,7 +544,414 @@ fn this_update(this: &mut Shell, cx: &mut Context<Shell>) {
 mod tests {
     use super::*;
     use crate::shell::tests::window;
-    use gpui::TestAppContext;
+    use gpui::{TestAppContext, VisualTestContext, WindowHandle};
+
+    fn focused_element(visual: &mut VisualTestContext) -> String {
+        visual.update(|window, _| {
+            let tree: serde_json::Value =
+                serde_json::from_str(&window.debug_a11y_tree_json().unwrap()).unwrap();
+            let focused = tree["gpui_focus"].as_str().unwrap();
+            tree["nodes"][focused]["element_id"]
+                .as_str()
+                .unwrap_or("")
+                .to_owned()
+        })
+    }
+
+    fn shell_select(
+        section: Section,
+        id: &str,
+        cx: &mut TestAppContext,
+    ) -> (
+        WindowHandle<Shell>,
+        VisualTestContext,
+        FocusHandle,
+        FocusHandle,
+        FocusHandle,
+    ) {
+        cx.update(|cx| {
+            super::super::bind_keys(cx);
+            crate::input::bind(cx);
+            crate::popover::bind(cx);
+            cx.set_reduce_motion(true);
+        });
+        let (window, _, _) = window(cx);
+        window
+            .update(cx, |shell, window, cx| {
+                shell.open_settings(section, window, cx)
+            })
+            .unwrap();
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.update(|window, cx| {
+            window.activate_accessibility_for_test();
+            window.simulate_next_frame(cx);
+        });
+        visual.run_until_parked();
+        let element = format!("Name(\"select-{id}\")");
+        let mut trigger = None;
+        for _ in 0..100 {
+            if focused_element(&mut visual) == element {
+                trigger = visual.update(|window, cx| window.focused(cx));
+                break;
+            }
+            visual.update(|window, cx| window.focus_next(cx));
+            visual.update(|window, cx| window.simulate_next_frame(cx));
+            visual.run_until_parked();
+        }
+        let trigger = trigger.expect("selector trigger is reachable by Tab");
+        let search = visual.debug_bounds("settings-search").unwrap();
+        visual.simulate_click(search.center(), Default::default());
+        visual.run_until_parked();
+        visual.update(|window, cx| window.simulate_next_frame(cx));
+        assert!(focused_element(&mut visual).contains("native-composer"));
+        let search = visual.update(|window, cx| window.focused(cx).unwrap());
+        let (previous, next) = visual.update(|window, cx| {
+            window.focus(&trigger, cx);
+            window.focus_prev(cx);
+            let previous = if trigger.is_focused(window) {
+                search.clone()
+            } else {
+                window.focused(cx).unwrap()
+            };
+            window.focus(&trigger, cx);
+            window.focus_next(cx);
+            let next = if trigger.is_focused(window) {
+                search
+            } else {
+                window.focused(cx).unwrap()
+            };
+            window.focus(&trigger, cx);
+            (previous, next)
+        });
+        visual.update(|window, cx| window.simulate_next_frame(cx));
+        visual.run_until_parked();
+        (window, visual, trigger, previous, next)
+    }
+
+    #[gpui::test]
+    fn shell_selector_dismissal_keys_cancel_and_move_focus(cx: &mut TestAppContext) {
+        let mut failures = Vec::new();
+        for (section, id, searchable) in [
+            (Section::General, "language", false),
+            (Section::Appearance, "workspace-theme", true),
+        ] {
+            let (window, mut visual, trigger, previous, next) = shell_select(section, id, cx);
+            let initial = window
+                .update(&mut visual, |shell, _, _| {
+                    (
+                        shell.workspace.preferences.language().to_owned(),
+                        shell.workspace.preferences.workspace_theme.clone(),
+                    )
+                })
+                .unwrap();
+            for list_focus in if searchable {
+                vec![false, true]
+            } else {
+                vec![true]
+            } {
+                for key in ["tab", "shift-tab", "escape"] {
+                    visual.update(|window, cx| window.focus(&trigger, cx));
+                    visual.update(|window, cx| window.simulate_next_frame(cx));
+                    visual.run_until_parked();
+                    visual.simulate_keystrokes("enter");
+                    visual.run_until_parked();
+                    let option = if searchable {
+                        "settings-option-workspace-theme-1"
+                    } else {
+                        "settings-option-language-1"
+                    };
+                    assert!(visual.debug_bounds(option).is_some());
+                    if list_focus {
+                        visual.simulate_keystrokes("down");
+                        visual.run_until_parked();
+                        visual.update(|window, cx| window.simulate_next_frame(cx));
+                        visual.update(|window, _| {
+                            let tree: serde_json::Value =
+                                serde_json::from_str(&window.debug_a11y_tree_json().unwrap())
+                                    .unwrap();
+                            let active = tree["active_descendant_focus"]
+                                .as_str()
+                                .expect("active option");
+                            let node = &tree["nodes"][active];
+                            assert!(
+                                node["element_id"]
+                                    .as_str()
+                                    .unwrap()
+                                    .contains(&format!("select-{id}-1")),
+                                "{node}"
+                            );
+                            assert_eq!(node["aria"]["selected"], false);
+                            let selected = tree["nodes"]
+                                .as_object()
+                                .unwrap()
+                                .values()
+                                .find(|node| {
+                                    node["element_id"].as_str().is_some_and(|element| {
+                                        element.contains(&format!("select-{id}-0"))
+                                    })
+                                })
+                                .expect("selected option");
+                            assert_eq!(selected["aria"]["selected"], true);
+                        });
+                    } else {
+                        assert!(
+                            focused_element(&mut visual).contains("native-composer"),
+                            "filter owns keyboard focus"
+                        );
+                    }
+                    visual.simulate_keystrokes(key);
+                    visual.run_until_parked();
+                    visual.update(|window, cx| window.simulate_next_frame(cx));
+                    visual.run_until_parked();
+                    let open = visual.debug_bounds(option).is_some();
+                    let expected = match key {
+                        "tab" => &next,
+                        "shift-tab" => &previous,
+                        _ => &trigger,
+                    };
+                    let (correct_focus, unchanged) = window
+                        .update(&mut visual, |shell, window, _| {
+                            (
+                                expected.is_focused(window),
+                                (
+                                    shell.workspace.preferences.language().to_owned(),
+                                    shell.workspace.preferences.workspace_theme.clone(),
+                                ) == initial,
+                            )
+                        })
+                        .unwrap();
+                    let focused = focused_element(&mut visual);
+                    println!(
+                        "shell-select id={id} filter={} key={key} open={open} expected_focus={correct_focus} unchanged={unchanged} focused={focused}",
+                        !list_focus
+                    );
+                    if open || !correct_focus || !unchanged {
+                        failures.push(format!("{id} filter={} {key}: open={open}, expected_focus={correct_focus}, unchanged={unchanged}", !list_focus));
+                    }
+                    if open {
+                        let selector = if searchable {
+                            "settings-select-workspace-theme"
+                        } else {
+                            "settings-select-language"
+                        };
+                        let bounds = visual.debug_bounds(selector).unwrap();
+                        visual.simulate_click(bounds.center(), Default::default());
+                        visual.run_until_parked();
+                    }
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+
+    #[gpui::test]
+    fn shell_selector_commits_once_and_preserves_shell_shortcuts(cx: &mut TestAppContext) {
+        let (window, mut visual, trigger, _, _) = shell_select(Section::General, "language", cx);
+        let changes = std::rc::Rc::new(std::cell::Cell::new(0));
+        let recorded = changes.clone();
+        window
+            .update(&mut visual, |shell, _, cx| {
+                let settings = shell.settings.as_ref().unwrap().clone();
+                cx.subscribe(&settings, move |_, _, event: &SettingsEvent, _| {
+                    if matches!(event, SettingsEvent::Changed(_)) {
+                        recorded.set(recorded.get() + 1);
+                    }
+                })
+                .detach();
+            })
+            .unwrap();
+        let nav = window
+            .update(&mut visual, |shell, _, _| shell.settings_nav_visible)
+            .unwrap();
+        let shortcut = if cfg!(target_os = "macos") {
+            "cmd-b"
+        } else {
+            "ctrl-b"
+        };
+        visual.simulate_keystrokes("space");
+        visual.run_until_parked();
+        assert!(visual.debug_bounds("settings-option-language-1").is_some());
+        visual.simulate_keystrokes(shortcut);
+        visual.run_until_parked();
+        assert_ne!(
+            window
+                .update(&mut visual, |shell, _, _| shell.settings_nav_visible)
+                .unwrap(),
+            nav,
+            "other Shell shortcuts work while the selector is open"
+        );
+        visual.simulate_keystrokes(shortcut);
+        visual.run_until_parked();
+        assert_eq!(
+            window
+                .update(&mut visual, |shell, _, _| shell.settings_nav_visible)
+                .unwrap(),
+            nav
+        );
+        if visual.debug_bounds("settings-option-language-1").is_some() {
+            let selector = visual.debug_bounds("settings-select-language").unwrap();
+            visual.simulate_click(selector.center(), Default::default());
+            visual.run_until_parked();
+        }
+        visual.update(|window, cx| window.focus(&trigger, cx));
+        visual.update(|window, cx| window.simulate_next_frame(cx));
+        visual.simulate_keystrokes("space down space");
+        visual.run_until_parked();
+        window
+            .update(&mut visual, |shell, window, _| {
+                assert_eq!(shell.workspace.preferences.language(), "en");
+                assert!(trigger.is_focused(window));
+            })
+            .unwrap();
+        assert!(visual.debug_bounds("settings-option-language-1").is_none());
+        assert_eq!(changes.get(), 1, "Space commits once");
+    }
+
+    #[gpui::test]
+    fn shell_selector_search_commits_once_and_preserves_shell_shortcuts(cx: &mut TestAppContext) {
+        let (window, mut visual, trigger, _, next) =
+            shell_select(Section::Appearance, "workspace-theme", cx);
+        let changes = std::rc::Rc::new(std::cell::Cell::new(0));
+        let recorded = changes.clone();
+        window
+            .update(&mut visual, |shell, _, cx| {
+                let settings = shell.settings.as_ref().unwrap().clone();
+                cx.subscribe(&settings, move |_, _, event: &SettingsEvent, _| {
+                    if matches!(event, SettingsEvent::Changed(_)) {
+                        recorded.set(recorded.get() + 1);
+                    }
+                })
+                .detach();
+            })
+            .unwrap();
+        visual.simulate_keystrokes("tab");
+        visual.run_until_parked();
+        assert!(
+            visual.update(|window, _| next.is_focused(window)),
+            "closed selector keeps Shell Tab behavior"
+        );
+        visual.simulate_keystrokes("shift-tab");
+        visual.run_until_parked();
+        assert!(
+            visual.update(|window, _| trigger.is_focused(window)),
+            "closed selector keeps Shell Shift-Tab behavior"
+        );
+        let nav = window
+            .update(&mut visual, |shell, _, _| shell.settings_nav_visible)
+            .unwrap();
+        let shortcut = if cfg!(target_os = "macos") {
+            "cmd-b"
+        } else {
+            "ctrl-b"
+        };
+        visual.simulate_keystrokes(shortcut);
+        visual.run_until_parked();
+        assert_ne!(
+            window
+                .update(&mut visual, |shell, _, _| shell.settings_nav_visible)
+                .unwrap(),
+            nav
+        );
+        visual.simulate_keystrokes(shortcut);
+        visual.run_until_parked();
+        assert_eq!(
+            window
+                .update(&mut visual, |shell, _, _| shell.settings_nav_visible)
+                .unwrap(),
+            nav
+        );
+        visual.update(|window, cx| window.focus(&trigger, cx));
+        visual.update(|window, cx| window.simulate_next_frame(cx));
+        visual.simulate_keystrokes("enter");
+        visual.simulate_keystrokes("down");
+        visual.simulate_keystrokes("enter");
+        visual.run_until_parked();
+        window
+            .update(&mut visual, |shell, window, _| {
+                assert_eq!(shell.workspace.preferences.workspace_theme, "harbor");
+                assert!(trigger.is_focused(window));
+            })
+            .unwrap();
+        assert_eq!(changes.get(), 1, "Enter commits once");
+        visual.simulate_keystrokes("enter space");
+        visual.run_until_parked();
+        assert!(
+            visual
+                .debug_bounds("settings-option-workspace-theme-0")
+                .is_some(),
+            "Space in the filter does not commit"
+        );
+        assert_eq!(changes.get(), 1);
+        visual.simulate_input("moss");
+        visual.run_until_parked();
+        visual.simulate_keystrokes("enter");
+        visual.run_until_parked();
+        window
+            .update(&mut visual, |shell, window, _| {
+                assert_eq!(shell.workspace.preferences.workspace_theme, "moss");
+                assert!(trigger.is_focused(window));
+            })
+            .unwrap();
+        assert_eq!(changes.get(), 2);
+        visual.simulate_keystrokes("escape");
+        visual.run_until_parked();
+        assert!(
+            window
+                .update(&mut visual, |shell, _, _| shell.settings.is_none())
+                .unwrap(),
+            "closed selector keeps Shell Escape behavior"
+        );
+    }
+
+    #[gpui::test]
+    fn shell_selector_inside_management_keeps_its_dialog(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            super::super::bind_keys(cx);
+            crate::input::bind(cx);
+            crate::popover::bind(cx);
+            cx.set_reduce_motion(true);
+        });
+        let (window, _, _) = window(cx);
+        window
+            .update(cx, |shell, window, cx| {
+                shell.open_settings(Section::Mcp, window, cx)
+            })
+            .unwrap();
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.update(|window, cx| {
+            window.activate_accessibility_for_test();
+            window.simulate_next_frame(cx);
+        });
+        visual.run_until_parked();
+        let add = visual.debug_bounds("settings-add-mcp").unwrap();
+        visual.simulate_click(add.center(), Default::default());
+        visual.run_until_parked();
+        assert!(visual.debug_bounds("settings-management-dialog").is_some());
+        let trigger = visual.debug_bounds("settings-select-mcp-provider").unwrap();
+        visual.simulate_click(trigger.center(), Default::default());
+        visual.run_until_parked();
+        visual.simulate_keystrokes("down escape");
+        visual.run_until_parked();
+        visual.update(|window, cx| window.simulate_next_frame(cx));
+        assert!(visual.debug_bounds("settings-management-dialog").is_some());
+        assert!(
+            visual
+                .debug_bounds("settings-option-mcp-provider-1")
+                .is_none()
+        );
+        assert!(focused_element(&mut visual).contains("select-mcp-provider"));
+
+        visual.simulate_keystrokes("enter down tab");
+        visual.run_until_parked();
+        visual.update(|window, cx| window.simulate_next_frame(cx));
+        assert!(visual.debug_bounds("settings-management-dialog").is_some());
+        assert!(
+            visual
+                .debug_bounds("settings-option-mcp-provider-1")
+                .is_none()
+        );
+        assert!(focused_element(&mut visual).contains("select-mcp-scope"));
+    }
 
     #[gpui::test]
     fn pairing_dialog_is_a_window_overlay_and_updates_from_settings_notifications(
@@ -800,6 +1211,51 @@ mod tests {
         visual.run_until_parked();
         window
             .update(visual, |shell, _, _| assert_eq!(shell.sidebar_fraction, 1.))
+            .unwrap();
+    }
+
+    #[gpui::test]
+    fn language_setting_is_saved_in_workspace(cx: &mut TestAppContext) {
+        cx.update(crate::popover::bind);
+        let (window, _, _) = window(cx);
+        window
+            .update(cx, |shell, w, cx| {
+                shell.open_settings(Section::General, w, cx)
+            })
+            .unwrap();
+        let visual = &mut gpui::VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        let select = visual.debug_bounds("settings-select-language").unwrap();
+        visual.simulate_click(select.center(), Default::default());
+        visual.run_until_parked();
+        let english = visual.debug_bounds("settings-option-language-1").unwrap();
+        visual.simulate_click(english.center(), Default::default());
+        visual.run_until_parked();
+        window
+            .update(visual, |shell, _, _| {
+                assert_eq!(shell.workspace.preferences.language(), "en");
+                let saved = shell.latest_state.lock().unwrap().clone();
+                let restored: Workspace = serde_json::from_str(&saved).unwrap();
+                assert_eq!(restored.preferences.language(), "en");
+                let saved = shell.store.lock().unwrap().ui_state().unwrap().unwrap();
+                let restored: Workspace = serde_json::from_str(&saved).unwrap();
+                assert_eq!(restored.preferences.language(), "en");
+            })
+            .unwrap();
+        let select = visual.debug_bounds("settings-select-language").unwrap();
+        visual.simulate_click(select.center(), Default::default());
+        visual.run_until_parked();
+        let chinese = visual.debug_bounds("settings-option-language-2").unwrap();
+        visual.simulate_click(chinese.center(), Default::default());
+        visual.run_until_parked();
+        window
+            .update(visual, |shell, _, _| {
+                let saved = shell.store.lock().unwrap().ui_state().unwrap().unwrap();
+                let restored: Workspace = serde_json::from_str(&saved).unwrap();
+                assert_eq!(restored.preferences.language(), "zh-CN");
+                assert_eq!(crate::i18n::text("settings-language"), "Language");
+                assert!(crate::i18n::needs_restart("zh-CN"));
+            })
             .unwrap();
     }
 

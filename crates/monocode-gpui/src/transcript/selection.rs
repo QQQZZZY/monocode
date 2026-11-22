@@ -371,6 +371,9 @@ impl TranscriptView {
             .find(|m| m.start == state.response)
             .map(|m| m.turn)
     }
+    /// The selection context for one rendered row of `response`. Documents
+    /// select and copy like chat, but "Add to chat/notes" are conversation
+    /// actions, so `quote` is dropped there and their menu offers Copy alone.
     pub(super) fn text_selection(
         &self,
         row: (usize, usize),
@@ -378,13 +381,13 @@ impl TranscriptView {
         quote: bool,
         cx: &Context<Self>,
     ) -> Option<TextSelection> {
-        (!self.document).then(|| TextSelection {
+        Some(TextSelection {
             state: self.selection.clone(),
             view: cx.weak_entity(),
             row,
             response,
             offset: 0,
-            quote,
+            quote: quote && !self.document,
             row_text: None,
             cursor: gpui::CursorStyle::IBeam,
         })
@@ -552,11 +555,11 @@ impl TranscriptView {
             .iter()
             .find(|m| m.start == response)
             .map_or(response, |m| m.turn);
-        let button = |id: &'static str, label: &'static str, glyph: &'static str| {
+        let button = |id: &'static str, label: &str, glyph: &'static str| {
             div()
                 .id(id)
                 .role(Role::Button)
-                .aria_label(label)
+                .aria_label(label.to_owned())
                 .flex()
                 .items_center()
                 .gap_2()
@@ -567,12 +570,12 @@ impl TranscriptView {
                 .hover(|s| s.bg(content(0.05)))
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .child(icon(glyph, 14.))
-                .child(label)
+                .child(label.to_owned())
         };
         let panel = div()
             .id("transcript-selection-actions")
             .role(Role::Toolbar)
-            .aria_label("Selected text actions")
+            .aria_label(crate::i18n::text("transcript-selected-text-actions"))
             .p_1()
             .min_w(px(144.))
             .flex()
@@ -587,36 +590,42 @@ impl TranscriptView {
             )
             .when(quote, |d| {
                 d.child(
-                    button("selection-chat", "Add to chat", "comment-add").on_click(cx.listener(
-                        move |this, _, window, cx| {
-                            if this.mono {
-                                cx.emit(MonoResponseAction::Quote {
-                                    text: text.clone(),
-                                    window: window.window_handle(),
-                                })
-                            } else {
-                                cx.emit(ResponseRequest::QuoteSelection { text: text.clone() })
-                            }
-                            this.selection.clear();
-                            cx.notify();
-                        },
-                    )),
+                    button(
+                        "selection-chat",
+                        &crate::i18n::text("transcript-add-to-chat"),
+                        "comment-add",
+                    )
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        if this.mono {
+                            cx.emit(MonoResponseAction::Quote {
+                                text: text.clone(),
+                                window: window.window_handle(),
+                            })
+                        } else {
+                            cx.emit(ResponseRequest::QuoteSelection { text: text.clone() })
+                        }
+                        this.selection.clear();
+                        cx.notify();
+                    })),
                 )
             })
             .when(quote, |d| {
                 d.child(
-                    button("selection-note", "Add to notes", "response-note").on_click(
-                        cx.listener(move |this, _, _, cx| {
-                            if this.note_pending.insert(turn) {
-                                cx.emit(ResponseRequest::SaveNote {
-                                    turn,
-                                    text: note.clone(),
-                                    selection: true,
-                                });
-                                cx.notify()
-                            }
-                        }),
-                    ),
+                    button(
+                        "selection-note",
+                        &crate::i18n::text("transcript-add-to-notes"),
+                        "response-note",
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if this.note_pending.insert(turn) {
+                            cx.emit(ResponseRequest::SaveNote {
+                                turn,
+                                text: note.clone(),
+                                selection: true,
+                            });
+                            cx.notify()
+                        }
+                    })),
                 )
             })
             .when_some(
@@ -633,7 +642,10 @@ impl TranscriptView {
                             .py_1()
                             .text_size(px(11.))
                             .text_color(rgb(0xf87171))
-                            .child(format!("Could not save note: {error}")),
+                            .child(crate::i18n::format(
+                                "transcript-could-not-save-note-2",
+                                &[("error", error.to_string())],
+                            )),
                     )
                 },
             );
@@ -700,5 +712,29 @@ mod tests {
         assert_eq!(snap("e\u{301}🙂", 2), 0);
         assert_eq!(snap("e\u{301}🙂", 4), 3);
         assert_eq!(word("hello café", 7), 6..11);
+    }
+    #[gpui::test]
+    fn documents_are_selectable_and_copy_without_chat_actions(cx: &mut TestAppContext) {
+        let view =
+            cx.new(|cx| TranscriptView::document("# QA note\n\nSelect **this** text.".into(), cx));
+        view.update(cx, |view, cx| {
+            let row = view
+                .rows
+                .iter()
+                .find(|row| matches!(&row.body, Body::Markdown(md) if crate::markdown::selection_text(md) == "Select this text."))
+                .unwrap();
+            let (key, response) = (row.key, view.messages[row.message].start);
+            let selection = view.text_selection(key, response, true, cx).expect("documents select");
+            assert!(!selection.quote, "documents offer Copy alone");
+            {
+                let mut state = view.selection.0.borrow_mut();
+                state.response = response;
+                state.anchor = Some(Position { row: key, byte: 7 });
+                state.head = Some(Position { row: key, byte: 11 });
+                state.menu = Some(gpui::point(px(10.), px(10.)));
+            }
+            assert_eq!(view.selected_text().as_deref(), Some("this"));
+            assert!(view.selection_menu(cx).is_some());
+        });
     }
 }

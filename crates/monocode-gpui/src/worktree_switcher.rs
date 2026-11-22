@@ -52,8 +52,8 @@ fn rows(cwd: &str, state: Option<&Snapshot>, query: &str) -> Vec<Row> {
             path: cwd.to_owned(),
             branch: None,
             all: true,
-            label: "All checkouts".into(),
-            detail: "Every checkout · all sessions".into(),
+            label: crate::i18n::text("worktree-switcher-all-checkouts"),
+            detail: crate::i18n::text("worktree-switcher-every-checkout-all-sessions"),
         },
         Row {
             path: cwd.to_owned(),
@@ -61,8 +61,8 @@ fn rows(cwd: &str, state: Option<&Snapshot>, query: &str) -> Vec<Row> {
             all: false,
             label: main
                 .and_then(|t| t.branch.clone())
-                .unwrap_or_else(|| "Project folder".into()),
-            detail: "Project folder".into(),
+                .unwrap_or_else(|| crate::i18n::text("worktree-switcher-project-folder")),
+            detail: crate::i18n::text("worktree-switcher-project-folder"),
         },
     ];
     rows.extend(
@@ -75,7 +75,13 @@ fn rows(cwd: &str, state: Option<&Snapshot>, query: &str) -> Vec<Row> {
                 branch: t.branch.clone(),
                 all: false,
                 label: t.branch.clone().unwrap_or_else(|| {
-                    format!("Detached {}", t.head.chars().take(7).collect::<String>())
+                    crate::i18n::format(
+                        "worktree-switcher-detached",
+                        &[(
+                            "value",
+                            (t.head.chars().take(7).collect::<String>()).to_string(),
+                        )],
+                    )
                 }),
                 detail: pretty_path(&t.path),
             }),
@@ -146,8 +152,8 @@ impl WorktreeSwitcher {
     ) -> Self {
         let search = cx.new(|cx| {
             let mut input = input::Input::field(
-                "Search working copies",
-                "Search or create a worktree...",
+                crate::i18n::text("worktree-switcher-search-working-copies"),
+                crate::i18n::text("worktree-switcher-search-or-create-a-worktree"),
                 content(0.35),
                 cx,
             );
@@ -297,7 +303,7 @@ impl Render for WorktreeSwitcher {
             .id("worktree-switcher")
             .debug_selector(|| "worktree-switcher".into())
             .role(Role::Dialog)
-            .aria_label("Working copies")
+            .aria_label(crate::i18n::text("worktree-switcher-working-copies"))
             .key_context("WorktreeSwitcher")
             .min_h_0()
             .w_full()
@@ -354,7 +360,7 @@ impl Render for WorktreeSwitcher {
                 div()
                     .id("worktree-switcher-list")
                     .role(Role::ListBox)
-                    .aria_label("Working copies")
+                    .aria_label(crate::i18n::text("worktree-switcher-working-copies"))
                     .min_h_0()
                     .max_h(px(314.))
                     .overflow_y_scroll()
@@ -373,7 +379,9 @@ impl Render for WorktreeSwitcher {
                                 .text_size(px(12.))
                                 .text_color(content(0.5))
                                 .child(icon("loader", 14.))
-                                .child("Loading working copies…"),
+                                .child(crate::i18n::text(
+                                    "worktree-switcher-loading-working-copies",
+                                )),
                         )
                     })
                     .children(rows.into_iter().enumerate().map(|(index, row)| {
@@ -460,12 +468,7 @@ impl Render for WorktreeSwitcher {
                                     div()
                                         .id(("working-copy-stats", index))
                                         .role(Role::Label)
-                                        .aria_label(format!(
-                                            "{} open tab{}{}",
-                                            stats.tabs.len(),
-                                            if stats.tabs.len() == 1 { "" } else { "s" },
-                                            if stats.busy { ", working" } else { "" }
-                                        ))
+                                        .aria_label(crate::i18n::format("worktree-switcher-open-tabs-summary", &[("value1", crate::system_format::unsigned((stats.tabs.len()) as u64)), ("value2", (if stats.tabs.len() == 1 { String::new() } else { crate::i18n::text("worktree-switcher-open-tabs-summary-s") }).to_string()), ("value3", (if stats.busy { crate::i18n::text("worktree-switcher-open-tabs-summary-working") } else { String::new() }).to_string())]))
                                         .flex_shrink_0()
                                         .flex()
                                         .items_center()
@@ -480,7 +483,9 @@ impl Render for WorktreeSwitcher {
                                                     .bg(accent_color()),
                                             )
                                         })
-                                        .child(stats.tabs.len().to_string()),
+                                        .child(crate::system_format::unsigned(
+                                            stats.tabs.len() as u64
+                                        )),
                                 )
                             })
                             .when(selected, |d| {
@@ -502,7 +507,9 @@ impl Render for WorktreeSwitcher {
                                 .text_center()
                                 .text_size(px(12.))
                                 .text_color(content(0.45))
-                                .child("No matching working copies"),
+                                .child(crate::i18n::text(
+                                    "worktree-switcher-no-matching-working-copies",
+                                )),
                         )
                     }),
             )
@@ -533,7 +540,10 @@ impl Render for WorktreeSwitcher {
                                 .id("create-sidebar-worktree")
                                 .debug_selector(|| "create-sidebar-worktree".into())
                                 .role(Role::Button)
-                                .aria_label(format!("Create worktree {}", self.query(cx)))
+                                .aria_label(crate::i18n::format(
+                                    "worktree-switcher-create-worktree",
+                                    &[("value", self.query(cx).to_string())],
+                                ))
                                 .h(px(36.))
                                 .w_full()
                                 .flex()
@@ -549,7 +559,10 @@ impl Render for WorktreeSwitcher {
                                         .hover(|s| s.bg(content(0.08)).text_color(content(1.)))
                                 })
                                 .child(icon(if self.creating { "loader" } else { "plus" }, 16.))
-                                .child(format!("Create worktree {}", self.query(cx)))
+                                .child(crate::i18n::format(
+                                    "worktree-switcher-create-worktree",
+                                    &[("value", self.query(cx).to_string())],
+                                ))
                                 .on_click(cx.listener(|this, _, _, cx| this.create(cx))),
                         ),
                 )

@@ -140,6 +140,13 @@ pub struct Run {
     pub report: Option<String>,
     pub error: Option<String>,
 }
+
+/// Stable stored text for a run that timed out. Never localize what is written
+/// to `habits.json` or sent to the phone; the native UI maps these known values
+/// to the current language at display time.
+pub const ERROR_TIMED_OUT: &str = "Habit timed out while waiting for work or an answer";
+/// Stable stored text for a run interrupted by an app restart.
+pub const ERROR_APP_CLOSED: &str = "The app closed before this run finished";
 impl Habit {
     pub fn new(
         name: String,

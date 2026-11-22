@@ -54,7 +54,7 @@ impl Overview {
     }
 
     pub(super) fn reset(&mut self, cx: &mut Context<Self>) {
-        self.stack = PanelStack::default();
+        self.stack = PanelStack::restoring();
         self.native_content = false;
         cx.notify();
     }
@@ -149,7 +149,7 @@ impl Render for Overview {
             .id("mono-overview-panel")
             .debug_selector(|| "mono-overview-panel".into())
             .role(Role::Complementary)
-            .aria_label("Mono details")
+            .aria_label(crate::i18n::text("monos-mono-details"))
             .track_focus(&self.focus)
             .size_full()
             .min_w_0()

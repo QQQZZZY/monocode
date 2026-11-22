@@ -129,19 +129,32 @@ impl TranscriptView {
         let title = peek_item(&key(work))
             .map(|item| item.title.trim().to_owned())
             .filter(|title| !title.is_empty());
-        let label = format!(
-            "Open {} #{} in {}{}",
-            if pr { "pull request" } else { "issue" },
-            work.number,
-            work.repo,
-            title.map(|t| format!(": {t}")).unwrap_or_default()
+        let label = crate::i18n::format(
+            "transcript-open-in",
+            &[
+                (
+                    "value",
+                    (if pr {
+                        crate::i18n::text("transcript-link-pull-request")
+                    } else {
+                        crate::i18n::text("transcript-link-issue")
+                    })
+                    .to_string(),
+                ),
+                ("value2", (work.number).to_string()),
+                ("value3", (work.repo).to_string()),
+                (
+                    "value4",
+                    (title.map(|t| format!(": {t}")).unwrap_or_default()).to_string(),
+                ),
+            ],
         );
         let open_url = url.to_owned();
         let hovered = work.clone();
         div()
             .id(("work-item-chip", message_start))
             .role(Role::Link)
-            .aria_label(label)
+            .aria_label(&label)
             .relative()
             .mx(px(1.))
             .pb(px(1.))
@@ -342,15 +355,26 @@ impl TranscriptView {
         };
         let body = match (&item, load) {
             (Some(item), _) => div()
-                .child(headline(item.title.clone()).mt(px(8.)).line_clamp(2).text_ellipsis())
-                .when(!summary.is_empty(), |d| d.child(summary_text(summary.clone())))
+                .child(
+                    headline(item.title.clone())
+                        .mt(px(8.))
+                        .line_clamp(2)
+                        .text_ellipsis(),
+                )
+                .when(!summary.is_empty(), |d| {
+                    d.child(summary_text(summary.clone()))
+                })
                 .into_any_element(),
             (None, Load::Loading) => skeleton(),
             (None, _) => div()
                 .mt(px(8.))
                 .child(headline(format!(
                     "{} #{}",
-                    if pr { "Pull request" } else { "Issue" },
+                    if pr {
+                        crate::i18n::text("transcript-pull-request")
+                    } else {
+                        crate::i18n::text("transcript-issue")
+                    },
                     work.number
                 )))
                 .child(if summary.is_empty() {
@@ -359,9 +383,9 @@ impl TranscriptView {
                         .text_size(px(11.))
                         .line_height(px(11. * 1.625))
                         .text_color(content(0.5))
-                        .child(
-                            "Details aren't available here, but the link can still be opened on GitHub.",
-                        )
+                        .child(crate::i18n::text(
+                            "transcript-details-aren-t-available-here-but",
+                        ))
                 } else {
                     summary_text(summary.clone())
                 })
@@ -450,7 +474,10 @@ impl TranscriptView {
                         })
                         .when(author.is_some() && !updated.is_empty(), |d| d.child("·"))
                         .when(!updated.is_empty(), |d| {
-                            d.child(div().flex_shrink_0().child(format!("Updated {updated}")))
+                            d.child(div().flex_shrink_0().child(crate::i18n::format(
+                                "transcript-updated",
+                                &[("updated", updated.to_string())],
+                            )))
                         }),
                 )
             })
@@ -512,7 +539,10 @@ impl TranscriptView {
                                 .join(", ");
                             let mut stack = div()
                                 .id("work-item-assignees")
-                                .aria_label(format!("Assigned to {names}"))
+                                .aria_label(crate::i18n::format(
+                                    "transcript-assigned-to",
+                                    &[("names", names.to_string())],
+                                ))
                                 .flex_shrink_0()
                                 .flex();
                             for (ix, person) in assignees.iter().take(3).enumerate() {
@@ -548,7 +578,7 @@ impl TranscriptView {
                     .text_size(px(10.))
                     .text_color(content(0.35))
                     .child(icon("external-link", 12.).text_color(content(0.35)))
-                    .child("Click the chip to open on GitHub"),
+                    .child(crate::i18n::text("transcript-click-the-chip-to-open-on")),
             );
         let dismiss = cx.weak_entity();
         Some(
@@ -634,26 +664,42 @@ fn alpha(color: gpui::Rgba, a: f32) -> Hsla {
 }
 
 /// workItemStatus: draft before merged before closed, as the React card.
-fn status(pr: bool, item: Option<&Item>) -> (&'static str, &'static str, Hsla) {
+fn status(pr: bool, item: Option<&Item>) -> (&'static str, String, Hsla) {
     let open_icon = if pr { "git-pull-request" } else { "circle-dot" };
     match item {
         None => (
             open_icon,
-            if pr { "Pull request" } else { "Issue" },
+            if pr {
+                crate::i18n::text("transcript-pull-request")
+            } else {
+                crate::i18n::text("transcript-issue")
+            },
             content(0.5),
         ),
-        Some(item) if item.draft => ("git-pull-request-draft", "Draft", content(0.5)),
-        Some(item) if item.state == "merged" => ("git-merge", "Merged", alpha(rgb(VIOLET), 0.9)),
+        Some(item) if item.draft => (
+            "git-pull-request-draft",
+            crate::i18n::text("transcript-draft"),
+            content(0.5),
+        ),
+        Some(item) if item.state == "merged" => (
+            "git-merge",
+            crate::i18n::text("transcript-merged"),
+            alpha(rgb(VIOLET), 0.9),
+        ),
         Some(item) if item.state == "closed" => (
             if pr {
                 "git-pull-request-closed"
             } else {
                 "circle-x"
             },
-            "Closed",
+            crate::i18n::text("transcript-closed"),
             alpha(rgb(ROSE), 0.9),
         ),
-        Some(_) => (open_icon, "Open", alpha(rgb(EMERALD), 0.9)),
+        Some(_) => (
+            open_icon,
+            crate::i18n::text("transcript-open"),
+            alpha(rgb(EMERALD), 0.9),
+        ),
     }
 }
 
@@ -690,7 +736,7 @@ fn skeleton() -> AnyElement {
     };
     div()
         .id("work-item-loading")
-        .aria_label("Loading GitHub details")
+        .aria_label(crate::i18n::text("transcript-loading-github-details"))
         .mt(px(10.))
         .flex()
         .flex_col()

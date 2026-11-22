@@ -69,7 +69,7 @@ impl Shell {
             .debug_selector(|| "search-title-tab".into())
             .group("search-title-tab")
             .role(Role::Tab)
-            .aria_label("Search")
+            .aria_label(crate::i18n::text("shell-search"))
             .aria_selected(active)
             .cursor_pointer()
             .w(px(width))
@@ -102,7 +102,7 @@ impl Shell {
                             .flex_1()
                             .truncate()
                             .text_size(px(TITLE_TAB_TEXT_SIZE))
-                            .child("Search"),
+                            .child(crate::i18n::text("shell-search")),
                     ),
             )
             .when(close, |d| {
@@ -111,7 +111,7 @@ impl Shell {
                         .id("close-search-tab")
                         .debug_selector(|| "close-search-tab".into())
                         .role(Role::Button)
-                        .aria_label("Close Search")
+                        .aria_label(crate::i18n::text("shell-close-search"))
                         .absolute()
                         .right_1()
                         .top(px(10.))

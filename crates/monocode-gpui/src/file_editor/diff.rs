@@ -26,27 +26,39 @@ impl FileEditor {
             .border_b_1()
             .border_color(stroke())
             .role(Role::Toolbar)
-            .aria_label("Jump between changes")
+            .aria_label(crate::i18n::text("file-editor-jump-between-changes"))
             .text_size(px(11.))
             .when(additions > 0, |d| {
                 d.child(
                     div()
                         .text_color(diff_foreground(true))
-                        .child(format!("+{additions}")),
+                        .child(crate::i18n::format(
+                            "file-editor-added-lines",
+                            &[(
+                                "additions",
+                                crate::system_format::unsigned(additions as u64),
+                            )],
+                        )),
                 )
             })
             .when(deletions > 0, |d| {
                 d.child(
                     div()
                         .text_color(diff_foreground(false))
-                        .child(format!("-{deletions}")),
+                        .child(crate::i18n::format(
+                            "file-editor-deleted-lines",
+                            &[(
+                                "deletions",
+                                crate::system_format::unsigned(deletions as u64),
+                            )],
+                        )),
                 )
             })
             .child(div().flex_1())
             .child(
                 icon_action(
                     "previous-change",
-                    "Previous change",
+                    crate::i18n::text("file-editor-previous-change"),
                     "chevron-up",
                     total > 0 && self.change_index > 0,
                 )
@@ -69,7 +81,7 @@ impl FileEditor {
             .child(
                 icon_action(
                     "next-change",
-                    "Next change",
+                    crate::i18n::text("file-editor-next-change"),
                     "chevron-down",
                     self.change_index + 1 < total,
                 )

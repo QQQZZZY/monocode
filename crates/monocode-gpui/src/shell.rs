@@ -107,6 +107,7 @@ actions!(
         PreviousTab,
         ToggleSidebar,
         FocusSearch,
+        FocusPrompt,
         SearchFiles,
         FocusNext,
         FocusPrevious,
@@ -272,6 +273,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
         KeyBinding::new("tab", FocusNext, context),
         KeyBinding::new("shift-tab", FocusPrevious, context),
     ]);
+    #[cfg(target_os = "macos")]
+    cx.bind_keys([KeyBinding::new("cmd-l", FocusPrompt, context)]);
 }
 
 /// Windows has no caption of its own (`appears_transparent`), so the app
@@ -414,29 +417,29 @@ const CORNER_CONTROL_GAP: f32 = 4.;
 const CORNER_BUTTONS_WIDTH: f32 = 48. + 2. * CORNER_CONTROL_GAP;
 // TitleBar.tsx's labels, with their shortcuts.
 const TOGGLE_SIDEBAR_LABEL: &str = if cfg!(target_os = "macos") {
-    "Toggle Sidebar (⌘B)"
+    "shell-toggle-sidebar-macos"
 } else {
-    "Toggle Sidebar (Ctrl+B)"
+    "shell-toggle-sidebar-other"
 };
 const BACK_LABEL: &str = if cfg!(target_os = "macos") {
-    "Back (⌘[)"
+    "shell-back-macos"
 } else {
-    "Back (Ctrl+[)"
+    "shell-back-other"
 };
 const FORWARD_LABEL: &str = if cfg!(target_os = "macos") {
-    "Forward (⌘])"
+    "shell-forward-macos"
 } else {
-    "Forward (Ctrl+])"
+    "shell-forward-other"
 };
 const TOGGLE_RIGHT_PANEL_LABEL: &str = if cfg!(target_os = "macos") {
-    "Toggle right sidebar (⌘⇧B)"
+    "shell-toggle-right-panel-macos"
 } else {
-    "Toggle right sidebar (Ctrl+Shift+B)"
+    "shell-toggle-right-panel-other"
 };
 const TOGGLE_RIGHT_PANEL_DOT_LABEL: &str = if cfg!(target_os = "macos") {
-    "Toggle right sidebar (⌘⇧B, uncommitted changes)"
+    "shell-toggle-right-panel-dot-macos"
 } else {
-    "Toggle right sidebar (Ctrl+Shift+B, uncommitted changes)"
+    "shell-toggle-right-panel-dot-other"
 };
 const MOD: &str = if cfg!(target_os = "macos") {
     "⌘"
@@ -444,11 +447,11 @@ const MOD: &str = if cfg!(target_os = "macos") {
     "Ctrl+"
 };
 const REVEAL_LABEL: &str = if cfg!(target_os = "macos") {
-    "Reveal in Finder"
+    "reveal-reveal-in-finder"
 } else if cfg!(target_os = "windows") {
-    "Reveal in File Explorer"
+    "reveal-reveal-in-file-explorer"
 } else {
-    "Open Containing Folder"
+    "reveal-open-containing-folder"
 };
 
 struct TabDrag {
@@ -1555,7 +1558,10 @@ impl Shell {
                         }
                     }
                     Err(error) => {
-                        this.error = Some(format!("Could not update archive: {error}"));
+                        this.error = Some(crate::i18n::format(
+                            "shell-could-not-update-archive",
+                            &[("error", (error).to_string())],
+                        ));
                         this.invalidate_chrome(cx);
                         cx.notify();
                     }
@@ -1598,7 +1604,8 @@ impl Shell {
             };
             let mut summary = locked(&store)?.create(&transfer.target.provider, &transfer.cwd)?;
             summary.title = if transfer.kind == TransferKind::SecondOpinion {
-                "Second opinion".into()
+                // Persist the stable title; the display boundary localizes it.
+                monocode_core::session_title::SECOND_OPINION_TITLE.into()
             } else {
                 transfer.title
             };
@@ -1980,15 +1987,20 @@ impl Shell {
         }
         self.quit_prompted = true;
         let detail = if self.unsaved_files(cx) {
-            "Running agents and terminals will stop, and unsaved file edits will be lost."
+            crate::i18n::text(
+                "shell-running-agents-and-terminals-will-stop-and-unsaved-file-edits-will",
+            )
         } else {
-            "Running agents and terminals will stop."
+            crate::i18n::text("shell-running-agents-and-terminals-will-stop")
         };
         let answer = window.prompt(
             gpui::PromptLevel::Warning,
-            "Reload Monocode Native?",
-            Some(detail),
-            &["Reload", "Cancel"],
+            crate::i18n::text("shell-prompt-reload-monocode-native").as_str(),
+            Some(&detail),
+            &[
+                crate::i18n::text("shell-prompt-reload").as_str(),
+                crate::i18n::text("shell-prompt-cancel").as_str(),
+            ],
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
@@ -2013,9 +2025,12 @@ impl Shell {
         self.quit_prompted = true;
         let answer = window.prompt(
             gpui::PromptLevel::Warning,
-            "Quit with unsaved file edits?",
-            Some("Save your files before quitting to keep your changes."),
-            &["Quit Without Saving", "Cancel"],
+            crate::i18n::text("shell-prompt-quit-with-unsaved-file-edits").as_str(),
+            Some(crate::i18n::text("shell-prompt-save-your-files-before-quitting-to").as_str()),
+            &[
+                crate::i18n::text("shell-prompt-quit-without-saving").as_str(),
+                crate::i18n::text("shell-prompt-cancel").as_str(),
+            ],
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
@@ -2293,7 +2308,7 @@ impl Shell {
         let title = self
             .sessions
             .get(&id)
-            .map(|s| s.read(cx).display_title())
+            .map(|s| s.read(cx).localized_title())
             .or_else(|| self.mono_pane_title(id, cx))
             .or_else(|| self.terminal_pane_title(id, cx))
             .unwrap_or_default();
@@ -2334,7 +2349,7 @@ impl Shell {
                     .id(("drag-session-pane", id as usize))
                     .debug_selector(move || format!("drag-session-pane-{id}"))
                     .role(Role::Button)
-                    .aria_label("Drag to reorder pane")
+                    .aria_label(crate::i18n::text("shell-drag-to-reorder-pane"))
                     .w(px(20.))
                     .h(px(30.))
                     .flex_shrink_0()
@@ -2362,50 +2377,60 @@ impl Shell {
                     .text_color(content(1.))
                     .child(title),
             )
-            .children([
-                (SplitDir::Right, "split-right", "Split right"),
-                (SplitDir::Down, "split-down", "Split down"),
-            ]
-            .map(|(dir, glyph, label)| {
-                let key = format!("split-pane-{glyph}-{id}");
-                div()
-                    .id(SharedString::from(key.clone()))
-                    .debug_selector(move || key.clone())
-                    .role(Role::Button)
-                    .aria_label(label)
-                    .group(glyph)
-                    .size(px(20.))
-                    .flex_shrink_0()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(4.))
-                    .cursor_pointer()
-                    .hover(|s| s.bg(content(0.1)))
-                    .child(
-                        icon(glyph, 13.)
-                            .text_color(content(0.5))
-                            .group_hover(glyph, |s| s.text_color(content(1.))),
-                    )
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        cx.stop_propagation();
-                        this.review_focused = false;
-                        this.focus_pane(id, window, cx);
-                        // A terminal splits off a fresh shell; a chat or a
-                        // Mono, a new session with its provider.
-                        if this.workspace.terminal_panes.contains_key(&id) {
-                            this.split_title_terminal_toward(dir, window, cx);
-                        } else {
-                            this.split_session(dir, cx);
-                        }
-                    }))
-            }))
+            .children(
+                [
+                    (
+                        SplitDir::Right,
+                        "split-right",
+                        crate::i18n::text("shell-split-right"),
+                    ),
+                    (
+                        SplitDir::Down,
+                        "split-down",
+                        crate::i18n::text("shell-split-down"),
+                    ),
+                ]
+                .map(|(dir, glyph, label)| {
+                    let key = format!("split-pane-{glyph}-{id}");
+                    div()
+                        .id(SharedString::from(key.clone()))
+                        .debug_selector(move || key.clone())
+                        .role(Role::Button)
+                        .aria_label(label.to_owned())
+                        .group(glyph)
+                        .size(px(20.))
+                        .flex_shrink_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(4.))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(content(0.1)))
+                        .child(
+                            icon(glyph, 13.)
+                                .text_color(content(0.5))
+                                .group_hover(glyph, |s| s.text_color(content(1.))),
+                        )
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.review_focused = false;
+                            this.focus_pane(id, window, cx);
+                            // A terminal splits off a fresh shell; a chat or a
+                            // Mono, a new session with its provider.
+                            if this.workspace.terminal_panes.contains_key(&id) {
+                                this.split_title_terminal_toward(dir, window, cx);
+                            } else {
+                                this.split_session(dir, cx);
+                            }
+                        }))
+                }),
+            )
             .child(
                 div()
                     .id(("close-chat-pane", id as usize))
                     .role(Role::Button)
-                    .aria_label("Close pane")
+                    .aria_label(crate::i18n::text("shell-close-pane"))
                     .group("close-chat-pane")
                     .size(px(20.))
                     .flex_shrink_0()
@@ -2618,7 +2643,7 @@ impl Shell {
                     .debug_selector(move || format!("pane-sash-{key}"))
                     .group("resize-handle")
                     .role(Role::Splitter)
-                    .aria_label("Resize panes")
+                    .aria_label(crate::i18n::text("shell-resize-panes"))
                     .absolute()
                     .map(|d| {
                         if row {
@@ -2658,7 +2683,8 @@ impl Shell {
                                     .sash_snaps(tab, &sash.path, sash.index)
                                     .first()
                                 {
-                                    this.workspace.place_sash(tab, &sash.path, sash.index, *middle);
+                                    this.workspace
+                                        .place_sash(tab, &sash.path, sash.index, *middle);
                                     this.persist(cx);
                                     cx.notify();
                                 }
@@ -2900,7 +2926,7 @@ impl Shell {
                         .id(("review-sash", id as usize))
                         .group("resize-handle")
                         .role(Role::Splitter)
-                        .aria_label("Resize panes")
+                        .aria_label(crate::i18n::text("shell-resize-panes"))
                         .absolute()
                         .top_0()
                         .bottom_0()
@@ -3122,7 +3148,9 @@ impl Shell {
     /// opens if it was hidden.
     fn new_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.workspace.project.starts_with("remote://") {
-            self.error = Some("Terminals are not available on remote projects.".into());
+            self.error = Some(crate::i18n::text(
+                "shell-terminals-are-not-available-on-remote-projects",
+            ));
             cx.notify();
             return;
         }
@@ -3163,7 +3191,9 @@ impl Shell {
     /// Terminal: Toggle (cmd-j).
     fn toggle_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.workspace.project.starts_with("remote://") {
-            self.error = Some("Terminals are not available on remote projects.".into());
+            self.error = Some(crate::i18n::text(
+                "shell-terminals-are-not-available-on-remote-projects",
+            ));
             cx.notify();
             return;
         }
@@ -3232,9 +3262,18 @@ impl Shell {
             };
             let answer = window.prompt(
                 gpui::PromptLevel::Warning,
-                &format!("\"{process}\" is still running in {label}. Stop it and close the panel?"),
+                &crate::i18n::format(
+                    "shell-is-still-running-in-stop-it-and",
+                    &[
+                        ("process", (process).to_string()),
+                        ("label", (label).to_string()),
+                    ],
+                ),
                 None,
-                &["Stop", "Cancel"],
+                &[
+                    crate::i18n::text("shell-prompt-stop").as_str(),
+                    crate::i18n::text("shell-prompt-cancel").as_str(),
+                ],
                 cx,
             );
             cx.spawn_in(window, async move |this, cx| {
@@ -3254,9 +3293,18 @@ impl Shell {
         };
         let answer = window.prompt(
             gpui::PromptLevel::Warning,
-            &format!("\"{process}\" is still running in {label}. Close this terminal anyway?"),
+            &crate::i18n::format(
+                "shell-is-still-running-in-close-this-terminal",
+                &[
+                    ("process", (process).to_string()),
+                    ("label", (label).to_string()),
+                ],
+            ),
             None,
-            &["Close", "Cancel"],
+            &[
+                crate::i18n::text("shell-prompt-close").as_str(),
+                crate::i18n::text("shell-prompt-cancel").as_str(),
+            ],
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
@@ -3423,7 +3471,7 @@ impl Shell {
             .debug_selector(|| "terminal-dock-sash".into())
             .group("resize-handle")
             .role(Role::Splitter)
-            .aria_label("Resize terminal")
+            .aria_label(crate::i18n::text("shell-resize-terminal"))
             .absolute()
             .child(resize_border(!vertical, self.dock_resize.is_some()))
             .map(|d| match dock.side {
@@ -3462,7 +3510,7 @@ impl Shell {
             .id("terminal-dock")
             .debug_selector(|| "terminal-dock".into())
             .role(Role::Region)
-            .aria_label("Terminal")
+            .aria_label(crate::i18n::text("shell-terminal"))
             .relative()
             .flex_shrink_0()
             .overflow_hidden()
@@ -4137,7 +4185,10 @@ impl Shell {
         cx.spawn(async move |this, cx| {
             if let Err(error) = work.await {
                 let _ = this.update(cx, |this, cx| {
-                    this.error = Some(format!("Could not save workspace: {error}"));
+                    this.error = Some(crate::i18n::format(
+                        "shell-could-not-save-workspace",
+                        &[("error", (error).to_string())],
+                    ));
                     cx.notify();
                 });
             }
@@ -4418,6 +4469,31 @@ impl Shell {
         self.open_app_search(window, cx);
     }
 
+    fn focus_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.settings.is_some() || self.app_view_open() || self.app_search.is_some() {
+            return;
+        }
+        if let Some(monos) = self.monos.as_ref().filter(|_| self.mono_active(cx)) {
+            monos.update(cx, |monos, cx| monos.focus_active(window, cx));
+            return;
+        }
+        if self.focus_mono_pane(window, cx)
+            || self
+                .active_review(cx)
+                .is_some_and(|review| review.read(cx).state.chat_hidden)
+        {
+            return;
+        }
+        if let Some(view) = self
+            .workspace
+            .active
+            .and_then(|pane| self.sessions.get(&self.workspace.session_for_pane(pane)))
+        {
+            self.review_focused = false;
+            window.focus(&view.read(cx).input.focus_handle(cx), cx);
+        }
+    }
+
     pub(super) fn select_project(
         &mut self,
         path: String,
@@ -4539,7 +4615,7 @@ impl Shell {
             files: false,
             directories: true,
             multiple: false,
-            prompt: Some("Open project".into()),
+            prompt: Some(crate::i18n::text("shell-open-project").into()),
         });
         cx.spawn(async move |this, cx| match picker.await {
             Ok(Ok(Some(paths))) => {
@@ -4554,7 +4630,10 @@ impl Shell {
             Ok(Ok(None)) => {}
             error => {
                 let _ = this.update(cx, |this, cx| {
-                    this.error = Some(format!("Could not open folder: {error:?}"));
+                    this.error = Some(crate::i18n::format(
+                        "shell-could-not-open-folder",
+                        &[("error", format!("{:?}", error))],
+                    ));
                     cx.notify();
                 });
             }
@@ -4622,9 +4701,11 @@ impl Shell {
                             groups.add_to_folder(folder, id);
                             let groups = groups.clone();
                             let project = cwd.clone();
-                            this.store_write("save folders", cx, move |store| {
-                                store.save_groups(&project, &groups)
-                            });
+                            this.store_write(
+                                crate::i18n::text("shell-action-save-folders"),
+                                cx,
+                                move |store| store.save_groups(&project, &groups),
+                            );
                         }
                         if let Some(view) = this.sessions.get(&id) {
                             view.update(cx, |view, cx| view.seed_new_settings(settings, cx));
@@ -4719,7 +4800,7 @@ impl Shell {
             .child(
                 icon_button_enabled(
                     "visit-back",
-                    BACK_LABEL,
+                    crate::i18n::text(BACK_LABEL),
                     "chevron-left",
                     self.settings.is_some()
                         || (self.workspace.classic_layout && self.mono_active(cx))
@@ -4738,7 +4819,7 @@ impl Shell {
             .child(
                 icon_button_enabled(
                     "visit-forward",
-                    FORWARD_LABEL,
+                    crate::i18n::text(FORWARD_LABEL),
                     "chevron-right",
                     !self.history.forward.is_empty(),
                 )
@@ -4758,17 +4839,21 @@ impl Shell {
                 .size(px(24.))
                 .child(self.peek_toggle_bounds.probe());
         }
-        icon_button("toggle-sidebar", TOGGLE_SIDEBAR_LABEL, "sidebar")
-            .debug_selector(|| "toggle-sidebar".into())
-            .child(self.peek_toggle_bounds.probe())
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            // Hovering the toggle peeks a collapsed sidebar out.
-            .on_hover(cx.listener(|this, hovered, _, cx| {
-                if !this.workspace.classic_layout {
-                    this.hover_peek_toggle(*hovered, cx)
-                }
-            }))
-            .on_click(cx.listener(|this, _, window, cx| this.toggle_primary_sidebar(window, cx)))
+        icon_button(
+            "toggle-sidebar",
+            crate::i18n::text(TOGGLE_SIDEBAR_LABEL),
+            "sidebar",
+        )
+        .debug_selector(|| "toggle-sidebar".into())
+        .child(self.peek_toggle_bounds.probe())
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        // Hovering the toggle peeks a collapsed sidebar out.
+        .on_hover(cx.listener(|this, hovered, _, cx| {
+            if !this.workspace.classic_layout {
+                this.hover_peek_toggle(*hovered, cx)
+            }
+        }))
+        .on_click(cx.listener(|this, _, window, cx| this.toggle_primary_sidebar(window, cx)))
     }
     /// Part of the card: the project tools beside the workspace, behind a
     /// hairline. Its contents keep their full width while it slides.
@@ -4851,7 +4936,7 @@ impl Shell {
             .debug_selector(move || id.into())
             .group("resize-handle")
             .role(Role::Splitter)
-            .aria_label("Resize right sidebar")
+            .aria_label(crate::i18n::text("shell-resize-right-sidebar"))
             .w(px(6.))
             .cursor(CursorStyle::ResizeLeftRight)
             .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
@@ -5111,9 +5196,9 @@ impl Shell {
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                                 .role(Role::Button)
                                 .aria_label(if dot {
-                                    TOGGLE_RIGHT_PANEL_DOT_LABEL
+                                    crate::i18n::text(TOGGLE_RIGHT_PANEL_DOT_LABEL)
                                 } else {
-                                    TOGGLE_RIGHT_PANEL_LABEL
+                                    crate::i18n::text(TOGGLE_RIGHT_PANEL_LABEL)
                                 })
                                 .aria_toggled(if panel_active {
                                     gpui::Toggled::True
@@ -5201,7 +5286,7 @@ impl Shell {
                 .as_ref()
                 .is_some_and(|p| p.read(cx).tab() == crate::right_panel::RightTab::Changes);
         (width > 0.).then(|| {
-            crate::right_panel::diff_stat(self.git.read(cx).stats.as_ref(), width)
+            crate::right_panel::diff_stat(self.git.read(cx).stats.as_ref(), width, cx)
                 .when(selected, |d| d.bg(content(0.1)))
                 .when(!self.app_view_open(), |d| {
                     d.cursor_pointer()
@@ -5228,9 +5313,9 @@ impl Shell {
     }
     fn file_search_button(&self, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
         let label = if cfg!(target_os = "macos") {
-            "Search files (⌘P)"
+            crate::i18n::text("shell-search-files-p")
         } else {
-            "Search files (Ctrl+P)"
+            crate::i18n::text("shell-search-files-ctrl-p")
         };
         icon_button("titlebar-file-search", label, "search")
             .debug_selector(|| "titlebar-file-search".into())
@@ -5242,7 +5327,7 @@ impl Shell {
         if self.mono_active(cx) || !self.git.read(cx).available() {
             return 0.;
         }
-        let natural = crate::right_panel::diff_stat_width(self.git.read(cx).stats.as_ref());
+        let natural = crate::right_panel::diff_stat_width(self.git.read(cx).stats.as_ref(), cx);
         if !self.workspace.right_panel_open || self.app_view_open() {
             return natural;
         }
@@ -5404,7 +5489,7 @@ impl Shell {
         let title = |id: &i64| {
             self.session_summaries
                 .get(id)
-                .map(|_| self.session_metadata(*id, cx).display_title())
+                .map(|_| self.session_metadata(*id, cx).localized_title())
                 .unwrap_or_default()
         };
         match target {
@@ -5413,19 +5498,19 @@ impl Shell {
                 ("".into(), Vec::new(), 160., MenuStyle::Explorer)
             }
             MenuTarget::Actions => (
-                "Actions".into(),
+                crate::i18n::text("shell-actions").into(),
                 self.actions_menu(),
                 200.,
                 MenuStyle::Explorer,
             ),
             MenuTarget::NewTab => (
-                "New tab".into(),
+                crate::i18n::text("shell-new-tab").into(),
                 vec![
-                    MenuAction::new("session", "New Session")
+                    MenuAction::new("session", crate::i18n::text("shell-new-session-2"))
                         .icon("plus")
                         .shortcut(format!("{MOD}N"))
                         .into(),
-                    MenuAction::new("terminal", "New Terminal")
+                    MenuAction::new("terminal", crate::i18n::text("shell-new-terminal"))
                         .icon("terminal")
                         .shortcut(format!("{MOD}J"))
                         .into(),
@@ -5452,25 +5537,29 @@ impl Shell {
                 let mut items = vec![
                     MenuAction::new(
                         if pinned { "unpin" } else { "pin" },
-                        if pinned { "Unpin Tab" } else { "Pin Tab" },
+                        if pinned {
+                            crate::i18n::text("shell-unpin-tab")
+                        } else {
+                            crate::i18n::text("shell-pin-tab")
+                        },
                     )
                     .into(),
                     MenuItem::Separator,
-                    MenuAction::new("close", "Close Tab")
+                    MenuAction::new("close", crate::i18n::text("shell-close-tab"))
                         .shortcut(format!("{MOD}W"))
                         .disabled(!closable)
                         .into(),
                     MenuItem::Separator,
-                    MenuAction::new("others", "Close Other Tabs")
+                    MenuAction::new("others", crate::i18n::text("shell-close-other-tabs"))
                         .disabled(count < 2)
                         .into(),
-                    MenuAction::new("right", "Close Tabs to the Right")
+                    MenuAction::new("right", crate::i18n::text("shell-close-tabs-to-the-right"))
                         .disabled(ix + 1 >= count)
                         .into(),
-                    MenuAction::new("left", "Close Tabs to the Left")
+                    MenuAction::new("left", crate::i18n::text("shell-close-tabs-to-the-left"))
                         .disabled(ix == 0)
                         .into(),
-                    MenuAction::new("all", "Close All Tabs")
+                    MenuAction::new("all", crate::i18n::text("shell-close-all-tabs"))
                         .shortcut(if cfg!(target_os = "macos") {
                             "⌘⇧W"
                         } else {
@@ -5490,29 +5579,34 @@ impl Shell {
                         MenuAction::new(
                             "archive",
                             if self.session_metadata(id, cx).summary.archived {
-                                "Unarchive"
+                                crate::i18n::text("shell-unarchive")
                             } else {
-                                "Archive"
+                                crate::i18n::text("shell-archive")
                             },
                         )
                         .into(),
-                        MenuAction::new("delete", "Delete").danger().into(),
+                        MenuAction::new("delete", crate::i18n::text("shell-delete"))
+                            .danger()
+                            .into(),
                     ]);
                 }
                 (
-                    format!(
-                        "Tab actions for {}",
-                        match &tab {
-                            TitleTab::Session(id) => title(id),
-                            TitleTab::Search => "Search".into(),
-                            TitleTab::App(view) => view.label().into(),
-                            TitleTab::Mono { id, .. } => self
-                                .monos
-                                .as_ref()
-                                .and_then(|m| m.read(cx).roster.get(id))
-                                .map(|m| m.label())
-                                .unwrap_or_default(),
-                        }
+                    crate::i18n::format(
+                        "shell-tab-actions-for",
+                        &[(
+                            "name",
+                            match &tab {
+                                TitleTab::Session(id) => title(id),
+                                TitleTab::Search => crate::i18n::text("shell-search"),
+                                TitleTab::App(view) => view.label(),
+                                TitleTab::Mono { id, .. } => self
+                                    .monos
+                                    .as_ref()
+                                    .and_then(|m| m.read(cx).roster.get(id))
+                                    .map(|m| m.label())
+                                    .unwrap_or_default(),
+                            },
+                        )],
                     )
                     .into(),
                     items,
@@ -5521,13 +5615,17 @@ impl Shell {
                 )
             }
             MenuTarget::Session(id) => (
-                format!("Session actions for {}", title(id)).into(),
+                crate::i18n::format(
+                    "shell-session-actions-for",
+                    &[("value", (title(id)).to_string())],
+                )
+                .into(),
                 self.session_menu_items(*id, cx),
                 228.,
                 MenuStyle::Explorer,
             ),
             MenuTarget::Folder(folder) => (
-                "Folder actions".into(),
+                crate::i18n::text("shell-folder-actions").into(),
                 self.folder_menu_items(folder, events, cx),
                 228.,
                 MenuStyle::Explorer,
@@ -5539,12 +5637,20 @@ impl Shell {
                     .get(&self.workspace.project)
                     .map_or(DockSide::Bottom, |d| d.side);
                 (
-                    "Move terminal".into(),
+                    crate::i18n::text("shell-move-terminal-2").into(),
                     [
-                        ("bottom", "Dock Bottom", DockSide::Bottom),
-                        ("top", "Dock Top", DockSide::Top),
-                        ("left", "Dock Left", DockSide::Left),
-                        ("right", "Dock Right", DockSide::Right),
+                        (
+                            "bottom",
+                            crate::i18n::text("shell-dock-bottom"),
+                            DockSide::Bottom,
+                        ),
+                        ("top", crate::i18n::text("shell-dock-top"), DockSide::Top),
+                        ("left", crate::i18n::text("shell-dock-left"), DockSide::Left),
+                        (
+                            "right",
+                            crate::i18n::text("shell-dock-right"),
+                            DockSide::Right,
+                        ),
                     ]
                     .into_iter()
                     .map(|(id, label, s)| MenuAction::new(id, label).checked(s == side).into())
@@ -5554,26 +5660,29 @@ impl Shell {
                 )
             }
             MenuTarget::SessionFilter => (
-                "Filter sessions".into(),
+                crate::i18n::text("shell-filter-sessions").into(),
                 self.filter_menu_items(cx),
                 228.,
                 MenuStyle::Filter,
             ),
             MenuTarget::SidebarOptions => (
-                "Sidebar options".into(),
+                crate::i18n::text("shell-sidebar-options").into(),
                 self.sidebar_options_menu_items(),
                 184.,
                 MenuStyle::Filter,
             ),
             MenuTarget::ProjectRailAdd => (
-                "Open project".into(),
+                crate::i18n::text("shell-open-project").into(),
                 vec![
-                    MenuAction::new("open-project", "Open folder…")
+                    MenuAction::new("open-project", crate::i18n::text("shell-open-folder"))
                         .icon("folder-add")
                         .into(),
-                    MenuAction::new("open-remote-project", "Open folder on a machine…")
-                        .icon("globe")
-                        .into(),
+                    MenuAction::new(
+                        "open-remote-project",
+                        crate::i18n::text("shell-open-folder-on-a-machine-2"),
+                    )
+                    .icon("globe")
+                    .into(),
                 ],
                 230.,
                 MenuStyle::Explorer,
@@ -5632,7 +5741,7 @@ impl Shell {
                 ));
                 let focus = picker.read(cx).search_focus(cx);
                 (
-                    "Switch project".into(),
+                    crate::i18n::text("shell-switch-project-2").into(),
                     vec![MenuItem::Custom(picker.into(), focus)],
                     286.,
                     MenuStyle::Switcher,
@@ -5676,11 +5785,21 @@ impl Shell {
                             &self.workspace.project,
                         ))
                     });
-                let worktree = MenuAction::new("switch-worktree", "Switch worktree")
-                    .icon("folder-tree")
-                    .flyout(self.worktree_flyout(events, window, cx));
+                let worktree = MenuAction::new(
+                    "switch-worktree",
+                    crate::i18n::text("shell-switch-worktree"),
+                )
+                .icon("folder-tree")
+                .flyout(self.worktree_flyout(events, window, cx));
                 (
-                    format!("{} menu", self.project_label(&self.workspace.project)).into(),
+                    crate::i18n::format(
+                        "shell-menu",
+                        &[(
+                            "value",
+                            (self.project_label(&self.workspace.project)).to_string(),
+                        )],
+                    )
+                    .into(),
                     vec![
                         match branch {
                             Some(branch) => worktree.value(branch),
@@ -5688,26 +5807,35 @@ impl Shell {
                         }
                         .into(),
                         MenuItem::Separator,
-                        MenuAction::new("switch-project", "Switch project")
-                            .icon("folder")
-                            .flyout(Flyout {
-                                view: picker.into(),
-                                width: 286.,
-                                padding: 0.,
-                                height: None,
-                                max_height: Some(380.),
-                                focus: Some(focus),
-                                surface: None,
-                            })
-                            .into(),
-                        MenuAction::new("project-settings", "Project settings")
-                            .icon("sliders")
-                            .flyout(self.project_settings_flyout(events, window, cx))
-                            .into(),
-                        MenuAction::new("open-remote-project", "Open folder on a machine…")
-                            .icon("globe")
-                            .into(),
-                        MenuAction::new("settings", "Settings")
+                        MenuAction::new(
+                            "switch-project",
+                            crate::i18n::text("shell-switch-project-2"),
+                        )
+                        .icon("folder")
+                        .flyout(Flyout {
+                            view: picker.into(),
+                            width: 286.,
+                            padding: 0.,
+                            height: None,
+                            max_height: Some(380.),
+                            focus: Some(focus),
+                            surface: None,
+                        })
+                        .into(),
+                        MenuAction::new(
+                            "project-settings",
+                            crate::i18n::text("shell-project-settings"),
+                        )
+                        .icon("sliders")
+                        .flyout(self.project_settings_flyout(events, window, cx))
+                        .into(),
+                        MenuAction::new(
+                            "open-remote-project",
+                            crate::i18n::text("shell-open-folder-on-a-machine-2"),
+                        )
+                        .icon("globe")
+                        .into(),
+                        MenuAction::new("settings", crate::i18n::text("shell-settings"))
                             .icon("settings")
                             .shortcut(format!("{MOD},"))
                             .into(),
@@ -5719,15 +5847,18 @@ impl Shell {
             MenuTarget::ProjectRailGroup(id) => {
                 let controls = self.project_rail_group_controls(id, events, window, cx);
                 (
-                    "Project group actions".into(),
+                    crate::i18n::text("shell-project-group-actions").into(),
                     vec![
                         MenuItem::Custom(controls.clone().into(), controls.read(cx).focus(cx)),
                         MenuItem::Separator,
-                        MenuAction::new("delete-project-group", "Delete group")
-                            .icon("trash")
-                            .description("Projects will become ungrouped")
-                            .danger()
-                            .into(),
+                        MenuAction::new(
+                            "delete-project-group",
+                            crate::i18n::text("shell-delete-group"),
+                        )
+                        .icon("trash")
+                        .description(crate::i18n::text("shell-projects-will-become-ungrouped"))
+                        .danger()
+                        .into(),
                     ],
                     260.,
                     MenuStyle::Group,
@@ -5739,17 +5870,23 @@ impl Shell {
                 let mut items: Vec<MenuItem> = vec![
                     MenuItem::Custom(controls.clone().into(), controls.read(cx).focus(cx)),
                     MenuItem::Separator,
-                    MenuAction::new("project-theme", "Theme colors")
+                    MenuAction::new("project-theme", crate::i18n::text("shell-theme-colors"))
                         .icon("palette")
                         .into(),
-                    MenuAction::new("background", "Background image")
+                    MenuAction::new("background", crate::i18n::text("shell-background-image"))
                         .icon("image-add")
                         .into(),
                 ];
                 if *rail {
-                    let mut groups = vec![MenuAction::new("project-group:new", "New group…")];
+                    let mut groups = vec![MenuAction::new(
+                        "project-group:new",
+                        crate::i18n::text("shell-new-group"),
+                    )];
                     if self.workspace.project_rail_assignments.contains_key(path) {
-                        groups.push(MenuAction::new("project-group:", "No group"));
+                        groups.push(MenuAction::new(
+                            "project-group:",
+                            crate::i18n::text("shell-no-group"),
+                        ));
                     }
                     groups.extend(self.workspace.project_rail_groups.iter().map(|group| {
                         MenuAction::new(format!("project-group:{}", group.id), group.name.clone())
@@ -5760,16 +5897,16 @@ impl Shell {
                     }));
                     let pinned = self.workspace.project_rail_pinned.contains(path);
                     items.extend([
-                        MenuAction::new("project-group", "Move to group")
+                        MenuAction::new("project-group", crate::i18n::text("shell-move-to-group"))
                             .icon("folder-tree")
                             .submenu(groups)
                             .into(),
                         MenuAction::new(
                             "pin",
                             if pinned {
-                                "Unpin project"
+                                crate::i18n::text("shell-unpin-project")
                             } else {
-                                "Pin project"
+                                crate::i18n::text("shell-pin-project")
                             },
                         )
                         .icon(if pinned { "pin-off" } else { "pin" })
@@ -5781,9 +5918,15 @@ impl Shell {
                     let ix = peers.iter().position(|p| p == path).unwrap_or(0);
                     let (first, last) = (ix == 0, ix + 1 == peers.len());
                     let (back, forward) = if self.workspace.classic_layout {
-                        ("Move up", "Move down")
+                        (
+                            crate::i18n::text("shell-move-up"),
+                            crate::i18n::text("shell-move-down"),
+                        )
                     } else {
-                        ("Move left", "Move right")
+                        (
+                            crate::i18n::text("shell-move-left"),
+                            crate::i18n::text("shell-move-right"),
+                        )
                     };
                     let shortcut = |command| {
                         crate::settings::command_shortcut(&self.workspace.preferences, command)
@@ -5796,33 +5939,44 @@ impl Shell {
                         }
                     };
                     items.push(
-                        MenuAction::new("move", "Move")
+                        MenuAction::new("move", crate::i18n::text("shell-move"))
                             .icon("chevrons-up-down")
                             .submenu(vec![
                                 step("move:back", back, "Project: Move Back", first),
                                 step("move:forward", forward, "Project: Move Forward", last),
-                                MenuAction::new("move:start", "Move to start").disabled(first),
-                                MenuAction::new("move:end", "Move to end").disabled(last),
+                                MenuAction::new(
+                                    "move:start",
+                                    crate::i18n::text("shell-move-to-start"),
+                                )
+                                .disabled(first),
+                                MenuAction::new("move:end", crate::i18n::text("shell-move-to-end"))
+                                    .disabled(last),
                             ])
                             .into(),
                     );
                 }
                 items.extend([
-                    MenuAction::new("reveal", REVEAL_LABEL)
+                    MenuAction::new("reveal", crate::i18n::text(REVEAL_LABEL))
                         .icon("folder-open")
                         .into(),
                     self.external_editor_menu(path).into(),
                     MenuItem::Separator,
                     self.project_notification_menu(path).into(),
                     MenuItem::Separator,
-                    MenuAction::new("archive", "Archive").icon("archive").into(),
-                    MenuAction::new("delete", "Delete")
+                    MenuAction::new("archive", crate::i18n::text("shell-archive"))
+                        .icon("archive")
+                        .into(),
+                    MenuAction::new("delete", crate::i18n::text("shell-delete"))
                         .icon("trash")
                         .danger()
                         .into(),
                 ]);
                 (
-                    format!("Project actions for {}", project_name(path)).into(),
+                    crate::i18n::format(
+                        "shell-project-actions-for",
+                        &[("value", (project_name(path)).to_string())],
+                    )
+                    .into(),
                     items,
                     260.,
                     MenuStyle::Group,
@@ -5934,7 +6088,9 @@ impl Shell {
                     }
                 } else if action == "reveal" {
                     if path.starts_with("remote://") {
-                        self.error = Some("Remote folders stay on their host machine.".into());
+                        self.error = Some(crate::i18n::text(
+                            "shell-remote-folders-stay-on-their-host-machine",
+                        ));
                         cx.notify();
                     } else {
                         cx.reveal_path(std::path::Path::new(&path));
@@ -6118,28 +6274,46 @@ impl Shell {
                 "share",
                 // fuchsia-200/90
                 gpui::Hsla::from(rgb(0xf5d0fe)).opacity(0.9),
-                format!(
-                    "Orchestrator, {} {}",
-                    summary.tasks.len(),
-                    if summary.tasks.len() == 1 {
-                        "agent"
-                    } else {
-                        "agents"
-                    }
+                crate::i18n::format(
+                    "shell-orchestrator-agents",
+                    &[
+                        (
+                            "value1",
+                            crate::system_format::unsigned((summary.tasks.len()) as u64),
+                        ),
+                        (
+                            "value2",
+                            (if summary.tasks.len() == 1 {
+                                crate::i18n::text("shell-orchestrator-agents-agent")
+                            } else {
+                                crate::i18n::text("shell-orchestrator-agents-agents")
+                            })
+                            .to_string(),
+                        ),
+                    ],
                 ),
             ),
             rails::Rail::Started(children) => (
                 "cursor-magic",
                 // sky-200/90
                 gpui::Hsla::from(rgb(0xbae6fd)).opacity(0.9),
-                format!(
-                    "Operator, started {} {}",
-                    children.len(),
-                    if children.len() == 1 {
-                        "session"
-                    } else {
-                        "sessions"
-                    }
+                crate::i18n::format(
+                    "shell-operator-sessions",
+                    &[
+                        (
+                            "value1",
+                            crate::system_format::unsigned((children.len()) as u64),
+                        ),
+                        (
+                            "value2",
+                            (if children.len() == 1 {
+                                crate::i18n::text("shell-operator-sessions-session")
+                            } else {
+                                crate::i18n::text("shell-operator-sessions-sessions")
+                            })
+                            .to_string(),
+                        ),
+                    ],
                 ),
             ),
         });
@@ -6280,7 +6454,9 @@ impl Shell {
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(content(1.))
             })
-            .child(crate::particle_text::particle_text(session.display_title()));
+            .child(crate::particle_text::particle_text(
+                session.localized_title(),
+            ));
         let badges = div()
             .flex()
             .items_center()
@@ -6297,7 +6473,7 @@ impl Shell {
                     div()
                         .id(("session-mode", id as usize))
                         .role(Role::Image)
-                        .aria_label(label)
+                        .aria_label(&label)
                         .size(px(16.))
                         .flex_shrink_0()
                         .flex()
@@ -6396,10 +6572,13 @@ impl Shell {
             .debug_selector(move || format!("sidebar-session-{id}"))
             .group("session-row")
             .role(Role::Button)
-            .aria_label(session.display_title())
-            .aria_description(format!(
-                "{} conversation",
-                Kind::from_id(&session.summary.provider).label()
+            .aria_label(session.localized_title())
+            .aria_description(crate::i18n::format(
+                "shell-conversation",
+                &[(
+                    "name",
+                    (Kind::from_id(&session.summary.provider).label()).to_string(),
+                )],
             ))
             .cursor_pointer()
             // A nested row's `h-5` line and `px-1.5`, inside the card border.
@@ -6493,14 +6672,13 @@ impl Shell {
             .id(("archive-session", id as usize))
             .debug_selector(move || format!("archive-session-{id}"))
             .role(Role::Button)
-            .aria_label(format!(
-                "{} {}",
+            .aria_label(crate::i18n::format(
                 if session.summary.archived {
-                    "Unarchive"
+                    "shell-unarchive-session"
                 } else {
-                    "Archive"
+                    "shell-archive-session"
                 },
-                session.display_title()
+                &[("title", session.localized_title().to_owned())],
             ))
             .group("session-archive")
             .size(px(20.))
@@ -6548,13 +6726,15 @@ impl Shell {
                 div()
                     .id(("session-approval", id as usize))
                     .role(Role::Image)
-                    .aria_label("Needs approval")
+                    .aria_label(crate::i18n::text("shell-needs-approval"))
                     .flex()
                     .items_center()
                     .gap_1()
                     .text_color(rgb(0xfbbf24))
                     .child(icon("circle-alert", 14.))
-                    .when(detailed, |d| d.child("Needs approval"))
+                    .when(detailed, |d| {
+                        d.child(crate::i18n::text("shell-needs-approval"))
+                    })
                     .into_any()
             } else if detailed && session.responding() {
                 div()
@@ -6563,7 +6743,7 @@ impl Shell {
                     .gap_1()
                     .text_color(content(0.5))
                     .children(self.session_marks.get(&id).cloned())
-                    .child("Working…")
+                    .child(crate::i18n::text("shell-working-3"))
                     .into_any()
             } else if detailed && self.unseen_finished.contains(&id) {
                 div()
@@ -6572,18 +6752,18 @@ impl Shell {
                     .gap_1()
                     .text_color(rgb(0x2dd4bf))
                     .child(icon("check-circle-2", 14.).text_color(rgb(0x2dd4bf)))
-                    .child("Done")
+                    .child(crate::i18n::text("shell-done"))
                     .into_any()
             } else if session.has_saved_draft() {
                 div()
                     .id(("session-draft", id as usize))
                     .role(Role::Image)
-                    .aria_label("Draft")
+                    .aria_label(crate::i18n::text("shell-draft"))
                     .flex()
                     .items_center()
                     .gap_1()
                     .child(icon("circle-dashed-hi", 14.).text_color(content(0.4)))
-                    .when(detailed, |d| d.child("Draft"))
+                    .when(detailed, |d| d.child(crate::i18n::text("shell-draft")))
                     .into_any()
             } else if let Some(reminder) = self.reminders.iter().find(|r| r.session_id == id) {
                 div()
@@ -6594,7 +6774,7 @@ impl Shell {
                     .into_any()
             } else {
                 div()
-                    .child(monocode_core::time::relative(
+                    .child(crate::i18n::relative(
                         session.summary.updated_at,
                         monocode_core::time::now_ms(),
                     ))
@@ -6814,9 +6994,13 @@ impl Shell {
                                             .debug_selector(|| "sidebar-project-button".into())
                                             .relative()
                                             .role(Role::Button)
-                                            .aria_label(format!(
-                                                "Switch project, {}",
-                                                self.project_label(&self.workspace.project)
+                                            .aria_label(crate::i18n::format(
+                                                "shell-switch-project-3",
+                                                &[(
+                                                    "value",
+                                                    self.project_label(&self.workspace.project)
+                                                        .to_string(),
+                                                )],
                                             ))
                                             .aria_description(self.workspace.project.clone())
                                             .aria_expanded(self.menu_open(&MenuTarget::Header))
@@ -6886,22 +7070,28 @@ impl Shell {
                                 )
                                 .when(self.workspace.sidebar_search_visible, |d| {
                                     d.child(
-                                        icon_button("sidebar-search", "Search", "search")
-                                            .debug_selector(|| "sidebar-search-button".into())
-                                            .when(self.app_search.is_some(), |d| d.bg(content(0.1)))
-                                            .on_click(cx.listener(|this, _, window, cx| {
+                                        icon_button(
+                                            "sidebar-search",
+                                            crate::i18n::text("shell-search"),
+                                            "search",
+                                        )
+                                        .debug_selector(|| "sidebar-search-button".into())
+                                        .when(self.app_search.is_some(), |d| d.bg(content(0.1)))
+                                        .on_click(
+                                            cx.listener(|this, _, window, cx| {
                                                 if this.app_search.is_some() {
                                                     this.close_app_search(window, cx)
                                                 } else {
                                                     this.focus_search(window, cx)
                                                 }
-                                            })),
+                                            }),
+                                        ),
                                     )
                                 })
                                 .child(
                                     icon_button(
                                         "sidebar-options",
-                                        "Sidebar options",
+                                        crate::i18n::text("shell-sidebar-options"),
                                         "more-horizontal",
                                     )
                                     .debug_selector(|| "sidebar-options".into())
@@ -7071,15 +7261,19 @@ impl Shell {
             .items_center()
             .gap_1()
             .child(
-                icon_button("previous-projects", "Previous projects", "chevron-left")
-                    .size(px(20.))
-                    .opacity(if first == 0 { 0.3 } else { 1. })
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if this.spaces_start > 0 {
-                            this.spaces_start -= 1;
-                            this.nudge_spaces(-1., cx);
-                        }
-                    })),
+                icon_button(
+                    "previous-projects",
+                    crate::i18n::text("shell-previous-projects"),
+                    "chevron-left",
+                )
+                .size(px(20.))
+                .opacity(if first == 0 { 0.3 } else { 1. })
+                .on_click(cx.listener(|this, _, _, cx| {
+                    if this.spaces_start > 0 {
+                        this.spaces_start -= 1;
+                        this.nudge_spaces(-1., cx);
+                    }
+                })),
             )
             .child(
                 div()
@@ -7102,7 +7296,10 @@ impl Shell {
                             .debug_selector(move || format!("project-space-{ix}"))
                             .group("project-space")
                             .role(Role::Tab)
-                            .aria_label(format!("Project {}", self.project_label(&path)))
+                            .aria_label(crate::i18n::format(
+                                "shell-project-2",
+                                &[("value", self.project_label(&path).to_string())],
+                            ))
                             .aria_description(path.clone())
                             .aria_selected(active)
                             .cursor_pointer()
@@ -7163,15 +7360,19 @@ impl Shell {
                     })),
             )
             .child(
-                icon_button("more-projects", "More projects", "chevron-right")
-                    .size(px(20.))
-                    .opacity(if first >= last { 0.3 } else { 1. })
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        if this.spaces_start < last {
-                            this.spaces_start += 1;
-                            this.nudge_spaces(1., cx);
-                        }
-                    })),
+                icon_button(
+                    "more-projects",
+                    crate::i18n::text("shell-more-projects"),
+                    "chevron-right",
+                )
+                .size(px(20.))
+                .opacity(if first >= last { 0.3 } else { 1. })
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    if this.spaces_start < last {
+                        this.spaces_start += 1;
+                        this.nudge_spaces(1., cx);
+                    }
+                })),
             )
             .children(tooltip)
             .into_any()
@@ -7233,16 +7434,19 @@ impl Shell {
         let file_focused =
             !session_focused || (self.tab_review_focused(tab, cx) && review(&focus).is_some());
         let title = |id: &i64| {
-            let title = self.session_metadata(*id, cx).display_title();
-            if title == "New session" {
+            let session = self.session_metadata(*id, cx);
+            if monocode_core::session_title::is_default_title(
+                &session.summary.title,
+                &session.summary.provider,
+            ) {
                 String::new()
             } else {
-                title
+                session.display_title()
             }
         };
         let conversation = sessions.first().map(title).unwrap_or_default();
         let file = files.first().cloned().unwrap_or_default();
-        let untitled = "New session".to_owned();
+        let untitled = crate::i18n::text("shell-new-session");
         let mono = self
             .mono_pane_title(focus, cx)
             .or_else(|| self.terminal_pane_title(focus, cx));
@@ -7544,7 +7748,7 @@ impl Shell {
         } else if self.workspace.review_owners.contains_key(&id) {
             self.tab_copy(id, cx).headline
         } else {
-            session.display_title()
+            session.localized_title()
         };
         Some(
             div()
@@ -8134,7 +8338,10 @@ impl Shell {
                                 .debug_selector(move || format!("close-title-tab-{id}"))
                                 .group("tab-close")
                                 .role(Role::Button)
-                                .aria_label(format!("Close tab {}", copy.headline))
+                                .aria_label(crate::i18n::format(
+                                    "shell-close-tab-2",
+                                    &[("value", copy.headline.to_string())],
+                                ))
                                 .absolute()
                                 .right_1()
                                 .top(px(10.))
@@ -8154,7 +8361,9 @@ impl Shell {
                                             .line_height(px(20.))
                                             .text_color(content(0.4))
                                             .group_hover("title-tab", |s| s.opacity(0.))
-                                            .child(copy.panes.len().to_string()),
+                                            .child(crate::system_format::unsigned(
+                                                copy.panes.len() as u64,
+                                            )),
                                     )
                                 })
                                 .child(
@@ -8401,7 +8610,7 @@ impl Shell {
                             .debug_selector(|| "new-tab".into())
                             .group("new-tab")
                             .role(Role::Button)
-                            .aria_label("New session tab")
+                            .aria_label(crate::i18n::text("shell-new-session-tab"))
                             .cursor_pointer()
                             .size(px(TAB_PLATE_HEIGHT))
                             .flex_shrink_0()
@@ -8790,7 +8999,7 @@ impl Render for Shell {
             .id("monocode-workspace")
             .relative()
             .role(Role::Application)
-            .aria_label("Monocode Native")
+            .aria_label(crate::i18n::text("shell-monocode-native"))
             .key_context("Workspace")
             .track_focus(&self.focus)
             .capture_key_up(cx.listener(|this, _, _, _| this.archive_shortcut_held = false))
@@ -8878,12 +9087,18 @@ impl Render for Shell {
                 this.open_settings(crate::settings::Section::Appearance, window, cx)
             }))
             .on_action(|_: &About, window, cx| {
-                let detail = format!("Version {}", crate::notifications::updater::version());
+                let detail = crate::i18n::format(
+                    "shell-version",
+                    &[(
+                        "value",
+                        (crate::notifications::updater::version()).to_string(),
+                    )],
+                );
                 drop(window.prompt(
                     gpui::PromptLevel::Info,
-                    "Monocode Native",
+                    crate::i18n::text("shell-prompt-monocode-native").as_str(),
                     Some(&detail),
-                    &["OK"],
+                    &[crate::i18n::text("shell-prompt-ok").as_str()],
                     cx,
                 ));
             })
@@ -9130,6 +9345,9 @@ impl Render for Shell {
             .on_action(
                 cx.listener(|this, _: &FocusSearch, window, cx| this.focus_search(window, cx)),
             )
+            .on_action(
+                cx.listener(|this, _: &FocusPrompt, window, cx| this.focus_prompt(window, cx)),
+            )
             .on_action(cx.listener(|this, _: &ToggleTerminal, window, cx| {
                 // Title bar terminals open a new tab each time.
                 if this.terminal_in_title() {
@@ -9305,6 +9523,50 @@ mod tests {
     use super::*;
     use gpui::{EntityInputHandler, TestAppContext, WindowHandle};
     use monocode_core::store::Store;
+
+    #[gpui::test]
+    fn chinese_sidebar_localizes_only_the_default_session_title(cx: &mut TestAppContext) {
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::SimplifiedChinese);
+        let (window, _, id) = window(cx);
+        window
+            .update(cx, |shell, window, cx| {
+                window.activate_accessibility_for_test();
+                shell.sessions[&id].update(cx, |session, _| session.summary.has_messages = true);
+                assert_eq!(
+                    shell.session_metadata(id, cx).display_title(),
+                    "New session"
+                );
+                assert_eq!(shell.session_metadata(id, cx).localized_title(), "新建会话");
+                assert_eq!(
+                    shell.session_metadata(id, cx).summary.title,
+                    "New Claude Code session"
+                );
+                shell.invalidate_chrome(cx);
+            })
+            .unwrap();
+        cx.refresh().unwrap();
+        cx.run_until_parked();
+        window
+            .update(cx, |_, window, _| {
+                let tree: serde_json::Value =
+                    serde_json::from_str(&window.debug_a11y_tree_json().unwrap()).unwrap();
+                let node = tree["nodes"]
+                    .as_object()
+                    .unwrap()
+                    .values()
+                    .find(|node| {
+                        node["aria"]["role"] == "Button"
+                            && node["aria"]["label"] == "新建会话"
+                            && node["element_id"]
+                                .as_str()
+                                .is_some_and(|id| id.contains("sidebar-session"))
+                    })
+                    .expect("localized session row");
+                eprintln!("sidebar a11y={node}");
+            })
+            .unwrap();
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
+    }
     #[gpui::test]
     fn window_state_is_saved_on_resize_and_restored_with_the_workspace(cx: &mut TestAppContext) {
         let (window, _, _) = window(cx);
@@ -10244,7 +10506,8 @@ mod tests {
                     .unwrap();
                 assert_eq!(background.effect, Effect::GradientBlur);
                 assert_eq!(background.scope, Scope::Empty);
-                assert!((background.empty_opacity - 0.36).abs() < 0.001);
+                // The 0.05..=1.0 slider's midpoint stores 0.52; Right adds 0.01.
+                assert!((background.empty_opacity - 0.53).abs() < 0.001);
                 let restored = Workspace::restore(
                     Some(&serde_json::to_string(&shell.workspace).unwrap()),
                     &[(active, "/work/monocode".into())],

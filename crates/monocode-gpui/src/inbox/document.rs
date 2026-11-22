@@ -162,7 +162,11 @@ impl InboxDocument {
         match row {
             Row::Image { url, alt } => {
                 let source = attachment(url, window, cx);
-                let label = if alt.trim().is_empty() { "Image" } else { alt }.to_string();
+                let label = if alt.trim().is_empty() {
+                    crate::i18n::text("inbox-image")
+                } else {
+                    alt.to_owned()
+                };
                 let url = url.clone();
                 let media = match source {
                     Some(Ok(image)) => img(image)
@@ -192,7 +196,7 @@ impl InboxDocument {
                 div()
                     .id(("inbox-image", ix))
                     .role(Role::Image)
-                    .aria_label(label)
+                    .aria_label(&label)
                     .py_2()
                     .min_w_0()
                     .cursor_pointer()

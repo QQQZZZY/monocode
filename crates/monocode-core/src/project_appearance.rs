@@ -181,7 +181,7 @@ impl Background {
     pub fn normalize(&mut self) {
         for value in [&mut self.empty_opacity, &mut self.session_opacity] {
             *value = if value.is_finite() {
-                value.clamp(0.05, 0.65)
+                value.clamp(0.05, 1.0)
             } else {
                 0.24
             };
@@ -268,23 +268,8 @@ pub fn background_fade(y: f32, empty: bool, haze: bool) -> f32 {
             (0.90, 0.),
         ],
         (false, true) => &[(0., 1.), (0.18, 1.), (0.76, 0.)],
-        (true, false) => &[
-            (0., 1.),
-            (0.19, 1.),
-            (0.30, 0.79),
-            (0.42, 0.50),
-            (0.54, 0.20),
-            (0.64, 0.05),
-            (0.72, 0.),
-        ],
-        (false, false) => &[
-            (0., 1.),
-            (0.18, 1.),
-            (0.32, 0.61),
-            (0.47, 0.32),
-            (0.62, 0.11),
-            (0.72, 0.),
-        ],
+        (true, false) => &[(0., 1.), (0.58, 1.), (0.84, 0.55), (1., 0.38)],
+        (false, false) => &[(0., 1.), (0.40, 1.), (0.75, 0.55), (1., 0.32)],
     };
     for pair in stops.windows(2) {
         if y <= pair[1].0 {
@@ -448,10 +433,11 @@ fn effect_pixels(
         match effect {
             Effect::None => {}
             Effect::Dither => {
-                let p = sample(x / 2 * 2 + 1, y / 2 * 2 + 1);
+                let step = (width / 512).clamp(2, 4);
+                let p = sample((x / step) * step + step / 2, (y / step) * step + step / 2);
                 let peak = p[0].max(p[1]).max(p[2]) as f32;
                 let gain = if peak / 255.
-                    > (BAYER[(y / 2 % 4) as usize][(x / 2 % 4) as usize] + 0.5) / 16.
+                    > (BAYER[(y / step % 4) as usize][(x / step % 4) as usize] + 0.5) / 16.
                 {
                     255. / peak.max(1.)
                 } else {
@@ -463,23 +449,39 @@ fn effect_pixels(
                 pixel[3] = p[3];
             }
             Effect::Ascii => {
-                let p = sample(x / 6 * 6 + 3, y / 8 * 8 + 4);
-                let glyph = &GLYPHS[((luma(p) / 255.).sqrt() * 9.) as usize];
-                let ink =
-                    x % 6 < 5 && y % 8 < 7 && (glyph[(y % 8) as usize] & (1 << (4 - x % 6))) != 0;
+                let cell_w = (width / 150).clamp(6, 12);
+                let cell_h = (cell_w * 4 / 3).clamp(8, 16);
+                let p = sample(
+                    (x / cell_w) * cell_w + cell_w / 2,
+                    (y / cell_h) * cell_h + cell_h / 2,
+                );
+                let gx = ((x % cell_w) * 6 / cell_w).min(5);
+                let gy = ((y % cell_h) * 8 / cell_h).min(7);
+                let idx = ((luma(p) / 255.).powf(0.85) * 9.).round().clamp(0., 9.) as usize;
+                let glyph = &GLYPHS[idx];
+                let ink = gx < 5 && gy < 7 && (glyph[gy as usize] & (1 << (4 - gx))) != 0;
                 for c in 0..3 {
-                    pixel[c] = (pixel[c] as f32 * 0.6 + if ink { p[c] as f32 * 0.4 } else { 0. })
-                        .round() as u8;
+                    pixel[c] = if ink {
+                        (p[c] as f32 * 1.15).min(255.).round() as u8
+                    } else {
+                        (p[c] as f32 * 0.14).round() as u8
+                    };
                 }
+                pixel[3] = p[3];
             }
             Effect::Halftone => {
-                let radius = 2. * (0.3 + 0.7 * (luma(sample(x / 4 * 4, y / 4 * 4)) / 255.).sqrt());
-                let p = sample(x / 4 * 4 + 2, y / 4 * 4 + 2);
-                let distance = (x as f32 % 4. - 1.5).hypot(y as f32 % 4. - 1.5);
-                let coverage = (radius + 0.5 - distance).clamp(0., 1.) * p[3] as f32 / 255.;
+                let cell = (width / 165).clamp(4, 12);
+                let half = cell as f32 * 0.5;
+                let p = sample((x / cell) * cell + cell / 2, (y / cell) * cell + cell / 2);
+                let radius = half * 0.96 * (0.16 + 0.84 * (luma(p) / 255.).powf(0.65));
+                let dist = ((x % cell) as f32 + 0.5 - half).hypot((y % cell) as f32 + 0.5 - half);
+                let coverage = (radius + 0.5 - dist).clamp(0., 1.) * p[3] as f32 / 255.;
                 for c in 0..3 {
-                    pixel[c] = (pixel[c] as f32 * 0.6 + p[c] as f32 * coverage * 0.4).round() as u8;
+                    let fg = (p[c] as f32 * 1.12).min(255.);
+                    let bg = p[c] as f32 * 0.08;
+                    pixel[c] = (bg + (fg - bg) * coverage).round() as u8;
                 }
+                pixel[3] = p[3];
             }
             Effect::Scanlines => {
                 if y % 3 == 0 {
@@ -569,7 +571,11 @@ mod tests {
             let result = render_background(&source, effect, 41, 33, true);
             assert_eq!(result.dimensions(), (41, 33));
             assert_eq!(result.get_pixel(0, 0)[3], 255);
-            assert_eq!(result.get_pixel(20, 32)[3], 0);
+            assert_eq!(
+                result.get_pixel(20, 32)[3],
+                (255. * background_fade(32. / 33., true, effect == Effect::GradientBlur)).round()
+                    as u8
+            );
             if effect != Effect::None {
                 assert_ne!(result, plain, "{effect:?}");
             }
@@ -604,7 +610,7 @@ mod tests {
         let background = appearance.background.as_ref().unwrap();
         assert_eq!(background.opacity(true), 0.24);
         assert_eq!(background.opacity(false), 0.);
-        assert_eq!(background.session_opacity, 0.65);
+        assert_eq!(background.session_opacity, 1.0);
         assert_eq!(
             serde_json::from_str::<ProjectAppearance>(&serde_json::to_string(&appearance).unwrap())
                 .unwrap(),

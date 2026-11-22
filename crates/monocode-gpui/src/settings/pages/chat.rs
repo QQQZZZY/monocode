@@ -9,13 +9,16 @@ impl SettingsView {
             self.row(
                 Some("transcript-layout"),
                 true,
-                "Transcript layout",
-                Some("Show prompts at full width or as right-aligned chat bubbles.".into()),
+                crate::i18n::text("settings-transcript-layout"),
+                Some(crate::i18n::text("settings-show-prompts-at-full-width-or-as").into()),
                 vec![self.segmented(
                     "transcript-layout",
-                    "Transcript layout",
+                    crate::i18n::text("settings-transcript-layout"),
                     &p.transcript_layout,
-                    &[("full", "Full width"), ("chat", "Chat")],
+                    &[
+                        ("full", &crate::i18n::text("settings-full-width")),
+                        ("chat", &crate::i18n::text("settings-chat")),
+                    ],
                     cx,
                     |this, v, cx| this.update(cx, |p| p.transcript_layout = v.into()),
                 )],
@@ -23,11 +26,11 @@ impl SettingsView {
             self.row(
                 Some("anchor-prompts"),
                 false,
-                "Anchor prompts to top",
-                Some("Place new prompts at the top, with replies below.".into()),
+                crate::i18n::text("settings-anchor-prompts-to-top"),
+                Some(crate::i18n::text("settings-place-new-prompts-at-the-top-with").into()),
                 vec![self.toggle(
                     "anchor-prompts",
-                    "Anchor prompts to top",
+                    crate::i18n::text("settings-anchor-prompts-to-top"),
                     p.anchor_prompts,
                     false,
                     cx,
@@ -37,11 +40,11 @@ impl SettingsView {
             self.row(
                 Some("paced-reveal"),
                 false,
-                "Smooth text reveal",
-                Some("Reveal incoming text gradually.".into()),
+                crate::i18n::text("settings-smooth-text-reveal"),
+                Some(crate::i18n::text("settings-reveal-incoming-text-gradually").into()),
                 vec![self.toggle(
                     "paced-reveal",
-                    "Smooth text reveal",
+                    crate::i18n::text("settings-smooth-text-reveal"),
                     p.paced_reveal,
                     false,
                     cx,
@@ -51,11 +54,11 @@ impl SettingsView {
             self.row(
                 Some("collapse-tool-groups"),
                 false,
-                "Collapse tool groups",
-                Some("Keep tool groups closed, even while they run. Click a group to see its steps.".into()),
+                crate::i18n::text("settings-collapse-tool-groups"),
+                Some(crate::i18n::text("settings-keep-tool-groups-closed-even-while-they").into()),
                 vec![self.toggle(
                     "collapse-tool-groups",
-                    "Collapse tool groups",
+                    crate::i18n::text("settings-collapse-tool-groups"),
                     p.collapse_tool_groups,
                     false,
                     cx,
@@ -65,11 +68,11 @@ impl SettingsView {
             self.row(
                 Some("fold-finished-work"),
                 false,
-                "Fold finished work",
-                Some("Fold a finished reply's tool calls under \"worked for\". Turn off to keep text and tool groups inline.".into()),
+                crate::i18n::text("settings-fold-finished-work"),
+                Some(crate::i18n::text("settings-fold-a-finished-reply-s-tool").into()),
                 vec![self.toggle(
                     "fold-finished-work",
-                    "Fold finished work",
+                    crate::i18n::text("settings-fold-finished-work"),
                     p.fold_finished_work,
                     false,
                     cx,
@@ -81,13 +84,16 @@ impl SettingsView {
             self.row(
                 Some("follow-up"),
                 true,
-                "Follow-up behavior",
-                Some("Queue follow-ups until the active turn finishes, or steer the active turn immediately.".into()),
+                crate::i18n::text("settings-follow-up-behavior"),
+                Some(crate::i18n::text("settings-queue-follow-ups-until-the-active-turn").into()),
                 vec![self.segmented(
                     "follow-up",
-                    "Follow-up behavior",
+                    crate::i18n::text("settings-follow-up-behavior"),
                     &p.follow_up,
-                    &[("queue", "Queue"), ("steer", "Steer")],
+                    &[
+                        ("queue", &crate::i18n::text("settings-queue")),
+                        ("steer", &crate::i18n::text("settings-steer")),
+                    ],
                     cx,
                     |this, v, cx| this.update(cx, |p| p.follow_up = v.into()),
                 )],
@@ -95,13 +101,19 @@ impl SettingsView {
             self.row(
                 Some("model-controls"),
                 false,
-                "Model controls",
-                Some("Show model options beside the picker instead of inside the model menu.".into()),
+                crate::i18n::text("settings-model-controls"),
+                Some(
+                    crate::i18n::text("settings-show-model-options-beside-the-picker-instead")
+                        .into(),
+                ),
                 vec![self.segmented(
                     "model-controls",
-                    "Model controls",
+                    crate::i18n::text("settings-model-controls"),
                     &p.model_controls,
-                    &[("menu", "Menu"), ("beside", "Beside")],
+                    &[
+                        ("menu", &crate::i18n::text("settings-menu")),
+                        ("beside", &crate::i18n::text("settings-beside")),
+                    ],
                     cx,
                     |this, v, cx| this.update(cx, |p| p.model_controls = v.into()),
                 )],
@@ -109,42 +121,68 @@ impl SettingsView {
             self.row(
                 Some("composer-autocorrect"),
                 false,
-                "Autocorrect",
-                Some("Spell check and autocorrect prompts.".into()),
+                crate::i18n::text("settings-autocorrect"),
+                Some(crate::i18n::text("settings-spell-check-and-autocorrect-prompts").into()),
                 vec![self.toggle(
                     "composer-autocorrect",
-                    "Autocorrect",
+                    crate::i18n::text("settings-autocorrect"),
                     p.autocorrect,
                     false,
                     cx,
                     |this, on, cx| this.update(cx, |p| p.autocorrect = on),
                 )],
             ),
-        ];
-        let editor = vec![self.row(
-            Some("format-on-save"),
-            true,
-            "Format on save",
-            Some("Format supported files with Prettier before saving.".into()),
-            vec![self.toggle(
-                "format-on-save",
-                "Format on save",
-                p.format_on_save,
+            self.row(
+                Some("prompt-suggestions"),
                 false,
-                cx,
-                |this, on, cx| this.update(cx, |p| p.format_on_save = on),
-            )],
-        )];
+                crate::i18n::text("settings-prompt-suggestions"),
+                Some(
+                    crate::i18n::text("settings-show-predicted-follow-up-prompt-ghost-text").into(),
+                ),
+                vec![self.toggle(
+                    "prompt-suggestions",
+                    crate::i18n::text("settings-prompt-suggestions"),
+                    p.prompt_suggestions,
+                    false,
+                    cx,
+                    |this, on, cx| this.update(cx, |p| p.prompt_suggestions = on),
+                )],
+            ),
+        ];
+        let editor = vec![
+            self.row(
+                Some("format-on-save"),
+                true,
+                crate::i18n::text("settings-format-on-save"),
+                Some(
+                    crate::i18n::text(
+                        "settings-format-supported-files-with-prettier-before-saving",
+                    )
+                    .into(),
+                ),
+                vec![self.toggle(
+                    "format-on-save",
+                    crate::i18n::text("settings-format-on-save"),
+                    p.format_on_save,
+                    false,
+                    cx,
+                    |this, on, cx| this.update(cx, |p| p.format_on_save = on),
+                )],
+            ),
+        ];
         let review = vec![self.row(
             Some("diff-view"),
             true,
-            "Diff view",
-            Some("Review changes in the editor or in a combined diff.".into()),
+            crate::i18n::text("settings-diff-view"),
+            Some(crate::i18n::text("settings-review-changes-in-the-editor-or-in").into()),
             vec![self.segmented(
                 "diff-view",
-                "Diff view",
+                crate::i18n::text("settings-diff-view"),
                 &p.diff_view,
-                &[("editor", "Editor"), ("unified", "Unified")],
+                &[
+                    ("editor", &crate::i18n::text("settings-editor")),
+                    ("unified", &crate::i18n::text("settings-unified")),
+                ],
                 cx,
                 |this, v, cx| this.update(cx, |p| p.diff_view = v.into()),
             )],
@@ -153,11 +191,11 @@ impl SettingsView {
             self.row(
                 Some("composer-mascot"),
                 true,
-                "Composer mascot",
-                Some("Show the project mascot while an agent works.".into()),
+                crate::i18n::text("settings-composer-mascot"),
+                Some(crate::i18n::text("settings-show-the-project-mascot-while-an-agent").into()),
                 vec![self.toggle(
                     "composer-mascot",
-                    "Composer mascot",
+                    crate::i18n::text("settings-composer-mascot"),
                     p.composer_mascot,
                     false,
                     cx,
@@ -167,24 +205,63 @@ impl SettingsView {
             self.row(
                 Some("empty-session"),
                 false,
-                "Empty session",
-                Some("Stir dithered ink, play a game, or leave it blank.".into()),
+                crate::i18n::text("settings-empty-session"),
+                Some(crate::i18n::text("settings-stir-dithered-ink-play-a-game-or").into()),
                 vec![self.segmented(
                     "empty-session",
-                    "Empty session",
+                    crate::i18n::text("settings-empty-session"),
                     &p.empty_session,
-                    &[("ink", "Ink"), ("games", "Games"), ("none", "Off")],
+                    &[
+                        ("ink", &crate::i18n::text("settings-ink")),
+                        ("games", &crate::i18n::text("settings-games")),
+                        ("none", &crate::i18n::text("settings-off")),
+                    ],
                     cx,
                     |this, v, cx| this.update(cx, |p| p.empty_session = v.into()),
                 )],
             ),
         ];
         vec![
-            self.group(None, true, "Transcript", None, None, transcript),
-            self.group(None, false, "Composer", None, None, composer),
-            self.group(None, false, "Editor", None, None, editor),
-            self.group(None, false, "Code review", None, None, review),
-            self.group(None, false, "Extras", None, None, extras),
+            self.group(
+                None,
+                true,
+                crate::i18n::text("settings-transcript"),
+                None,
+                None,
+                transcript,
+            ),
+            self.group(
+                None,
+                false,
+                crate::i18n::text("settings-composer"),
+                None,
+                None,
+                composer,
+            ),
+            self.group(
+                None,
+                false,
+                crate::i18n::text("settings-editor"),
+                None,
+                None,
+                editor,
+            ),
+            self.group(
+                None,
+                false,
+                crate::i18n::text("settings-code-review"),
+                None,
+                None,
+                review,
+            ),
+            self.group(
+                None,
+                false,
+                crate::i18n::text("settings-extras"),
+                None,
+                None,
+                extras,
+            ),
         ]
     }
 }

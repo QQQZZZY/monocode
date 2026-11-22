@@ -265,7 +265,10 @@ impl Render for ImageLightbox {
             .id("image-lightbox")
             .debug_selector(|| "image-lightbox".into())
             .role(Role::Dialog)
-            .aria_label(format!("Image preview: {}", self.alt))
+            .aria_label(crate::i18n::format(
+                "image-lightbox-image-preview",
+                &[("value", format!("{}", self.alt))],
+            ))
             .key_context("ImageLightbox")
             .absolute()
             .top_0()
@@ -411,7 +414,7 @@ impl Render for ImageLightbox {
                         .items_center()
                         .justify_center()
                         .text_color(white(0.8))
-                        .child("Couldn’t load image"),
+                        .child(crate::i18n::text("image-lightbox-couldn-t-load-image")),
                 )
             })
             .child(
@@ -420,7 +423,7 @@ impl Render for ImageLightbox {
                     .group("image-preview-close")
                     .debug_selector(|| "close-image-preview".into())
                     .role(Role::Button)
-                    .aria_label("Close image preview")
+                    .aria_label(crate::i18n::text("image-lightbox-close-image-preview"))
                     .track_focus(&self.focus)
                     .absolute()
                     .top(px(16.))

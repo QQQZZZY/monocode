@@ -52,10 +52,23 @@ fn now() -> i64 {
     monocode_core::time::now_ms().min(i64::MAX as u64) as i64
 }
 
+/// Stable marker for a poisoned service lock. Callers run on the background
+/// executor, which must not pick a language; the UI thread localizes it.
+const SERVICE_UNAVAILABLE: &str = "Automations are unavailable right now.";
+
 fn service_lock(service: &ServiceHandle) -> Result<std::sync::MutexGuard<'_, Service>, String> {
-    service
-        .lock()
-        .map_err(|_| "Automations are unavailable".into())
+    service.lock().map_err(|_| SERVICE_UNAVAILABLE.to_owned())
+}
+
+/// Localize only the service's own lock failure; everything else is a
+/// diagnostic detail that stays as reported. `starts_with` keeps the marker
+/// recognizable when a caller prefixes it with its own context.
+fn service_error(error: &str) -> String {
+    if let Some(detail) = error.strip_prefix(SERVICE_UNAVAILABLE) {
+        let copy = crate::i18n::text("shell-automations-are-unavailable");
+        return format!("{copy}{detail}");
+    }
+    error.to_owned()
 }
 
 impl Shell {
@@ -108,7 +121,10 @@ impl Shell {
                         }
                     }
                     Err(error) => {
-                        this.error = Some(format!("Could not open automations: {error}"));
+                        this.error = Some(crate::i18n::format(
+                            "shell-could-not-open-automations",
+                            &[("error", error.to_string())],
+                        ));
                         cx.notify();
                     }
                 }
@@ -164,7 +180,10 @@ impl Shell {
                         }
                     }
                     Err(error) => {
-                        this.error = Some(format!("Could not evaluate automations: {error}"));
+                        this.error = Some(crate::i18n::format(
+                            "shell-could-not-evaluate-automations",
+                            &[("error", service_error(&error))],
+                        ));
                         cx.notify();
                     }
                 }
@@ -274,7 +293,10 @@ impl Shell {
                             .detach();
                     }
                     Err(error) => {
-                        this.error = Some(format!("Could not evaluate Inbox automations: {error}"));
+                        this.error = Some(crate::i18n::format(
+                            "shell-could-not-evaluate-inbox-automations",
+                            &[("error", service_error(&error))],
+                        ));
                         cx.notify();
                     }
                 }
@@ -549,7 +571,7 @@ impl Shell {
         let (mut ok, mut message) = view.external_outcome(cx);
         if view.submission_generation == run.generation_before {
             ok = false;
-            message = "The selected agent session could not start this run.".into();
+            message = crate::i18n::text("shell-the-selected-agent-session-could-not-start-this");
         }
         let status = if cancelled {
             "cancelled"
@@ -591,7 +613,10 @@ impl Shell {
             let result = work.await;
             let _ = this.update(cx, |this, cx| {
                 if let Err(error) = result {
-                    this.error = Some(format!("Could not save automation result: {error}"));
+                    this.error = Some(crate::i18n::format(
+                        "shell-could-not-save-automation-result",
+                        &[("error", service_error(&error))],
+                    ));
                 }
                 if let Some(view) = &this.automations {
                     view.update(cx, |view, cx| view.refresh(cx));

@@ -620,7 +620,8 @@ impl Service {
                 let installed = crate::scm::resolve_gui_binary("gh").is_some();
                 let authenticated = installed
                     && run_gh(
-                        &self.cwd,
+                        // Auth is global; a "~" or removed project folder must not fail it.
+                        &gh_root(&self.cwd),
                         &["auth", "status", "--active", "--hostname", "github.com"],
                         true,
                     )
@@ -1025,7 +1026,7 @@ fn run_command(
     })?;
     let mut command = Command::new(binary);
     command
-        .current_dir(root)
+        .current_dir(crate::scm::expand_home(root))
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GH_PROMPT_DISABLED", "1")
@@ -1160,5 +1161,23 @@ mod notification_tests {
                 "from {cwd:?}: {checkouts:?}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod command_root_tests {
+    use super::*;
+
+    #[test]
+    fn a_tilde_project_folder_runs_commands_from_home() {
+        // Projects saved as "~" were passed verbatim as the working directory,
+        // so `gh auth status` failed to spawn and GitHub read as disconnected.
+        assert!(run_git(Path::new("~"), &["--version"]).is_ok());
+        let home = crate::scm::shell::dirs_home().map(PathBuf::from);
+        assert_eq!(Some(gh_root(Path::new("~"))), home);
+        assert_eq!(
+            Some(gh_root(Path::new("/definitely/missing/monocode-project"))),
+            crate::scm::shell::dirs_home().map(PathBuf::from)
+        );
     }
 }

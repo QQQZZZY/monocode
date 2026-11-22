@@ -7,7 +7,7 @@ use crate::{
 use gpui::{AnyView, Div, FontWeight, Stateful};
 use monocode_core::mono::heartbeat;
 use monocode_core::project_appearance::{MASCOTS, ProjectAppearance};
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum OverviewTab {
     Overview,
     Sessions,
@@ -39,6 +39,96 @@ impl Route {
             Self::Habit(id) => format!("habit:{id}"),
             Self::NewHabit => "new-habit".into(),
         }
+    }
+}
+/// What a Mono's details panel showed when another Mono was opened.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct PanelView {
+    pub(super) tab: OverviewTab,
+    pub(super) previous: OverviewTab,
+    pub(super) route: Option<Route>,
+}
+impl Default for PanelView {
+    fn default() -> Self {
+        Self {
+            tab: OverviewTab::Overview,
+            previous: OverviewTab::Overview,
+            route: None,
+        }
+    }
+}
+impl PanelView {
+    /// The view to show again, keeping only a page whose subject still exists.
+    /// Reviews and habit pages depend on state reloaded per Mono, so they
+    /// return to their tab's list.
+    pub(super) fn restored(mut self, exists: impl Fn(&Route) -> bool) -> Self {
+        self.route = self.route.filter(|route| {
+            matches!(route, Route::Session(_) | Route::Document(_)) && exists(route)
+        });
+        self
+    }
+}
+impl Monos {
+    pub(super) fn remember_panel_view(&mut self) {
+        if let Some(id) = self.active.clone() {
+            let view = PanelView {
+                tab: self.overview_tab,
+                previous: self.overview_previous,
+                route: self.route.clone(),
+            };
+            self.panel_views.insert(id, view);
+        }
+    }
+    /// Restores `id`'s remembered view. Callers may be inside the Shell's own
+    /// update, so whether a session still exists unarchived is checked after.
+    /// A document listed by the chat may have been deleted from the shared
+    /// store while `id` was inactive, so its record is checked there too.
+    pub(super) fn restore_panel_view(&mut self, id: &str, cx: &mut Context<Self>) {
+        let saved = self.panel_views.get(id).cloned().unwrap_or_default();
+        let mono = self.roster.get(id);
+        let view = saved.restored(|route: &Route| match route {
+            Route::Session(_) => true,
+            Route::Document(document) => {
+                mono.is_some_and(|m| m.documents.iter().any(|d| &d.id == document))
+            }
+            _ => false,
+        });
+        self.panel_check = None;
+        if let Some(Route::Document(document)) = view.route.clone()
+            && !mono.is_some_and(|m| super::work::inline_document(m, &document))
+        {
+            let store = self.store.clone();
+            let target = document.clone();
+            let exists = cx
+                .background_executor()
+                .spawn(async move { locked(&store)?.mono_document(&target).map(|d| d.is_some()) });
+            self.panel_check = Some(cx.spawn(async move |this, cx| {
+                if exists.await == Ok(false) {
+                    let _ = this.update(cx, |this, cx| this.forget_document(&document, cx));
+                }
+            }));
+        }
+        if let Some(Route::Session(session)) = view.route {
+            self.panel_check = Some(cx.spawn(async move |this, cx| {
+                let _ = this.update(cx, |this, cx| {
+                    let live = this.owner.upgrade().is_some_and(|owner| {
+                        owner
+                            .read(cx)
+                            .mono_session_views(cx)
+                            .iter()
+                            .any(|v| v.id == session && !v.archived)
+                    });
+                    if !live && this.route == Some(Route::Session(session)) {
+                        this.route = None;
+                        cx.notify();
+                    }
+                });
+            }));
+        }
+        self.overview_tab = view.tab;
+        self.overview_previous = view.previous;
+        self.overview_reveal = None;
+        self.route = view.route;
     }
 }
 pub(super) struct OpenPicker {
@@ -199,14 +289,14 @@ fn sub_agent_card(agent: SubAgent) -> Stateful<Div> {
         .map_or(model.clone(), |short| short.to_owned().into());
     let amber: gpui::Hsla = rgb(0xfbbf24).into();
     let (label, color, live): (String, gpui::Hsla, bool) = match agent.state {
-        AgentState::Working => ("Working".into(), accent_color(), true),
-        AgentState::NeedsInput => ("Needs approval".into(), amber, true),
+        AgentState::Working => (crate::i18n::text("monos-working"), accent_color(), true),
+        AgentState::NeedsInput => (crate::i18n::text("monos-needs-approval"), amber, true),
         AgentState::Idle(at) => (
-            monocode_core::time::relative(at, monocode_core::time::now_ms()),
+            crate::i18n::relative(at, monocode_core::time::now_ms()),
             content(0.45),
             false,
         ),
-        AgentState::Unavailable => ("Unavailable".into(), content(0.45), false),
+        AgentState::Unavailable => (crate::i18n::text("monos-unavailable"), content(0.45), false),
     };
     let needs_input = matches!(agent.state, AgentState::NeedsInput);
     let id = agent.id;
@@ -399,12 +489,22 @@ impl EventEmitter<LookSubmitted> for LookEditor {}
 impl LookEditor {
     fn new(mono: Mono, cx: &mut Context<Self>) -> Self {
         let name = cx.new(|cx| {
-            let mut f = Input::field("Mono name", mono.label(), content(0.45), cx);
+            let mut f = Input::field(
+                crate::i18n::text("monos-mono-name"),
+                mono.label(),
+                content(0.45),
+                cx,
+            );
             f.set_text(mono.name.clone(), cx);
             f
         });
         let color = cx.new(|cx| {
-            let mut f = Input::field("Custom Mono color", "#rrggbb", content(0.4), cx);
+            let mut f = Input::field(
+                crate::i18n::text("monos-custom-mono-color"),
+                crate::i18n::text("monos-rrggbb"),
+                content(0.4),
+                cx,
+            );
             f.set_text(format!("#{:06x}", mono.color), cx);
             f
         });
@@ -467,14 +567,22 @@ impl gpui::Render for LookEditor {
         // MonoMenu: the name, MascotPicker and the inline ColorPicker, each
         // ten columns wide.
         const COLOR_NAMES: [&str; 9] = [
-            "Blue", "Coral", "Yellow", "Green", "Pink", "Purple", "Teal", "Orange", "Indigo",
+            "monos-blue",
+            "monos-coral",
+            "monos-yellow",
+            "monos-green",
+            "monos-pink",
+            "monos-purple",
+            "monos-teal",
+            "monos-orange",
+            "monos-indigo",
         ];
         let preset = mono::COLORS_MONO.contains(&self.mono.color);
         let swatch = |id: gpui::ElementId, label: SharedString, ring: bool, dot: AnyElement| {
             div()
                 .id(id)
                 .role(Role::Button)
-                .aria_label(label)
+                .aria_label(&label)
                 .aria_selected(ring)
                 .flex_1()
                 .min_w_0()
@@ -516,7 +624,7 @@ impl gpui::Render for LookEditor {
                         div()
                             .id("mono-mascot-options")
                             .role(Role::RadioGroup)
-                            .aria_label("Mascot")
+                            .aria_label(crate::i18n::text("monos-mascot"))
                             .px_1()
                             .flex()
                             .gap(px(2.))
@@ -559,7 +667,7 @@ impl gpui::Render for LookEditor {
                         div()
                             .id("mono-color-options")
                             .role(Role::Group)
-                            .aria_label("Color")
+                            .aria_label(crate::i18n::text("monos-color"))
                             .child(
                                 div()
                                     .px_1()
@@ -569,7 +677,7 @@ impl gpui::Render for LookEditor {
                                         |(ix, color)| {
                                             swatch(
                                                 ("mono-color", ix).into(),
-                                                COLOR_NAMES[ix].into(),
+                                                crate::i18n::text(COLOR_NAMES[ix]).into(),
                                                 self.mono.color == color,
                                                 div()
                                                     .size(px(14.))
@@ -596,7 +704,7 @@ impl gpui::Render for LookEditor {
                                     .child(
                                         swatch(
                                             "mono-custom-color".into(),
-                                            "Custom color".into(),
+                                            crate::i18n::text("monos-custom-color").into(),
                                             !preset || self.custom_open,
                                             div()
                                                 .relative()
@@ -645,13 +753,21 @@ impl gpui::Render for LookEditor {
 impl LookEditor {
     fn settings_controls(&self, cx: &mut Context<Self>) -> AnyElement {
         const COLOR_NAMES: [&str; 9] = [
-            "Blue", "Coral", "Yellow", "Green", "Pink", "Purple", "Teal", "Orange", "Indigo",
+            "monos-blue",
+            "monos-coral",
+            "monos-yellow",
+            "monos-green",
+            "monos-pink",
+            "monos-purple",
+            "monos-teal",
+            "monos-orange",
+            "monos-indigo",
         ];
         div()
             .id("mono-settings-look-picker")
             .debug_selector(|| "mono-settings-look-picker".into())
             .role(Role::Dialog)
-            .aria_label("Mascot and color")
+            .aria_label(crate::i18n::text("monos-mascot-and-color"))
             .track_focus(&self.focus)
             .p_3()
             .w_full()
@@ -662,7 +778,7 @@ impl LookEditor {
                 div()
                     .id("mono-mascot-options")
                     .role(Role::RadioGroup)
-                    .aria_label("Mascot")
+                    .aria_label(crate::i18n::text("monos-mascot"))
                     .px_1()
                     .flex()
                     .flex_col()
@@ -710,7 +826,7 @@ impl LookEditor {
                 div()
                     .id("mono-color-options")
                     .role(Role::Group)
-                    .aria_label("Color")
+                    .aria_label(crate::i18n::text("monos-color"))
                     .px_1()
                     .flex()
                     .flex_col()
@@ -724,7 +840,7 @@ impl LookEditor {
                                 div()
                                     .id(("settings-color", index))
                                     .role(Role::Button)
-                                    .aria_label(COLOR_NAMES[index])
+                                    .aria_label(crate::i18n::text(COLOR_NAMES[index]))
                                     .aria_selected(selected)
                                     .size(px(36.))
                                     .flex()
@@ -766,7 +882,7 @@ impl LookEditor {
                                 div()
                                     .id("settings-custom-color")
                                     .role(Role::Button)
-                                    .aria_label("Custom color")
+                                    .aria_label(crate::i18n::text("monos-custom-color"))
                                     .size(px(36.))
                                     .flex()
                                     .items_center()
@@ -837,7 +953,7 @@ impl Monos {
         });
         let menu = cx.new(|cx| {
             Menu::new(
-                "Mascot and color",
+                crate::i18n::text("monos-mascot-and-color"),
                 vec![MenuItem::Custom(editor.into(), focus)],
                 window,
                 cx,
@@ -922,14 +1038,18 @@ impl Monos {
             .flex()
             .items_center()
             .child(
-                icon_button("mono-settings", "Mono settings", "settings")
-                    .debug_selector(|| "mono-settings".into())
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.settings = Some(SettingsSection::General);
-                        window.focus(&this.settings_focus, cx);
-                        this.reload_files(&id, cx);
-                        cx.notify();
-                    })),
+                icon_button(
+                    "mono-settings",
+                    crate::i18n::text("monos-mono-settings"),
+                    "settings",
+                )
+                .debug_selector(|| "mono-settings".into())
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.settings = Some(SettingsSection::General);
+                    window.focus(&this.settings_focus, cx);
+                    this.reload_files(&id, cx);
+                    cx.notify();
+                })),
             )
             .into_any_element()
     }
@@ -981,7 +1101,7 @@ impl Monos {
                     .id("original-hide-mono-overview")
                     .debug_selector(|| "original-hide-mono-overview".into())
                     .role(Role::Button)
-                    .aria_label("Hide overview")
+                    .aria_label(crate::i18n::text("monos-hide-overview"))
                     .aria_toggled(gpui::Toggled::True)
                     .size(px(24.))
                     .flex_shrink_0()
@@ -1019,23 +1139,33 @@ impl Monos {
             .as_ref()
             .and_then(|r| r.progress(self.overview_tab, window, cx));
         let tabs = [
-            (OverviewTab::Overview, "Overview", "dashboard", 0),
+            (
+                OverviewTab::Overview,
+                crate::i18n::text("monos-overview"),
+                "dashboard",
+                0,
+            ),
             (
                 OverviewTab::Sessions,
-                "Sub-agents",
+                crate::i18n::text("monos-sub-agents"),
                 "message-multiple",
                 mono.launches.len(),
             ),
             (
                 OverviewTab::Documents,
-                "Documents",
+                crate::i18n::text("monos-documents"),
                 "file",
                 mono.documents.len(),
             ),
-            (OverviewTab::Habits, "Habits", "clock", self.habits.len()),
+            (
+                OverviewTab::Habits,
+                crate::i18n::text("monos-habits"),
+                "clock",
+                self.habits.len(),
+            ),
             (
                 OverviewTab::Changes,
-                "Changes",
+                crate::i18n::text("monos-changes"),
                 "file-diff",
                 self.project_changes.count(&mono.id),
             ),
@@ -1044,7 +1174,7 @@ impl Monos {
             .id("mono-overview-tabs")
             .debug_selector(|| "mono-overview-tabs".into())
             .role(Role::TabList)
-            .aria_label("Mono details")
+            .aria_label(crate::i18n::text("monos-mono-details"))
             .h(px(TITLE_BAR_HEIGHT))
             .flex_1()
             .min_w_0()
@@ -1082,29 +1212,37 @@ impl Monos {
             .child(crate::shell::titlebar_drag_area().flex_1().min_w_0())
             .when(self.overview_tab == OverviewTab::Habits, |d| {
                 d.child(
-                    icon_button("mono-new-habit", "New habit", "plus")
-                        .debug_selector(|| "mono-new-habit".into())
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.route = Some(Route::NewHabit);
-                            this.clear_habit_fields();
-                            cx.notify();
-                        })),
+                    icon_button(
+                        "mono-new-habit",
+                        crate::i18n::text("monos-new-habit"),
+                        "plus",
+                    )
+                    .debug_selector(|| "mono-new-habit".into())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.route = Some(Route::NewHabit);
+                        this.clear_habit_fields();
+                        cx.notify();
+                    })),
                 )
             })
             .child(
-                icon_button("mono-activity", "Show activity", "list-bullet")
-                    .debug_selector(|| "mono-activity".into())
-                    .when(self.overview_tab == OverviewTab::Activity, |d| {
-                        d.bg(content(0.1))
-                    })
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        let tab = if this.overview_tab == OverviewTab::Activity {
-                            this.overview_previous
-                        } else {
-                            OverviewTab::Activity
-                        };
-                        this.select_overview(tab, cx);
-                    })),
+                icon_button(
+                    "mono-activity",
+                    crate::i18n::text("monos-show-activity"),
+                    "list-bullet",
+                )
+                .debug_selector(|| "mono-activity".into())
+                .when(self.overview_tab == OverviewTab::Activity, |d| {
+                    d.bg(content(0.1))
+                })
+                .on_click(cx.listener(|this, _, _, cx| {
+                    let tab = if this.overview_tab == OverviewTab::Activity {
+                        this.overview_previous
+                    } else {
+                        OverviewTab::Activity
+                    };
+                    this.select_overview(tab, cx);
+                })),
             )
             .into_any_element()
     }
@@ -1138,7 +1276,7 @@ impl Monos {
     fn session_list(&mut self, mono: &Mono, cx: &mut Context<Self>) -> AnyElement {
         let filter = self.field(
             "mono-session-search",
-            "Search sub-agents…",
+            &crate::i18n::text("monos-search-sub-agents"),
             String::new(),
             false,
             cx,
@@ -1186,50 +1324,100 @@ impl Monos {
             )
         });
         let search_bar = search_bar(filter).child(
-            icon_button("mono-session-filter", "Filter sub-agents", "filter")
-                .relative()
-                .child(self.session_filter_anchor.probe())
-                .on_click(cx.listener(|this, _, window, cx| this.filter_menu(window, cx))),
+            icon_button(
+                "mono-session-filter",
+                crate::i18n::text("monos-filter-sub-agents"),
+                "filter",
+            )
+            .relative()
+            .child(self.session_filter_anchor.probe())
+            .on_click(cx.listener(|this, _, window, cx| this.filter_menu(window, cx))),
         );
         let no_matches = launches.is_empty() && !mono.launches.is_empty();
-        div().size_full().flex().flex_col()
-            .when(!mono.launches.is_empty(),|d|d.child(search_bar))
-            .child(div().id("mono-session-list").debug_selector(|| "mono-session-list".into()).flex_1().min_h_0().overflow_y_scroll().p_2().flex().flex_col().gap_1p5()
-                .when(mono.launches.is_empty(),|d|d.child(empty_state("message-multiple",&format!("Ask {} to hand work to a sub-agent on one of your projects, like a bug fix or a review, and it shows up here.",mono.label()))))
-                .when(no_matches,|d|d.child(empty_state("search-01",if query.trim().is_empty(){"No sub-agents match these filters."}else{"No sub-agents match this search."})))
-                .children(launches.into_iter().map(|launch|{
-                    let id = launch.session_id;
-                    let state = views.iter().find(|v| v.id == id);
-                    let title = state.map(|s| s.title.clone()).unwrap_or(launch.title.clone());
-                    let cwd = state.map(|s| &s.cwd).unwrap_or(&launch.cwd);
-                    let project = mono.projects.iter().find(|p| monocode_core::files::path_key(p) == monocode_core::files::path_key(cwd)).unwrap_or(cwd);
-                    let project = std::path::Path::new(project).file_name().map_or(project.clone(), |n| n.to_string_lossy().to_string());
-                    let branch = state.and_then(|s| s.branch.clone());
-                    sub_agent_card(SubAgent {
-                        id,
-                        title,
-                        harness: &launch.harness,
-                        model: state.map(|s| s.model.clone()).filter(|m| !m.is_empty()),
-                        model_id: launch.model.as_deref(),
-                        place: match &branch { Some(b) => format!("{project} · {b}"), None => project },
-                        branch: branch.is_some(),
-                        state: match state {
-                            Some(s) if s.needs_input => AgentState::NeedsInput,
-                            Some(s) if s.busy => AgentState::Working,
-                            Some(s) => AgentState::Idle(s.updated_at),
-                            None => AgentState::Unavailable,
-                        },
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .when(!mono.launches.is_empty(), |d| d.child(search_bar))
+            .child(
+                div()
+                    .id("mono-session-list")
+                    .debug_selector(|| "mono-session-list".into())
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .p_2()
+                    .flex()
+                    .flex_col()
+                    .gap_1p5()
+                    .when(mono.launches.is_empty(), |d| {
+                        d.child(empty_state(
+                            "message-multiple",
+                            &crate::i18n::format(
+                                "monos-ask-to-hand-work-to-a-sub",
+                                &[("name", (mono.label()).to_string())],
+                            ),
+                        ))
                     })
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.route = Some(Route::Session(id));
-                        cx.notify();
-                    }))
-}))).into_any_element()
+                    .when(no_matches, |d| {
+                        d.child(empty_state(
+                            "search-01",
+                            &if query.trim().is_empty() {
+                                crate::i18n::text("monos-no-sub-agents-match-these-filters")
+                            } else {
+                                crate::i18n::text("monos-no-sub-agents-match-this-search")
+                            },
+                        ))
+                    })
+                    .children(launches.into_iter().map(|launch| {
+                        let id = launch.session_id;
+                        let state = views.iter().find(|v| v.id == id);
+                        let title = state
+                            .map(|s| s.title.clone())
+                            .unwrap_or(launch.title.clone());
+                        let cwd = state.map(|s| &s.cwd).unwrap_or(&launch.cwd);
+                        let project = mono
+                            .projects
+                            .iter()
+                            .find(|p| {
+                                monocode_core::files::path_key(p)
+                                    == monocode_core::files::path_key(cwd)
+                            })
+                            .unwrap_or(cwd);
+                        let project = std::path::Path::new(project)
+                            .file_name()
+                            .map_or(project.clone(), |n| n.to_string_lossy().to_string());
+                        let branch = state.and_then(|s| s.branch.clone());
+                        sub_agent_card(SubAgent {
+                            id,
+                            title,
+                            harness: &launch.harness,
+                            model: state.map(|s| s.model.clone()).filter(|m| !m.is_empty()),
+                            model_id: launch.model.as_deref(),
+                            place: match &branch {
+                                Some(b) => format!("{project} · {b}"),
+                                None => project,
+                            },
+                            branch: branch.is_some(),
+                            state: match state {
+                                Some(s) if s.needs_input => AgentState::NeedsInput,
+                                Some(s) if s.busy => AgentState::Working,
+                                Some(s) => AgentState::Idle(s.updated_at),
+                                None => AgentState::Unavailable,
+                            },
+                        })
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.route = Some(Route::Session(id));
+                            cx.notify();
+                        }))
+                    })),
+            )
+            .into_any_element()
     }
     fn document_list(&mut self, mono: &Mono, cx: &mut Context<Self>) -> AnyElement {
         let filter = self.field(
             "mono-document-search",
-            "Search documents…",
+            &crate::i18n::text("monos-search-documents"),
             String::new(),
             false,
             cx,
@@ -1253,27 +1441,40 @@ impl Monos {
             .when(mono.documents.is_empty(), |d| {
                 d.child(empty_state(
                     "file",
-                    &format!(
-                        "Ask {} to write something up, like a plan or a summary, and it shows up here.",
-                        mono.label()
+                    &crate::i18n::format(
+                        "monos-ask-to-write-something-up-like-a",
+                        &[("name", (mono.label()).to_string())],
                     ),
                 ))
             })
             .when(documents.is_empty() && !mono.documents.is_empty(), |d| {
-                d.child(empty_state("search-01", "No documents match this search."))
+                d.child(empty_state(
+                    "search-01",
+                    &crate::i18n::text("monos-no-documents-match-this-search"),
+                ))
             })
             .children(documents.into_iter().map(|document| {
                 // MonoOverview's DocumentRow: laid out like a habit.
                 let id = document.id.clone();
                 let visual = matches!(document.kind.as_str(), "html" | "visual");
-                let label = if visual { "Visual" } else { "Document" };
+                let label = if visual {
+                    crate::i18n::text("monos-visual")
+                } else {
+                    crate::i18n::text("monos-document")
+                };
                 outlined(div().id(SharedString::from(format!("mono-document-{id}"))))
                     .debug_selector({
                         let id = id.clone();
                         move || format!("mono-document-{id}")
                     })
                     .role(Role::Button)
-                    .aria_label(format!("Open {} {}", label.to_lowercase(), document.title))
+                    .aria_label(crate::i18n::format(
+                        "monos-open-2",
+                        &[
+                            ("value", label.to_lowercase().to_string()),
+                            ("value2", document.title.to_string()),
+                        ],
+                    ))
                     .w_full()
                     .min_w_0()
                     .flex()
@@ -1293,7 +1494,7 @@ impl Monos {
                             .justify_center()
                             .child(
                                 icon(if visual { "chart-square" } else { "file" }, 14.)
-                                .text_color(content(0.6)),
+                                    .text_color(content(0.6)),
                             ),
                     )
                     .child(
@@ -1350,12 +1551,16 @@ impl Monos {
             .items_center()
             .gap_2()
             .child(
-                icon_button("mono-page-back", "Back", "chevron-left")
-                    .debug_selector(|| "mono-page-back".into())
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.route = None;
-                        cx.notify();
-                    })),
+                icon_button(
+                    "mono-page-back",
+                    crate::i18n::text("monos-back"),
+                    "chevron-left",
+                )
+                .debug_selector(|| "mono-page-back".into())
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.route = None;
+                    cx.notify();
+                })),
             )
             .child(
                 div()
@@ -1380,7 +1585,7 @@ impl Monos {
                 .size_full()
                 .flex()
                 .flex_col()
-                .child(self.page_header("Changes", cx))
+                .child(self.page_header(&crate::i18n::text("monos-changes"), cx))
                 .when_some(self.review.clone(), |d, review| {
                     d.child(div().flex_1().min_h_0().child(review))
                 })
@@ -1395,7 +1600,7 @@ impl Monos {
                 let title = view
                     .as_ref()
                     .map(|v| v.read(cx).summary.title.clone())
-                    .unwrap_or_else(|| "Session unavailable".into());
+                    .unwrap_or_else(|| crate::i18n::text("monos-session-unavailable"));
                 div()
                     .size_full()
                     .flex()
@@ -1404,7 +1609,7 @@ impl Monos {
                         self.page_header(&title, cx).child(
                             icon_button(
                                 "mono-open-session",
-                                "Open session in workspace",
+                                crate::i18n::text("monos-open-session-in-workspace"),
                                 "external-link",
                             )
                             .on_click(
@@ -1430,11 +1635,22 @@ impl Monos {
                     })
                     .cloned()
                 else {
-                    return empty(if self.work.loading_documents.contains(&id) {
-                        "Loading document…"
-                    } else {
-                        "Document unavailable"
-                    });
+                    let title = mono
+                        .documents
+                        .iter()
+                        .find(|d| d.id == id)
+                        .map_or_else(|| crate::i18n::text("monos-document"), |d| d.title.clone());
+                    return div()
+                        .size_full()
+                        .flex()
+                        .flex_col()
+                        .child(self.page_header(title.as_str(), cx))
+                        .child(empty(&if self.work.loading_documents.contains(&id) {
+                            crate::i18n::text("monos-loading-document")
+                        } else {
+                            crate::i18n::text("monos-document-unavailable")
+                        }))
+                        .into_any_element();
                 };
                 let view: AnyElement = if document.kind == "html"
                     && (self.settings.is_some()
@@ -1477,7 +1693,7 @@ impl Monos {
                             .py_3()
                             .child(view)
                             .into_any_element(),
-                        None => empty("Visual unavailable"),
+                        None => empty(&crate::i18n::text("monos-visual-unavailable")),
                     }
                 } else {
                     self.documents
@@ -1501,12 +1717,16 @@ impl Monos {
                         document.kind != "visual",
                         |header| {
                             header.child(
-                                icon_button("mono-document-copy", "Copy document", "response-copy")
-                                    .on_click(move |_, _, cx| {
-                                        cx.write_to_clipboard(gpui::ClipboardItem::new_string(
-                                            document.body.clone(),
-                                        ))
-                                    }),
+                                icon_button(
+                                    "mono-document-copy",
+                                    crate::i18n::text("monos-copy-document"),
+                                    "response-copy",
+                                )
+                                .on_click(move |_, _, cx| {
+                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+                                        document.body.clone(),
+                                    ))
+                                }),
                             )
                         },
                     ))
@@ -1519,16 +1739,16 @@ impl Monos {
     }
     fn activity_view(&mut self, mono: &Mono, cx: &mut Context<Self>) -> AnyElement {
         let Some(chat) = self.chat() else {
-            return empty("Loading…");
+            return empty(&crate::i18n::text("monos-loading"));
         };
         // Response actions number turns across every loaded page.
         let source = chat.read(cx).transcript.read(cx).history_rows();
         let Some(start) = self.activity_turn.filter(|i| *i < source.len()) else {
             return empty_state(
                 "list-bullet",
-                &format!(
-                    "Select the activity on one of {}’s messages to see each step it took.",
-                    mono.label()
+                &crate::i18n::format(
+                    "monos-select-the-activity-on-one-of-s",
+                    &[("name", (mono.label()).to_string())],
                 ),
             );
         };
@@ -1545,7 +1765,10 @@ impl Monos {
             .cloned()
             .collect::<Vec<_>>();
         if rows.is_empty() {
-            return empty_state("list-bullet", "No activity in this turn yet.");
+            return empty_state(
+                "list-bullet",
+                &crate::i18n::text("monos-no-activity-in-this-turn-yet"),
+            );
         }
         let key = mono::files::content_hash(&format!("{rows:?}"));
         if self.activity.as_ref().is_none_or(|(old, _)| old != &key) {
@@ -1623,7 +1846,10 @@ impl Monos {
                             .debug_selector(|| "mono-settings-dialog".into())
                             .role(Role::Dialog)
                             .track_focus(&self.settings_focus)
-                            .aria_label(format!("{} settings", mono.label()))
+                            .aria_label(crate::i18n::format(
+                                "monos-settings-2",
+                                &[("name", mono.label().to_string())],
+                            ))
                             .h_full()
                             .w_full()
                             .flex()
@@ -1633,7 +1859,7 @@ impl Monos {
                                     .id("mono-settings-navigation")
                                     .debug_selector(|| "mono-settings-navigation".into())
                                     .role(Role::Navigation)
-                                    .aria_label("Settings sections")
+                                    .aria_label(crate::i18n::text("monos-settings-sections"))
                                     .w(px(192.))
                                     .flex_shrink_0()
                                     .h_full()
@@ -1650,23 +1876,39 @@ impl Monos {
                                             .pb_2()
                                             .text_size(px(11.))
                                             .text_color(content(0.45))
-                                            .child("Settings"),
+                                            .child(crate::i18n::text("monos-settings")),
                                     )
                                     .children(
                                         [
-                                            (SettingsSection::General, "General", "settings"),
-                                            (SettingsSection::Soul, "Soul", "sparkles"),
-                                            (SettingsSection::Memory, "Memory", "sticky-note"),
+                                            (
+                                                SettingsSection::General,
+                                                "General",
+                                                "monos-general",
+                                                "settings",
+                                            ),
+                                            (
+                                                SettingsSection::Soul,
+                                                "Soul",
+                                                "monos-soul",
+                                                "sparkles",
+                                            ),
+                                            (
+                                                SettingsSection::Memory,
+                                                "Memory",
+                                                "monos-memory",
+                                                "sticky-note",
+                                            ),
                                         ]
                                         .into_iter()
                                         .map(
-                                            |(tab, label, glyph)| {
-                                                let row_id = format!("mono-settings-{label}");
+                                            |(tab, id, key, glyph)| {
+                                                let row_id = format!("mono-settings-{id}");
+                                                let label = crate::i18n::text(key);
                                                 div()
                                                     .id(SharedString::from(row_id.clone()))
                                                     .debug_selector(move || row_id.clone())
                                                     .role(Role::Button)
-                                                    .aria_label(label)
+                                                    .aria_label(label.to_owned())
                                                     .w_full()
                                                     .h(px(32.))
                                                     .flex_shrink_0()
@@ -1696,12 +1938,10 @@ impl Monos {
                                                     .child(
                                                         div()
                                                             .id(SharedString::from(format!(
-                                                                "mono-settings-icon-{label}"
+                                                                "mono-settings-icon-{id}"
                                                             )))
                                                             .debug_selector(move || {
-                                                                format!(
-                                                                    "mono-settings-icon-{label}"
-                                                                )
+                                                                format!("mono-settings-icon-{id}")
                                                             })
                                                             .size(px(14.))
                                                             .flex_shrink_0()
@@ -1716,12 +1956,10 @@ impl Monos {
                                                     .child(
                                                         div()
                                                             .id(SharedString::from(format!(
-                                                                "mono-settings-label-{label}"
+                                                                "mono-settings-label-{id}"
                                                             )))
                                                             .debug_selector(move || {
-                                                                format!(
-                                                                    "mono-settings-label-{label}"
-                                                                )
+                                                                format!("mono-settings-label-{id}")
                                                             })
                                                             .child(label),
                                                     )
@@ -1750,7 +1988,7 @@ impl Monos {
                                 div().absolute().right_3().top_1p5().child(
                                     icon_button(
                                         "mono-settings-close",
-                                        "Close Mono settings",
+                                        crate::i18n::text("monos-close-mono-settings"),
                                         "close",
                                     )
                                     .size(px(28.))
@@ -1774,7 +2012,13 @@ impl Monos {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let name = self.field("mono-name", "Name", mono.name.clone(), false, cx);
+        let name = self.field(
+            "mono-name",
+            &crate::i18n::text("monos-name"),
+            mono.name.clone(),
+            false,
+            cx,
+        );
         name.update(cx, |f, cx| {
             f.set_font_size(15.);
             f.set_line_height(20.);
@@ -1788,7 +2032,7 @@ impl Monos {
         let model = chat
             .as_ref()
             .map(|v| v.read(cx).mono_model_label())
-            .unwrap_or_else(|| "Loading…".into());
+            .unwrap_or_else(|| crate::i18n::text("monos-loading").into());
         let provider = chat
             .as_ref()
             .map(|v| v.read(cx).summary.provider.clone())
@@ -1825,105 +2069,478 @@ impl Monos {
                 .hover(|s| s.bg(content(0.06)))
                 .child(label)
         };
-        div().id("mono-general-settings").debug_selector(||"mono-general-settings".into())
-            .flex_1().min_h_0().overflow_y_scroll().px_8().pt_6().pb_8()
-            .child(div().text_size(px(14.)).font_weight(FontWeight::MEDIUM).child("General"))
-            .child(div().flex().flex_col().items_center().pt_4().pb_6()
-                .child(div().id("mono-look").debug_selector(||"mono-look".into()).role(Role::Button)
-                    .aria_label("Change mascot and color").relative().size(px(80.)).flex_shrink_0()
-                    .flex().items_center().justify_center().rounded_2xl().border_1().border_color(content(0.04))
-                    .bg(content(0.04)).hover(|s|s.bg(content(0.08)))
-                    .child(self.settings_anchor.probe())
-                    .child(avatar::avatar(&mono.mascot, mono.color, "idle", 48., false))
-                    .on_click(cx.listener(move |this, _, w, cx|this.open_settings_look(&look,w,cx))))
-                .child(div().id("mono-name-field").debug_selector(||"mono-name-field".into()).mt_3().h(px(32.)).w(px(256.)).max_w_full().px_2().py_1p5()
-                    .rounded_md().font_weight(FontWeight::MEDIUM).hover(|s|s.bg(content(0.05))).child(name)))
-            .child(heading("Model", None))
-            .child(card()
-                .child(setting("Model",Some("What it thinks and replies with."),
-                    div().id("mono-settings-model").role(Role::Button).aria_label(format!("Choose model, {model}"))
-                        .h(px(28.)).px_1p5().mx(px(-6.)).rounded_md().flex().items_center().gap_2()
-                        .text_size(px(12.)).text_color(content(0.85)).hover(|s|s.bg(content(0.06)))
-                        .child(self.model_anchor.probe()).child(provider_icon(&provider,14.)).child(model)
-                        .on_click(cx.listener(|this,_,w,cx|this.open_model_picker(w,cx))).into_any_element()))
-                .children(model_options.into_iter().filter_map(|item| {
-                    let MenuItem::Action(option)=item else { return None; };
-                    let label=option.label.clone();
-                    let value=option.value.clone().unwrap_or_else(||if option.checked {"On"}else{"Off"}.into());
-                    let anchor=AnchorSlot::default(); let probe=anchor.probe();
-                    Some(setting(&label,None,
-                        plain(SharedString::from(format!("mono-option-{}",option.id)),value).child(probe)
-                            .on_click(cx.listener(move |this,_,w,cx| {
-                                if option.submenu.is_empty() {
-                                    if let Some(chat)=this.chat() && let Err(e)=chat.update(cx,|v,cx|v.mono_pick_model_option(&option.id,cx)) { this.error=Some(e); }
-                                    this.changed(cx);
-                                } else { this.open_model_option(option.label.clone(),option.submenu.clone(),anchor.clone(),w,cx); }
-                            })).into_any_element()).border_t_1().border_color(content(0.04)))
-                }))
-                .child(setting("Permissions",Some("What it may do without asking."),
-                    div().id("mono-settings-access").role(Role::Button).aria_label(format!("Permissions, {}",mode.label()))
-                        .h(px(28.)).max_w(px(208.)).px_1p5().mx(px(-6.)).rounded_md().flex().items_center().gap_2()
-                        .text_size(px(12.)).text_color(content(0.85)).hover(|s|s.bg(content(0.06)))
-                        .child(self.access_anchor.probe()).child(icon(access_icon,14.).when(mode==AccessMode::FullAccess,|i|i.text_color(rgb(0xffb900))))
-                        .child(mode.label()).child(icon("chevron-down",12.))
-                        .on_click(cx.listener(|this,_,w,cx|this.open_access_picker(w,cx))).into_any_element())
-                    .border_t_1().border_color(content(0.04))))
-            .child(heading("Projects",Some("It can see every session, note and folder in these.")))
-            .child(card()
-                .children(mono.projects.iter().enumerate().map(|(ix,project)| {
-                    let remove=project.clone();
-                    let appearance=self.owner.upgrade().and_then(|o|o.read(cx).workspace.project_appearance.get(project).cloned()).unwrap_or_default();
-                    let label=appearance.label(project);
-                    let pretty=std::env::var("HOME").ok().and_then(|home|project.strip_prefix(&home).map(|rest|format!("~{rest}"))).unwrap_or_else(||project.clone());
-                    let group:SharedString=format!("mono-project-{ix}").into();
-                    div().id(("mono-project",ix)).group(group.clone()).min_h(px(48.)).flex().items_center().gap_3().px_3().py_2()
-                        .when(ix>0,|d|d.border_t_1().border_color(content(0.04)))
-                        .child(div().size(px(32.)).flex_shrink_0().rounded_lg().bg(content(0.05)).flex().items_center().justify_center()
-                            .child(crate::project_settings::project_icon(&appearance,project,16.)))
-                        .child(div().flex_1().min_w_0()
-                            .child(div().text_size(px(13.)).line_height(px(20.)).text_color(content(0.9)).truncate().child(label))
-                            .child(div().text_size(px(11.)).line_height(px(16.)).text_color(content(0.4)).truncate().child(pretty)))
-                        .child(icon_button("mono-remove-project","Remove project","close").opacity(0.).group_hover(group,|s|s.opacity(1.))
-                            .on_click(cx.listener(move |this,_,_,cx| { if let Some(id)=this.active.clone() {
-                                if let Some(m)=this.roster.get_mut(&id) {m.projects.retain(|p|p!=&remove);}
-                                this.configure_chat(&id,cx);this.save(cx);
-                            }})))
-                }))
-                .child(div().id("mono-add-project").role(Role::Button).aria_label("Add project").h(px(44.)).px_3().flex().items_center().gap_3()
-                    .text_size(px(13.)).text_color(content(0.55)).hover(|s|s.bg(content(0.04)).text_color(content(1.)))
-                    .when(!mono.projects.is_empty(),|d|d.border_t_1().border_color(content(0.04)))
-                    .child(self.projects_anchor.probe())
-                    .child(div().size(px(32.)).rounded_lg().border_1().border_color(content(0.15)).flex().items_center().justify_center().child(icon("plus",14.)))
-                    .child("Add project").on_click(cx.listener(move |this,_,w,cx|this.pick_project(&add,w,cx)))))
-            .child(heading("Sessions it starts",None))
-            .child(card()
-                .child(switch_setting("Show sessions in sidebar","Sessions it starts appear in your project sidebar. Hidden ones stay saved and open from its overview.",false,
-                    self.switch("mono-show-started",mono.show_started_sessions_in_sidebar,false,|m,on|m.show_started_sessions_in_sidebar=on,cx)))
-                .child(switch_setting("Group in a folder",&format!("Sessions it starts go in a “{}” folder in your project sidebar.",mono.label()),!mono.show_started_sessions_in_sidebar,
-                    self.switch("mono-group-started",mono.show_started_sessions_in_sidebar&&mono.use_sidebar_folders,!mono.show_started_sessions_in_sidebar,|m,on|m.use_sidebar_folders=on,cx))
-                    .border_t_1().border_color(content(0.04)))
-                .child(setting("Model",Some("For sessions it starts without naming one."),
-                    div().id("mono-subsession-model").role(Role::Button).aria_label(format!("Model for sessions it starts, {}",sub.model_label))
-                        .h(px(28.)).px_1p5().mx(px(-6.)).rounded_md().flex().items_center().gap_2()
-                        .text_size(px(12.)).text_color(content(0.85)).hover(|s|s.bg(content(0.06)))
-                        .child(self.subsession_model_anchor.probe())
-                        .when_some(sub.provider,|d,kind|d.child(provider_icon(kind.id(),14.))).child(sub.model_label.clone())
-                        .on_click(cx.listener(|this,_,w,cx|this.open_subsession_model_picker(w,cx))).into_any_element())
-                    .border_t_1().border_color(content(0.04)))
-                .when(!sub.efforts.is_empty(),|d|d.child(setting("Effort",None,
-                    plain(SharedString::from("mono-subsession-effort"),sub.effort_label.clone()).child(self.subsession_effort_anchor.probe())
-                        .on_click(cx.listener(|this,_,w,cx|this.open_subsession_effort_picker(w,cx))).into_any_element())
-                    .border_t_1().border_color(content(0.04)))))
-            .child(heading("Heartbeat",Some("When it has been quiet for a while, it looks over its recent work, sessions you left, your notes and inbox, and suggests what to do next. It never acts without asking.")))
-            .child(card()
-                .child(switch_setting("Check in on its own","Quiet check-ins leave nothing behind; you only hear from it when it has an idea.",false,
-                    self.switch("mono-heartbeat",mono.heartbeat_minutes>0,false,|m,on|m.heartbeat_minutes=if on {heartbeat::DEFAULT_MINUTES} else {0},cx)))
-                .child(setting("After it has been quiet for",None,self.heartbeat_intervals(mono,cx))
-                    .when(mono.heartbeat_minutes==0,|d|d.opacity(0.4)).border_t_1().border_color(content(0.04))))
-            .child(heading("Conversation",None))
-            .child(card().child(setting("Reset conversation",Some("Clear all messages and start fresh. Its soul, memory and habits stay."),
-                div().id("mono-reset").role(Role::Button).aria_label("Reset").flex().items_center().px_3().py_1p5().rounded_md().text_size(px(12.)).border_1().border_color(content(0.04)).text_color(rgb(0xff6467)).hover(|s|s.bg(rgb(0xfb2c36).opacity(0.1))).child("Reset")
-                    .on_click(cx.listener(move |this,_,w,cx|this.reset_conversation(&reset,w,cx))).into_any_element())))
+        div()
+            .id("mono-general-settings")
+            .debug_selector(|| "mono-general-settings".into())
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scroll()
+            .px_8()
+            .pt_6()
+            .pb_8()
+            .child(
+                div()
+                    .text_size(px(14.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .child(crate::i18n::text("monos-general")),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .pt_4()
+                    .pb_6()
+                    .child(
+                        div()
+                            .id("mono-look")
+                            .debug_selector(|| "mono-look".into())
+                            .role(Role::Button)
+                            .aria_label(crate::i18n::text("monos-change-mascot-and-color"))
+                            .relative()
+                            .size(px(80.))
+                            .flex_shrink_0()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_2xl()
+                            .border_1()
+                            .border_color(content(0.04))
+                            .bg(content(0.04))
+                            .hover(|s| s.bg(content(0.08)))
+                            .child(self.settings_anchor.probe())
+                            .child(avatar::avatar(&mono.mascot, mono.color, "idle", 48., false))
+                            .on_click(cx.listener(move |this, _, w, cx| {
+                                this.open_settings_look(&look, w, cx)
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id("mono-name-field")
+                            .debug_selector(|| "mono-name-field".into())
+                            .mt_3()
+                            .h(px(32.))
+                            .w(px(256.))
+                            .max_w_full()
+                            .px_2()
+                            .py_1p5()
+                            .rounded_md()
+                            .font_weight(FontWeight::MEDIUM)
+                            .hover(|s| s.bg(content(0.05)))
+                            .child(name),
+                    ),
+            )
+            .child(heading(&crate::i18n::text("monos-menu-model"), None))
+            .child(
+                card()
+                    .child(setting(
+                        &crate::i18n::text("monos-menu-model"),
+                        Some(&crate::i18n::text("monos-what-it-thinks-and-replies-with")),
+                        div()
+                            .id("mono-settings-model")
+                            .role(Role::Button)
+                            .aria_label(crate::i18n::format(
+                                "monos-choose-model",
+                                &[("model", model.to_string())],
+                            ))
+                            .h(px(28.))
+                            .px_1p5()
+                            .mx(px(-6.))
+                            .rounded_md()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .text_size(px(12.))
+                            .text_color(content(0.85))
+                            .hover(|s| s.bg(content(0.06)))
+                            .child(self.model_anchor.probe())
+                            .child(provider_icon(&provider, 14.))
+                            .child(model)
+                            .on_click(cx.listener(|this, _, w, cx| this.open_model_picker(w, cx)))
+                            .into_any_element(),
+                    ))
+                    .children(model_options.into_iter().filter_map(|item| {
+                        let MenuItem::Action(option) = item else {
+                            return None;
+                        };
+                        let label = option.label.clone();
+                        let value = option.value.clone().unwrap_or_else(|| {
+                            if option.checked {
+                                crate::i18n::text("monos-on")
+                            } else {
+                                crate::i18n::text("monos-off")
+                            }
+                            .into()
+                        });
+                        let anchor = AnchorSlot::default();
+                        let probe = anchor.probe();
+                        Some(
+                            setting(
+                                &label,
+                                None,
+                                plain(
+                                    SharedString::from(format!("mono-option-{}", option.id)),
+                                    value,
+                                )
+                                .child(probe)
+                                .on_click(cx.listener(move |this, _, w, cx| {
+                                    if option.submenu.is_empty() {
+                                        if let Some(chat) = this.chat()
+                                            && let Err(e) = chat.update(cx, |v, cx| {
+                                                v.mono_pick_model_option(&option.id, cx)
+                                            })
+                                        {
+                                            this.error = Some(e);
+                                        }
+                                        this.changed(cx);
+                                    } else {
+                                        this.open_model_option(
+                                            option.label.clone(),
+                                            option.submenu.clone(),
+                                            anchor.clone(),
+                                            w,
+                                            cx,
+                                        );
+                                    }
+                                }))
+                                .into_any_element(),
+                            )
+                            .border_t_1()
+                            .border_color(content(0.04)),
+                        )
+                    }))
+                    .child(
+                        setting(
+                            &crate::i18n::text("monos-menu-permissions"),
+                            Some(&crate::i18n::text("monos-what-it-may-do-without-asking")),
+                            div()
+                                .id("mono-settings-access")
+                                .role(Role::Button)
+                                .aria_label(crate::i18n::format(
+                                    "monos-permissions",
+                                    &[(
+                                        "value",
+                                        crate::conversation::access_label(mode).to_string(),
+                                    )],
+                                ))
+                                .h(px(28.))
+                                .max_w(px(208.))
+                                .px_1p5()
+                                .mx(px(-6.))
+                                .rounded_md()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .text_size(px(12.))
+                                .text_color(content(0.85))
+                                .hover(|s| s.bg(content(0.06)))
+                                .child(self.access_anchor.probe())
+                                .child(
+                                    icon(access_icon, 14.)
+                                        .when(mode == AccessMode::FullAccess, |i| {
+                                            i.text_color(rgb(0xffb900))
+                                        }),
+                                )
+                                .child(crate::conversation::access_label(mode))
+                                .child(icon("chevron-down", 12.))
+                                .on_click(
+                                    cx.listener(|this, _, w, cx| this.open_access_picker(w, cx)),
+                                )
+                                .into_any_element(),
+                        )
+                        .border_t_1()
+                        .border_color(content(0.04)),
+                    ),
+            )
+            .child(heading(
+                &crate::i18n::text("monos-projects"),
+                Some(&crate::i18n::text(
+                    "monos-it-can-see-every-session-note-and-folder-in",
+                )),
+            ))
+            .child(
+                card()
+                    .children(mono.projects.iter().enumerate().map(|(ix, project)| {
+                        let remove = project.clone();
+                        let appearance = self
+                            .owner
+                            .upgrade()
+                            .and_then(|o| {
+                                o.read(cx)
+                                    .workspace
+                                    .project_appearance
+                                    .get(project)
+                                    .cloned()
+                            })
+                            .unwrap_or_default();
+                        let label = appearance.label(project);
+                        let pretty = std::env::var("HOME")
+                            .ok()
+                            .and_then(|home| {
+                                project.strip_prefix(&home).map(|rest| format!("~{rest}"))
+                            })
+                            .unwrap_or_else(|| project.clone());
+                        let group: SharedString = format!("mono-project-{ix}").into();
+                        div()
+                            .id(("mono-project", ix))
+                            .group(group.clone())
+                            .min_h(px(48.))
+                            .flex()
+                            .items_center()
+                            .gap_3()
+                            .px_3()
+                            .py_2()
+                            .when(ix > 0, |d| d.border_t_1().border_color(content(0.04)))
+                            .child(
+                                div()
+                                    .size(px(32.))
+                                    .flex_shrink_0()
+                                    .rounded_lg()
+                                    .bg(content(0.05))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(crate::project_settings::project_icon(
+                                        &appearance,
+                                        project,
+                                        16.,
+                                    )),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(
+                                        div()
+                                            .text_size(px(13.))
+                                            .line_height(px(20.))
+                                            .text_color(content(0.9))
+                                            .truncate()
+                                            .child(label),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(11.))
+                                            .line_height(px(16.))
+                                            .text_color(content(0.4))
+                                            .truncate()
+                                            .child(pretty),
+                                    ),
+                            )
+                            .child(
+                                icon_button(
+                                    "mono-remove-project",
+                                    crate::i18n::text("monos-remove-project"),
+                                    "close",
+                                )
+                                .opacity(0.)
+                                .group_hover(group, |s| s.opacity(1.))
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        if let Some(id) = this.active.clone() {
+                                            if let Some(m) = this.roster.get_mut(&id) {
+                                                m.projects.retain(|p| p != &remove);
+                                            }
+                                            this.configure_chat(&id, cx);
+                                            this.save(cx);
+                                        }
+                                    },
+                                )),
+                            )
+                    }))
+                    .child(
+                        div()
+                            .id("mono-add-project")
+                            .role(Role::Button)
+                            .aria_label(crate::i18n::text("monos-add-project"))
+                            .h(px(44.))
+                            .px_3()
+                            .flex()
+                            .items_center()
+                            .gap_3()
+                            .text_size(px(13.))
+                            .text_color(content(0.55))
+                            .hover(|s| s.bg(content(0.04)).text_color(content(1.)))
+                            .when(!mono.projects.is_empty(), |d| {
+                                d.border_t_1().border_color(content(0.04))
+                            })
+                            .child(self.projects_anchor.probe())
+                            .child(
+                                div()
+                                    .size(px(32.))
+                                    .rounded_lg()
+                                    .border_1()
+                                    .border_color(content(0.15))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .child(icon("plus", 14.)),
+                            )
+                            .child(crate::i18n::text("monos-add-project"))
+                            .on_click(
+                                cx.listener(move |this, _, w, cx| this.pick_project(&add, w, cx)),
+                            ),
+                    ),
+            )
+            .child(heading(
+                &crate::i18n::text("monos-sessions-it-starts"),
+                None,
+            ))
+            .child(
+                card()
+                    .child(switch_setting(
+                        &crate::i18n::text("monos-show-sessions-in-sidebar"),
+                        &crate::i18n::text(
+                            "monos-sessions-it-starts-appear-in-your-project-sidebar-hidden",
+                        ),
+                        false,
+                        self.switch(
+                            "mono-show-started",
+                            mono.show_started_sessions_in_sidebar,
+                            false,
+                            |m, on| m.show_started_sessions_in_sidebar = on,
+                            cx,
+                        ),
+                    ))
+                    .child(
+                        switch_setting(
+                            &crate::i18n::text("monos-group-in-a-folder"),
+                            &crate::i18n::format(
+                                "monos-sessions-it-starts-go-in-a-folder",
+                                &[("name", (mono.label()).to_string())],
+                            ),
+                            !mono.show_started_sessions_in_sidebar,
+                            self.switch(
+                                "mono-group-started",
+                                mono.show_started_sessions_in_sidebar && mono.use_sidebar_folders,
+                                !mono.show_started_sessions_in_sidebar,
+                                |m, on| m.use_sidebar_folders = on,
+                                cx,
+                            ),
+                        )
+                        .border_t_1()
+                        .border_color(content(0.04)),
+                    )
+                    .child(
+                        setting(
+                            &crate::i18n::text("monos-menu-model"),
+                            Some(&crate::i18n::text(
+                                "monos-for-sessions-it-starts-without-naming-one",
+                            )),
+                            div()
+                                .id("mono-subsession-model")
+                                .role(Role::Button)
+                                .aria_label(crate::i18n::format(
+                                    "monos-model-for-sessions-it-starts",
+                                    &[("value", format!("{}", sub.model_label))],
+                                ))
+                                .h(px(28.))
+                                .px_1p5()
+                                .mx(px(-6.))
+                                .rounded_md()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .text_size(px(12.))
+                                .text_color(content(0.85))
+                                .hover(|s| s.bg(content(0.06)))
+                                .child(self.subsession_model_anchor.probe())
+                                .when_some(sub.provider, |d, kind| {
+                                    d.child(provider_icon(kind.id(), 14.))
+                                })
+                                .child(sub.model_label.clone())
+                                .on_click(cx.listener(|this, _, w, cx| {
+                                    this.open_subsession_model_picker(w, cx)
+                                }))
+                                .into_any_element(),
+                        )
+                        .border_t_1()
+                        .border_color(content(0.04)),
+                    )
+                    .when(!sub.efforts.is_empty(), |d| {
+                        d.child(
+                            setting(
+                                &crate::i18n::text("monos-menu-effort"),
+                                None,
+                                plain(
+                                    SharedString::from("mono-subsession-effort"),
+                                    sub.effort_label.clone(),
+                                )
+                                .child(self.subsession_effort_anchor.probe())
+                                .on_click(cx.listener(|this, _, w, cx| {
+                                    this.open_subsession_effort_picker(w, cx)
+                                }))
+                                .into_any_element(),
+                            )
+                            .border_t_1()
+                            .border_color(content(0.04)),
+                        )
+                    }),
+            )
+            .child(heading(
+                &crate::i18n::text("monos-heartbeat"),
+                Some(&crate::i18n::text(
+                    "monos-when-it-has-been-quiet-for-a-while-it",
+                )),
+            ))
+            .child(
+                card()
+                    .child(switch_setting(
+                        &crate::i18n::text("monos-check-in-on-its-own"),
+                        &crate::i18n::text("monos-quiet-check-ins"),
+                        false,
+                        self.switch(
+                            "mono-heartbeat",
+                            mono.heartbeat_minutes > 0,
+                            false,
+                            |m, on| {
+                                m.heartbeat_minutes =
+                                    if on { heartbeat::DEFAULT_MINUTES } else { 0 }
+                            },
+                            cx,
+                        ),
+                    ))
+                    .child(
+                        setting(
+                            &crate::i18n::text("monos-after-it-has-been-quiet-for"),
+                            None,
+                            self.heartbeat_intervals(mono, cx),
+                        )
+                        .when(mono.heartbeat_minutes == 0, |d| d.opacity(0.4))
+                        .border_t_1()
+                        .border_color(content(0.04)),
+                    ),
+            )
+            .child(heading(&crate::i18n::text("monos-conversation"), None))
+            .child(
+                card().child(setting(
+                    &crate::i18n::text("monos-reset-conversation"),
+                    Some(&crate::i18n::text(
+                        "monos-clear-all-messages-and-start-fresh-its-soul-memory",
+                    )),
+                    div()
+                        .id("mono-reset")
+                        .role(Role::Button)
+                        .aria_label(crate::i18n::text("monos-reset"))
+                        .flex()
+                        .items_center()
+                        .px_3()
+                        .py_1p5()
+                        .rounded_md()
+                        .text_size(px(12.))
+                        .border_1()
+                        .border_color(content(0.04))
+                        .text_color(rgb(0xff6467))
+                        .hover(|s| s.bg(rgb(0xfb2c36).opacity(0.1)))
+                        .child(crate::i18n::text("monos-reset"))
+                        .on_click(
+                            cx.listener(move |this, _, w, cx| {
+                                this.reset_conversation(&reset, w, cx)
+                            }),
+                        )
+                        .into_any_element(),
+                )),
+            )
             .into_any_element()
     }
     fn heartbeat_intervals(&self, mono: &Mono, cx: &mut Context<Self>) -> AnyElement {
@@ -1934,9 +2551,18 @@ impl Monos {
             .children(heartbeat::INTERVALS.iter().map(|&minutes| {
                 let selected = enabled && mono.heartbeat_minutes == minutes;
                 let label = if minutes < 60 {
-                    format!("{minutes}m")
+                    crate::i18n::format(
+                        "monos-m",
+                        &[("minutes", crate::system_format::unsigned(minutes as u64))],
+                    )
                 } else {
-                    format!("{}h", minutes / 60)
+                    crate::i18n::format(
+                        "monos-h",
+                        &[(
+                            "value",
+                            crate::system_format::unsigned((minutes / 60) as u64),
+                        )],
+                    )
                 };
                 div()
                     .id(("mono-heartbeat-interval", minutes as usize))
@@ -2034,14 +2660,14 @@ impl Monos {
         });
         let menu = cx.new(|cx| {
             Menu::new(
-                "Mono options",
+                crate::i18n::text("monos-mono-options"),
                 vec![
                     MenuItem::Custom(AnyView::from(editor), focus.clone()),
                     MenuItem::Separator,
-                    MenuAction::new("background", "Background image")
+                    MenuAction::new("background", crate::i18n::text("monos-background-image"))
                         .icon("image-add")
                         .into(),
-                    MenuAction::new("delete", "Delete mono…")
+                    MenuAction::new("delete", crate::i18n::text("monos-delete-mono"))
                         .icon("trash")
                         .danger()
                         .into(),
@@ -2121,7 +2747,7 @@ impl Monos {
         });
         let menu = cx.new(|cx| {
             Menu::new(
-                "Model",
+                crate::i18n::text("monos-menu-model"),
                 vec![MenuItem::Custom(list.into(), focus)],
                 window,
                 cx,
@@ -2176,7 +2802,7 @@ impl Monos {
                 .flatten()
         });
         let model_label = match &set.harness {
-            None => format!("Same as {}", mono.label()),
+            None => crate::i18n::format("monos-same-as", &[("name", (mono.label()).to_string())]),
             Some(_) => entry
                 .map(|m| m.name.clone())
                 .or(set.model.clone())
@@ -2191,8 +2817,10 @@ impl Monos {
                 .find(|(value, _)| value == effort)
                 .map(|(_, name)| name.clone())
                 .unwrap_or_else(|| effort.clone()),
-            None if set.harness.is_none() => format!("Same as {}", mono.label()),
-            None => "Model default".into(),
+            None if set.harness.is_none() => {
+                crate::i18n::format("monos-same-as", &[("name", (mono.label()).to_string())])
+            }
+            None => crate::i18n::text("monos-model-default"),
         };
         SubsessionChoice {
             provider: set.harness.is_some().then_some(kind),
@@ -2254,13 +2882,18 @@ impl Monos {
             cx.notify();
         });
         let items = vec![
-            MenuAction::new("subsessions:inherit", format!("Same as {}", mono.label()))
-                .checked(inherited)
-                .into(),
+            MenuAction::new(
+                "subsessions:inherit",
+                crate::i18n::format("monos-same-as", &[("name", (mono.label()).to_string())]),
+            )
+            .checked(inherited)
+            .into(),
             MenuItem::Separator,
             MenuItem::Custom(list.into(), focus),
         ];
-        let menu = cx.new(|cx| Menu::new("Model", items, window, cx).width(400.));
+        let menu = cx.new(|cx| {
+            Menu::new(crate::i18n::text("monos-menu-model"), items, window, cx).width(400.)
+        });
         let closed = cx.subscribe(&menu, |this, _, event: &MenuEvent, cx| {
             if let MenuEvent::Picked(id, _) = event
                 && id == "subsessions:inherit"
@@ -2297,9 +2930,9 @@ impl Monos {
             .as_ref()
             .is_none_or(|s| s.harness.is_none())
         {
-            format!("Same as {}", mono.label())
+            crate::i18n::format("monos-same-as", &[("name", (mono.label()).to_string())])
         } else {
-            "Model default".into()
+            crate::i18n::text("monos-model-default")
         };
         let mut items: Vec<MenuItem> = vec![
             MenuAction::new("effort:", unset)
@@ -2311,7 +2944,8 @@ impl Monos {
                 .checked(effort.as_deref() == Some(value.as_str()))
                 .into()
         }));
-        let menu = cx.new(|cx| Menu::new("Effort", items, window, cx));
+        let menu =
+            cx.new(|cx| Menu::new(crate::i18n::text("monos-menu-effort"), items, window, cx));
         let picked = cx.subscribe(&menu, |this, _, event: &MenuEvent, cx| {
             if let MenuEvent::Picked(id, _) = event
                 && let Some(value) = id.strip_prefix("effort:")
@@ -2372,9 +3006,14 @@ impl Monos {
             .map(|chat| chat.read(cx).mono_access_options())
             .unwrap_or_default();
         let menu = cx.new(|cx| {
-            Menu::new("Permissions", options, window, cx)
-                .style(MenuStyle::Access)
-                .width(288.)
+            Menu::new(
+                crate::i18n::text("monos-menu-permissions"),
+                options,
+                window,
+                cx,
+            )
+            .style(MenuStyle::Access)
+            .width(288.)
         });
         let picked = cx.subscribe(&menu, |this, _, event: &MenuEvent, cx| {
             if let MenuEvent::Picked(id, _) = event
@@ -2413,8 +3052,16 @@ impl Monos {
             .map(|(ix, path)| MenuAction::new(format!("project:{ix}"), path).into())
             .collect();
         items.push(MenuItem::Separator);
-        items.push(MenuAction::new("browse", "Open project…").into());
-        let menu = cx.new(|cx| Menu::new("Add project", items, window, cx).width(300.));
+        items.push(MenuAction::new("browse", crate::i18n::text("monos-open-project")).into());
+        let menu = cx.new(|cx| {
+            Menu::new(
+                crate::i18n::text("monos-menu-add-project"),
+                items,
+                window,
+                cx,
+            )
+            .width(300.)
+        });
         let picked = cx.subscribe(&menu, move |this, _, event: &MenuEvent, cx| {
             this.picker = None;
             if let MenuEvent::Picked(action, _) = event {
@@ -2452,7 +3099,7 @@ impl Monos {
             files: false,
             directories: true,
             multiple: false,
-            prompt: Some("Add project".into()),
+            prompt: Some(crate::i18n::text("monos-add-project").into()),
         });
         let id = id.to_string();
         cx.spawn(async move |this, cx| {

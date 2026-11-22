@@ -1390,11 +1390,9 @@ struct BackgroundCompositeParams {
 float project_background_mask(float y, bool empty, bool haze) {
   if (!empty) {
     if (haze) return 1. - saturate((y - 0.18) / 0.58);
-    if (y <= 0.18) return 1.;
-    if (y <= 0.32) return mix(1., 0.61, (y - 0.18) / 0.14);
-    if (y <= 0.47) return mix(0.61, 0.32, (y - 0.32) / 0.15);
-    if (y <= 0.62) return mix(0.32, 0.11, (y - 0.47) / 0.15);
-    return mix(0.11, 0., saturate((y - 0.62) / 0.10));
+    if (y <= 0.40) return 1.;
+    if (y <= 0.75) return mix(1., 0.55, (y - 0.40) / 0.35);
+    return mix(0.55, 0.32, saturate((y - 0.75) / 0.25));
   }
   if (y <= 0.19) return 1.;
   if (haze) {
@@ -1405,11 +1403,9 @@ float project_background_mask(float y, bool empty, bool haze) {
     if (y <= 0.78) return mix(0.16, 0.04, (y - 0.66) / 0.12);
     return mix(0.04, 0., saturate((y - 0.78) / 0.12));
   }
-  if (y <= 0.30) return mix(1., 0.79, (y - 0.19) / 0.11);
-  if (y <= 0.42) return mix(0.79, 0.50, (y - 0.30) / 0.12);
-  if (y <= 0.54) return mix(0.50, 0.20, (y - 0.42) / 0.12);
-  if (y <= 0.64) return mix(0.20, 0.05, (y - 0.54) / 0.10);
-  return mix(0.05, 0., saturate((y - 0.64) / 0.08));
+  if (y <= 0.58) return 1.;
+  if (y <= 0.84) return mix(1., 0.55, (y - 0.58) / 0.26);
+  return mix(0.55, 0.38, saturate((y - 0.84) / 0.16));
 }
 
 fragment float4 project_background_fragment(

@@ -38,8 +38,12 @@ const COPIED: Hsla = Hsla {
 };
 const COPIED_POP: Duration = Duration::from_millis(260);
 
-fn icon_action(id: impl Into<SharedString>, label: &str, name: &'static str) -> Stateful<Div> {
-    icon_action_ink(id, label, name, content(0.7))
+fn icon_action(
+    id: impl Into<SharedString>,
+    label: impl AsRef<str>,
+    name: &'static str,
+) -> Stateful<Div> {
+    icon_action_ink(id, label.as_ref(), name, content(0.7))
 }
 fn icon_action_ink(
     id: impl Into<SharedString>,
@@ -108,30 +112,45 @@ pub(crate) fn relative_time(iso: &str) -> String {
     }
     let amount = value as i64;
     match (unit, amount) {
-        ("second", 0) => "now".into(),
-        ("day", -1) => "yesterday".into(),
-        ("day", 1) => "tomorrow".into(),
-        ("week" | "month" | "year", -1) => format!("last {unit}"),
-        ("week" | "month" | "year", 1) => format!("next {unit}"),
+        ("second", 0) => crate::i18n::text("inbox-now"),
+        ("day", -1) => crate::i18n::text("inbox-yesterday"),
+        ("day", 1) => crate::i18n::text("inbox-tomorrow"),
+        ("week" | "month" | "year", -1) => crate::i18n::format(
+            "inbox-last",
+            &[(
+                "unit",
+                crate::i18n::text(&format!("inbox-time-unit-{unit}")),
+            )],
+        ),
+        ("week" | "month" | "year", 1) => crate::i18n::format(
+            "inbox-next",
+            &[(
+                "unit",
+                crate::i18n::text(&format!("inbox-time-unit-{unit}")),
+            )],
+        ),
         _ => {
             let count = amount.unsigned_abs();
-            let label = format!("{count} {unit}{}", if count == 1 { "" } else { "s" });
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("count", count);
+            args.set("countText", crate::system_format::unsigned(count));
+            let label = crate::i18n::message(&format!("inbox-time-{unit}"), Some(&args));
             if amount > 0 {
-                format!("in {label}")
+                crate::i18n::format("inbox-in", &[("label", (label).to_string())])
             } else {
-                format!("{label} ago")
+                crate::i18n::format("inbox-ago", &[("label", (label).to_string())])
             }
         }
     }
 }
 fn review_label(state: &str) -> String {
     match state.trim().to_uppercase().as_str() {
-        "APPROVED" => "Approved".into(),
-        "CHANGES_REQUESTED" => "Changes requested".into(),
-        "COMMENTED" => "Commented".into(),
-        "DISMISSED" => "Dismissed".into(),
-        "PENDING" => "Pending".into(),
-        "REVIEW_REQUIRED" => "Review required".into(),
+        "APPROVED" => crate::i18n::text("inbox-approved"),
+        "CHANGES_REQUESTED" => crate::i18n::text("inbox-changes-requested"),
+        "COMMENTED" => crate::i18n::text("inbox-commented"),
+        "DISMISSED" => crate::i18n::text("inbox-dismissed"),
+        "PENDING" => crate::i18n::text("inbox-pending"),
+        "REVIEW_REQUIRED" => crate::i18n::text("inbox-review-required"),
         _ => state.replace('_', " ").to_lowercase(),
     }
 }
@@ -171,7 +190,7 @@ fn timeline_event(name: &str, action: &str, time: &str) -> Div {
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(content(1.))
                 .child(if name.is_empty() {
-                    "ghost".to_owned()
+                    crate::i18n::text("inbox-ghost").to_owned()
                 } else {
                     name.to_owned()
                 }),
@@ -260,37 +279,34 @@ fn status_icon(item: &Item) -> &'static str {
 fn attention_label(reason: &str) -> String {
     let reason = reason.trim().to_lowercase();
     match reason.as_str() {
-        "assigned" => "Assigned to you",
-        "mentioned" | "directly_addressed" => "Mentioned you",
-        "review_requested" => "Review requested",
-        "review_submitted" => "Review submitted",
-        "approval_required" => "Approval required",
-        "build_failed" => "Pipeline failed",
-        "unmergeable" => "Cannot be merged",
-        "merge_train_removed" => "Removed from merge train",
-        "member_access_requested" => "Access requested",
-        "marked" => "Added to your to-dos",
-        _ => {
-            return reason
-                .split('_')
-                .filter(|word| !word.is_empty())
-                .enumerate()
-                .map(|(ix, word)| {
-                    if ix == 0 {
-                        let mut chars = word.chars();
-                        chars
-                            .next()
-                            .map(|c| c.to_uppercase().to_string() + chars.as_str())
-                            .unwrap_or_default()
-                    } else {
-                        word.to_string()
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(" ");
-        }
+        "assigned" => crate::i18n::text("inbox-assigned-to-you"),
+        "mentioned" | "directly_addressed" => crate::i18n::text("inbox-mentioned-you"),
+        "review_requested" => crate::i18n::text("inbox-review-requested"),
+        "review_submitted" => crate::i18n::text("inbox-review-submitted"),
+        "approval_required" => crate::i18n::text("inbox-approval-required"),
+        "build_failed" => crate::i18n::text("inbox-pipeline-failed"),
+        "unmergeable" => crate::i18n::text("inbox-cannot-be-merged"),
+        "merge_train_removed" => crate::i18n::text("inbox-removed-from-merge-train"),
+        "member_access_requested" => crate::i18n::text("inbox-access-requested"),
+        "marked" => crate::i18n::text("inbox-added-to-your-to-dos"),
+        _ => reason
+            .split('_')
+            .filter(|word| !word.is_empty())
+            .enumerate()
+            .map(|(ix, word)| {
+                if ix == 0 {
+                    let mut chars = word.chars();
+                    chars
+                        .next()
+                        .map(|c| c.to_uppercase().to_string() + chars.as_str())
+                        .unwrap_or_default()
+                } else {
+                    word.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
     }
-    .into()
 }
 fn toggle(list: &mut Vec<String>, key: String) {
     if list.contains(&key) {
@@ -407,7 +423,7 @@ impl Inbox {
                 div()
                     .id("inbox-add-connection")
                     .role(Role::Button)
-                    .aria_label("Add connection")
+                    .aria_label(crate::i18n::text("inbox-add-connection"))
                     .relative()
                     .h(px(24.))
                     .flex_1()
@@ -424,7 +440,11 @@ impl Inbox {
                     .child(self.connection_anchor.probe())
                     .child(icon("plus", 14.))
                     .when(connected.len() < 2, |d| {
-                        d.child(div().truncate().child("Add connection"))
+                        d.child(
+                            div()
+                                .truncate()
+                                .child(crate::i18n::text("inbox-add-connection")),
+                        )
                     })
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.connections_open = !this.connections_open;
@@ -454,35 +474,42 @@ impl Inbox {
                     .child(self.search.clone()),
             )
             .child(
-                icon_button("inbox-filter", "Filter inbox", "filter")
-                    .relative()
-                    .child(self.filter_anchor.probe())
-                    .when(self.filters_open || self.filters_active(), |d| {
-                        d.bg(content(0.1))
-                    })
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.filters_open = !this.filters_open;
-                        this.connections_open = false;
-                        cx.notify();
-                    })),
+                icon_button(
+                    "inbox-filter",
+                    crate::i18n::text("inbox-filter-inbox"),
+                    "filter",
+                )
+                .relative()
+                .child(self.filter_anchor.probe())
+                .when(self.filters_open || self.filters_active(), |d| {
+                    d.bg(content(0.1))
+                })
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.filters_open = !this.filters_open;
+                    this.connections_open = false;
+                    cx.notify();
+                })),
             )
             .child(
-                icon_button("inbox-read-all", "Mark all as read", "check-2").on_click(cx.listener(
-                    |this, _, _, cx| {
-                        for item in &this.snapshot.items {
-                            if item.provider == this.state.source {
-                                this.state.seen.mark(item);
-                            }
+                icon_button(
+                    "inbox-read-all",
+                    crate::i18n::text("inbox-mark-all-as-read"),
+                    "check-2",
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    for item in &this.snapshot.items {
+                        if item.provider == this.state.source {
+                            this.state.seen.mark(item);
                         }
-                        this.save();
-                        cx.notify();
-                    },
-                )),
+                    }
+                    this.save();
+                    cx.notify();
+                })),
             )
             .child(
                 icon_button(
                     "inbox-refresh",
-                    "Refresh",
+                    crate::i18n::text("inbox-refresh"),
                     if self.loading { "loader" } else { "refresh-cw" },
                 )
                 .on_click(cx.listener(|this, _, _, cx| {
@@ -491,19 +518,25 @@ impl Inbox {
                 })),
             );
         let empty = if connected.is_empty() && !self.loading {
-            "Add a connection to start using the Inbox.".into()
+            crate::i18n::text("inbox-add-a-connection-to-start-using-the-inbox")
         } else if self.loading && self.snapshot.items.is_empty() {
-            "Loading inbox…".into()
+            crate::i18n::text("inbox-loading-inbox")
         } else if let Some(error) = self.snapshot.errors.get(&self.state.source) {
             error.clone()
         } else if self.projects.is_empty() && !model::is_tracker(&self.state.source) {
-            "Open a project to fill the inbox".into()
+            crate::i18n::text("inbox-open-a-project-to-fill-the-inbox")
         } else if self.filters_active() || !self.search.read(cx).content.is_empty() {
-            "No items match these filters".into()
+            crate::i18n::text("inbox-no-items-match-these-filters")
         } else if model::is_tracker(&self.state.source) {
-            format!("No {} issues", model::provider_label(&self.state.source))
+            crate::i18n::format(
+                "inbox-no-issues",
+                &[(
+                    "value",
+                    (model::provider_label(&self.state.source)).to_string(),
+                )],
+            )
         } else {
-            "No matching issues or pull requests".into()
+            crate::i18n::text("inbox-no-matching-issues-or-pull-requests")
         };
         let rows = items
             .into_iter()
@@ -515,12 +548,12 @@ impl Inbox {
                 let tracker = model::is_tracker(&item.provider);
                 let kind = if item.kind == "pr" {
                     if item.provider == "gitlab" {
-                        "Merge request"
+                        crate::i18n::text("inbox-merge-request")
                     } else {
-                        "Pull request"
+                        crate::i18n::text("inbox-pull-request")
                     }
                 } else {
-                    "Issue"
+                    crate::i18n::text("inbox-issue")
                 };
                 let source = if tracker && !item.team_name.is_empty() {
                     item.team_name.clone()
@@ -571,7 +604,7 @@ impl Inbox {
                                             icon("message-multiple", 12.)
                                                 .text_color(accent_color()),
                                         )
-                                        .child(sessions.to_string()),
+                                        .child(crate::system_format::unsigned(sessions as u64)),
                                 )
                             })
                             .child(
@@ -638,7 +671,7 @@ impl Inbox {
                 div()
                     .id("inbox-list-scroll")
                     .role(Role::ListBox)
-                    .aria_label("Inbox items")
+                    .aria_label(crate::i18n::text("inbox-inbox-items"))
                     .min_h_0()
                     .flex_1()
                     .overflow_y_scroll()
@@ -653,7 +686,7 @@ impl Inbox {
                 div()
                     .id("inbox-list-resize")
                     .role(Role::Splitter)
-                    .aria_label("Resize inbox list")
+                    .aria_label(crate::i18n::text("inbox-resize-inbox-list"))
                     .absolute()
                     .right(px(-3.))
                     .top_0()
@@ -698,7 +731,7 @@ impl Inbox {
                 .justify_center()
                 .gap(px(12.))
                 .child(icon("inbox", 24.).text_color(content(0.3)))
-                .child(message("Select an inbox item").text_size(px(13.)))
+                .child(message(crate::i18n::text("inbox-select-an-inbox-item")).text_size(px(13.)))
                 .into_any_element();
         };
         let is_pr = item.kind == "pr";
@@ -754,12 +787,12 @@ impl Inbox {
                             .child(provider_mark(&item.provider))
                             .child(if is_pr {
                                 if item.provider == "gitlab" {
-                                    "Merge request"
+                                    crate::i18n::text("inbox-merge-request")
                                 } else {
-                                    "Pull request"
+                                    crate::i18n::text("inbox-pull-request")
                                 }
                             } else {
-                                "Issue"
+                                crate::i18n::text("inbox-issue")
                             })
                             .child(item.reference())
                             .child(
@@ -772,7 +805,12 @@ impl Inbox {
                                         icon(status_icon(&item), 14.)
                                             .text_color(status_color(&item)),
                                     )
-                                    .child(item.status()),
+                                    .child(crate::i18n::text(match item.status() {
+                                        "Merged" => "inbox-merged",
+                                        "Closed" => "inbox-closed",
+                                        "Draft" => "inbox-draft",
+                                        _ => "inbox-open",
+                                    })),
                             )
                             .when(!item.attention_reason.is_empty(), |d| {
                                 d.child(
@@ -835,15 +873,19 @@ impl Inbox {
                                         item.provider.as_str(),
                                         "github" | "gitlab" | "azuredevops"
                                     ),
-                                |d| d.child("·").child("Unassigned"),
+                                |d| d.child("·").child(crate::i18n::text("inbox-unassigned")),
                             )
                             .when(!item.created_at.is_empty(), |d| {
-                                d.child("·")
-                                    .child(format!("Created {}", relative_time(&item.created_at)))
+                                d.child("·").child(crate::i18n::format(
+                                    "inbox-created",
+                                    &[("value", relative_time(&item.created_at).to_string())],
+                                ))
                             })
                             .when(!item.updated_at.is_empty(), |d| {
-                                d.child("·")
-                                    .child(format!("Updated {}", relative_time(&item.updated_at)))
+                                d.child("·").child(crate::i18n::format(
+                                    "inbox-updated",
+                                    &[("value", relative_time(&item.updated_at).to_string())],
+                                ))
                             })
                             .when(!base_ref.is_empty() && !head_ref.is_empty(), |d| {
                                 let branch = head_ref.to_owned();
@@ -854,16 +896,19 @@ impl Inbox {
                                         .items_center()
                                         .gap(px(4.))
                                         .child(icon("git-compare", 12.).text_color(content(0.5)))
-                                        .child(
-                                            div()
-                                                .min_w_0()
-                                                .truncate()
-                                                .child(format!("{base_ref} ← {head_ref}")),
-                                        )
+                                        .child(div().min_w_0().truncate().child(
+                                            crate::i18n::format(
+                                                "inbox-branch-direction",
+                                                &[
+                                                    ("base_ref", base_ref.to_string()),
+                                                    ("head_ref", head_ref.to_string()),
+                                                ],
+                                            ),
+                                        ))
                                         .child(
                                             icon_button(
                                                 "inbox-copy-branch",
-                                                "Copy branch name",
+                                                crate::i18n::text("inbox-copy-branch-name"),
                                                 "response-copy",
                                             )
                                             .size(px(18.))
@@ -894,7 +939,7 @@ impl Inbox {
                                     div()
                                         .text_size(px(11.))
                                         .text_color(content(0.45))
-                                        .child("Related threads"),
+                                        .child(crate::i18n::text("inbox-related-threads")),
                                 )
                                 .children(self.related_sessions(&item).into_iter().map(
                                     |session| {
@@ -924,26 +969,31 @@ impl Inbox {
                             .gap(px(8.))
                             .when(!is_pr, |d| {
                                 d.child(
-                                    action("inbox-send-agent", "Open in new session")
-                                        .px(px(12.))
-                                        .bg(content(1.))
-                                        .text_color(shell_fill())
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .when(self.detail_loading || self.details.is_none(), |d| {
-                                            d.opacity(0.4)
-                                        })
-                                        .on_click(cx.listener(|this, _, _, cx| {
+                                    action(
+                                        "inbox-send-agent",
+                                        crate::i18n::text("inbox-open-in-new-session"),
+                                    )
+                                    .px(px(12.))
+                                    .bg(content(1.))
+                                    .text_color(shell_fill())
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .when(self.detail_loading || self.details.is_none(), |d| {
+                                        d.opacity(0.4)
+                                    })
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| {
                                             if !this.detail_loading && this.details.is_some() {
                                                 this.start(cx);
                                             }
-                                        })),
+                                        },
+                                    )),
                                 )
                             })
                             .when(!is_pr && item.project_path.is_empty(), |d| {
                                 d.child(
                                     icon_action(
                                         "inbox-choose-project",
-                                        &self.project_label(&self.start_project.to_string_lossy()),
+                                        self.project_label(&self.start_project.to_string_lossy()),
                                         "folder",
                                     )
                                     .relative()
@@ -966,11 +1016,23 @@ impl Inbox {
                             .child(
                                 icon_action(
                                     "inbox-open-external",
-                                    &format!(
-                                        "{} {}",
-                                        if is_pr { "Review on" } else { "Open in" },
-                                        model::provider_label(&item.provider)
-                                    ),
+                                    if is_pr {
+                                        crate::i18n::format(
+                                            "inbox-review-on",
+                                            &[(
+                                                "provider",
+                                                model::provider_label(&item.provider).to_string(),
+                                            )],
+                                        )
+                                    } else {
+                                        crate::i18n::format(
+                                            "inbox-open-in",
+                                            &[(
+                                                "provider",
+                                                model::provider_label(&item.provider).to_string(),
+                                            )],
+                                        )
+                                    },
                                     "external-link",
                                 )
                                 .when(item.url.is_empty(), |d| d.opacity(0.4))
@@ -989,62 +1051,69 @@ impl Inbox {
                             div()
                                 .id("inbox-pr-tabs")
                                 .role(Role::TabList)
-                                .aria_label("Pull request details")
+                                .aria_label(crate::i18n::text("inbox-pull-request-details"))
                                 .h(px(36.))
                                 .flex()
                                 .items_stretch()
                                 .gap(px(16.))
                                 .children(
                                     [
-                                        (Tab::Summary, "Summary"),
-                                        (Tab::Code, "Code"),
-                                        (Tab::Checks, "Checks"),
+                                        (Tab::Summary, crate::i18n::text("inbox-summary")),
+                                        (Tab::Code, crate::i18n::text("inbox-code")),
+                                        (Tab::Checks, crate::i18n::text("inbox-checks")),
                                     ]
                                     .into_iter()
                                     .filter(|(tab, _)| {
                                         *tab != Tab::Checks || item.provider == "github"
                                     })
                                     .map(|(tab, label)| {
-                                        plain_action(format!("inbox-tab-{label}"), label)
-                                            .role(Role::Tab)
-                                            .h_full()
-                                            .px_0()
-                                            .rounded_none()
-                                            .hover(|s| s.text_color(content(1.)))
-                                            .when(self.tab == tab, |d| {
-                                                d.border_b_2()
-                                                    .border_color(content(1.))
-                                                    .text_color(content(1.))
-                                            })
-                                            .when(tab == Tab::Checks, |d| {
-                                                let failed = self
-                                                    .checks
-                                                    .as_ref()
-                                                    .map(|checks| {
-                                                        checks
-                                                            .checks
-                                                            .iter()
-                                                            .filter(|check| {
-                                                                failed_check(&check.state)
-                                                            })
-                                                            .count()
-                                                    })
-                                                    .unwrap_or(0);
-                                                d.when(failed > 0, |d| {
-                                                    d.child(
-                                                        icon("circle-x", 13.)
-                                                            .text_color(rgb(0xf87171)),
-                                                    )
-                                                    .child(
-                                                        div()
-                                                            .text_color(rgb(0xf87171))
-                                                            .child(failed.to_string()),
-                                                    )
+                                        plain_action(
+                                            format!(
+                                                "inbox-tab-{}",
+                                                match tab {
+                                                    Tab::Summary => "Summary",
+                                                    Tab::Code => "Code",
+                                                    Tab::Checks => "Checks",
+                                                }
+                                            ),
+                                            label,
+                                        )
+                                        .role(Role::Tab)
+                                        .h_full()
+                                        .px_0()
+                                        .rounded_none()
+                                        .hover(|s| s.text_color(content(1.)))
+                                        .when(self.tab == tab, |d| {
+                                            d.border_b_2()
+                                                .border_color(content(1.))
+                                                .text_color(content(1.))
+                                        })
+                                        .when(tab == Tab::Checks, |d| {
+                                            let failed = self
+                                                .checks
+                                                .as_ref()
+                                                .map(|checks| {
+                                                    checks
+                                                        .checks
+                                                        .iter()
+                                                        .filter(|check| failed_check(&check.state))
+                                                        .count()
                                                 })
+                                                .unwrap_or(0);
+                                            d.when(failed > 0, |d| {
+                                                d.child(
+                                                    icon("circle-x", 13.).text_color(rgb(0xf87171)),
+                                                )
+                                                .child(div().text_color(rgb(0xf87171)).child(
+                                                    crate::system_format::unsigned(failed as u64),
+                                                ))
                                             })
-                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                        })
+                                        .on_click(
+                                            cx.listener(move |this, _, _, cx| {
                                                 this.set_tab(tab, cx)
-                                            }))
+                                            }),
+                                        )
                                     }),
                                 ),
                         )
@@ -1067,7 +1136,7 @@ impl Inbox {
             .into_any_element()
     }
 
-    /// Copy link, which turns into a green tick reading "Copied link" for a
+    /// Copy link, which turns into a green tick reading crate::i18n::text("inbox-copied-link") for a
     /// moment once the address is on the clipboard.
     fn copy_link_button(&self, item: &Item, cx: &mut Context<Self>) -> AnyElement {
         let copied = self
@@ -1080,7 +1149,7 @@ impl Inbox {
         let button = match copied {
             Some(press) => icon_action_with(
                 "inbox-copy-link",
-                "Copied link",
+                &crate::i18n::text("inbox-copied-link"),
                 action_icon("check", COPIED).with_animation(
                     ("inbox-copied-tick", press),
                     Animation::new(COPIED_POP).with_easing(|t| 1. - (1. - t).powi(3)),
@@ -1089,8 +1158,12 @@ impl Inbox {
                 COPIED,
             )
             .text_color(content(1.)),
-            None => icon_action("inbox-copy-link", "Copy link", "response-copy")
-                .when(item.url.is_empty(), |d| d.opacity(0.4)),
+            None => icon_action(
+                "inbox-copy-link",
+                crate::i18n::text("inbox-copy-link"),
+                "response-copy",
+            )
+            .when(item.url.is_empty(), |d| d.opacity(0.4)),
         };
         button.on_click(on_click).into_any_element()
     }
@@ -1098,9 +1171,9 @@ impl Inbox {
         let open = item.state.eq_ignore_ascii_case("open");
         let selected = self.merge_action.clone();
         let merge_label = match selected.as_str() {
-            "squash" => "Squash and merge",
-            "rebase" => "Rebase and merge",
-            _ => "Merge pull request",
+            "squash" => crate::i18n::text("inbox-squash-and-merge"),
+            "rebase" => crate::i18n::text("inbox-rebase-and-merge"),
+            _ => crate::i18n::text("inbox-merge-pull-request"),
         };
         div()
             .flex()
@@ -1121,7 +1194,7 @@ impl Inbox {
                         .child(
                             icon_action_ink(
                                 "inbox-pr-merge",
-                                merge_label,
+                                &merge_label,
                                 "git-merge",
                                 shell_fill(),
                             )
@@ -1144,7 +1217,7 @@ impl Inbox {
                             div()
                                 .id("inbox-merge-options")
                                 .role(Role::Button)
-                                .aria_label("Merge options")
+                                .aria_label(crate::i18n::text("inbox-merge-options"))
                                 .h_full()
                                 .w(px(28.))
                                 .flex()
@@ -1165,13 +1238,21 @@ impl Inbox {
             })
             .children(
                 [
-                    (open && item.draft, "ready", "Ready for review"),
-                    (open && !item.draft, "draft", "Convert to draft"),
-                    (open, "close", "Close pull request"),
+                    (
+                        open && item.draft,
+                        "ready",
+                        crate::i18n::text("inbox-ready-for-review"),
+                    ),
+                    (
+                        open && !item.draft,
+                        "draft",
+                        crate::i18n::text("inbox-convert-to-draft-2"),
+                    ),
+                    (open, "close", crate::i18n::text("inbox-close-pull-request")),
                     (
                         item.state.eq_ignore_ascii_case("closed"),
                         "reopen",
-                        "Reopen pull request",
+                        crate::i18n::text("inbox-reopen-pull-request"),
                     ),
                 ]
                 .into_iter()
@@ -1310,8 +1391,11 @@ impl Inbox {
                     )))
             })
             .when(comment.resolved, |d| {
-                d.child("·")
-                    .child(div().text_color(rgb(0x4ade80)).child("Resolved"))
+                d.child("·").child(
+                    div()
+                        .text_color(rgb(0x4ade80))
+                        .child(crate::i18n::text("inbox-resolved")),
+                )
             })
             .when(!comment.created_at.is_empty(), |d| {
                 d.child("·").child(
@@ -1335,16 +1419,19 @@ impl Inbox {
             .when(!reply_id.is_empty(), |d| {
                 let name = author.to_string();
                 d.child("·").child(
-                    action(format!("inbox-reply-{}", comment.id), "Reply")
-                        .h_auto()
-                        .px_0()
-                        .text_color(content(0.5))
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.reply = Some((reply_id.clone(), name.clone()));
-                            this.summary_scroll.scroll_to_end();
-                            window.focus(&this.comment.focus_handle(cx), cx);
-                            cx.notify();
-                        })),
+                    action(
+                        format!("inbox-reply-{}", comment.id),
+                        crate::i18n::text("inbox-reply"),
+                    )
+                    .h_auto()
+                    .px_0()
+                    .text_color(content(0.5))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.reply = Some((reply_id.clone(), name.clone()));
+                        this.summary_scroll.scroll_to_end();
+                        window.focus(&this.comment.focus_handle(cx), cx);
+                        cx.notify();
+                    })),
                 )
             });
         div()
@@ -1386,7 +1473,11 @@ impl Inbox {
                             d.child(
                                 action(
                                     format!("inbox-expand-comment-{}", comment.id),
-                                    if clamped { "Show more" } else { "Show less" },
+                                    if clamped {
+                                        crate::i18n::text("inbox-show-more")
+                                    } else {
+                                        crate::i18n::text("inbox-show-less")
+                                    },
                                 )
                                 .mt(px(6.))
                                 .h_auto()
@@ -1576,12 +1667,12 @@ impl Inbox {
                 };
                 let body = if event {
                     let verb = match state.as_str() {
-                        "APPROVED" => "approved",
-                        "CHANGES_REQUESTED" => "requested changes",
-                        "DISMISSED" => "had a review dismissed",
-                        _ => "reviewed",
+                        "APPROVED" => crate::i18n::text("inbox-event-approved"),
+                        "CHANGES_REQUESTED" => crate::i18n::text("inbox-event-requested-changes"),
+                        "DISMISSED" => crate::i18n::text("inbox-event-dismissed"),
+                        _ => crate::i18n::text("inbox-event-reviewed"),
                     };
-                    timeline_event(&comment.author, verb, &comment.created_at).into_any_element()
+                    timeline_event(&comment.author, &verb, &comment.created_at).into_any_element()
                 } else {
                     self.comment_card(
                         item,
@@ -1621,18 +1712,32 @@ impl Inbox {
                         .flex()
                         .gap(px(12.))
                         .child(self.timeline_rail(node, first, false, false))
-                        .child(div().min_w_0().flex_1().pb(px(12.)).child(timeline_event(
-                            &author,
-                            &format!(
-                                "added {}",
-                                if commits.len() == 1 {
-                                    "a commit".into()
-                                } else {
-                                    format!("{} commits", commits.len())
-                                }
-                            ),
-                            &time,
-                        )))
+                        .child(
+                            div().min_w_0().flex_1().pb(px(12.)).child(timeline_event(
+                                &author,
+                                &crate::i18n::format(
+                                    "inbox-added-commits",
+                                    &[(
+                                        "value1",
+                                        (if commits.len() == 1 {
+                                            crate::i18n::text("inbox-added-commits-a-commit")
+                                        } else {
+                                            crate::i18n::format(
+                                                "inbox-commits",
+                                                &[(
+                                                    "count",
+                                                    crate::system_format::unsigned(
+                                                        commits.len() as u64
+                                                    ),
+                                                )],
+                                            )
+                                        })
+                                        .to_string(),
+                                    )],
+                                ),
+                                &time,
+                            )),
+                        )
                         .into_any_element(),
                 );
                 let commit_count = commits.len();
@@ -1672,7 +1777,7 @@ impl Inbox {
                                         div()
                                             .id(format!("inbox-commit-{}", commit.oid))
                                             .role(Role::Button)
-                                            .aria_label("Open commit")
+                                            .aria_label(crate::i18n::text("inbox-open-commit"))
                                             .h(px(20.))
                                             .flex()
                                             .items_center()
@@ -1755,36 +1860,68 @@ impl Inbox {
                         .text_size(px(12.))
                         .text_color(content(0.5))
                         .child(div().text_color(content(0.7)).child(if timeline {
-                            "Activity".into()
+                            crate::i18n::text("inbox-activity")
                         } else {
-                            format!(
-                                "{count} {}",
-                                if count == 1 { "comment" } else { "comments" }
+                            crate::i18n::format(
+                                "inbox-thread-comments",
+                                &[
+                                    ("count", crate::system_format::unsigned(count as u64)),
+                                    (
+                                        "value1",
+                                        if count == 1 {
+                                            crate::i18n::text("inbox-comment")
+                                        } else {
+                                            crate::i18n::text("inbox-comments")
+                                        },
+                                    ),
+                                    ("value2", String::new()),
+                                ],
                             )
                         }))
                         .when(timeline, |d| {
-                            d.child(format!(
-                                "{count} {}{}",
-                                if count == 1 { "comment" } else { "comments" },
-                                if thread.commits.is_empty() {
-                                    String::new()
-                                } else {
-                                    format!(
-                                        " · {} {}",
-                                        thread.commits.len(),
-                                        if thread.commits.len() == 1 {
-                                            "commit"
+                            d.child(crate::i18n::format(
+                                "inbox-thread-comments",
+                                &[
+                                    ("count", crate::system_format::unsigned((count) as u64)),
+                                    (
+                                        "value1",
+                                        (if count == 1 {
+                                            crate::i18n::text("inbox-thread-comments-comment")
                                         } else {
-                                            "commits"
-                                        }
-                                    )
-                                }
+                                            crate::i18n::text("inbox-thread-comments-comments")
+                                        })
+                                        .to_string(),
+                                    ),
+                                    (
+                                        "value2",
+                                        (if thread.commits.is_empty() {
+                                            String::new()
+                                        } else {
+                                            format!(
+                                                " · {} {}",
+                                                crate::system_format::unsigned(
+                                                    thread.commits.len() as u64
+                                                ),
+                                                if thread.commits.len() == 1 {
+                                                    crate::i18n::text(
+                                                        "inbox-thread-comments-commit",
+                                                    )
+                                                } else {
+                                                    crate::i18n::text(
+                                                        "inbox-thread-comments-commits",
+                                                    )
+                                                }
+                                            )
+                                        })
+                                        .to_string(),
+                                    ),
+                                ],
                             ))
                         })
                         .when(thread.truncated, |d| {
-                            d.child(format!(
-                                "Latest comments · more on {}",
-                                model::provider_label(&item.provider)
+                            d.child(crate::i18n::format(
+                                "inbox-latest-comments-more-on",
+                                &[("value", model::provider_label(&item.provider).to_string())],
                             ))
                         }),
                 )
@@ -1886,143 +2023,145 @@ impl Inbox {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let can_post = !self.posting && !self.comment.read(cx).content.trim().is_empty();
-        let body = if ix == 0 {
-            div()
-                .pt(px(20.))
-                .pb(px(20.))
-                .flex()
-                .flex_col()
-                .gap(px(20.))
-                .when(!item.labels.is_empty(), |d| {
-                    d.child(
-                        div()
-                            .flex()
-                            .flex_wrap()
-                            .gap(px(4.))
-                            .children(item.labels.iter().map(|label| label_badge(label, false))),
-                    )
-                })
-                .when(self.detail_loading && self.details.is_none(), |d| {
-                    d.child(message("Loading description…"))
-                })
-                .when(
-                    self.details
-                        .as_ref()
-                        .is_some_and(|d| d.body.trim().is_empty()),
-                    |d| {
+        let body =
+            if ix == 0 {
+                div()
+                    .pt(px(20.))
+                    .pb(px(20.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(20.))
+                    .when(!item.labels.is_empty(), |d| {
                         d.child(
-                            div()
-                                .text_size(px(13.))
-                                .text_color(content(0.45))
-                                .child("No description"),
+                            div().flex().flex_wrap().gap(px(4.)).children(
+                                item.labels.iter().map(|label| label_badge(label, false)),
+                            ),
                         )
-                    },
-                )
-                .when_some(self.document.clone(), |d, document| {
-                    d.child(
-                        div()
-                            .w_full()
-                            .flex_shrink_0()
-                            .child(document::DocumentElement::new(
+                    })
+                    .when(self.detail_loading && self.details.is_none(), |d| {
+                        d.child(message(crate::i18n::text("inbox-loading-description")))
+                    })
+                    .when(
+                        self.details
+                            .as_ref()
+                            .is_some_and(|d| d.body.trim().is_empty()),
+                        |d| {
+                            d.child(
+                                div()
+                                    .text_size(px(13.))
+                                    .text_color(content(0.45))
+                                    .child(crate::i18n::text("inbox-no-description")),
+                            )
+                        },
+                    )
+                    .when_some(self.document.clone(), |d, document| {
+                        d.child(div().w_full().flex_shrink_0().child(
+                            document::DocumentElement::new(
                                 document,
                                 self.summary_body_width(),
                                 None,
-                            )),
-                    )
-                })
-                .when(self.thread.is_none(), |d| {
-                    d.when_some(self.thread_error.clone(), |d, text| d.child(error(text)))
-                })
-                .into_any_element()
-        } else if ix + 1 == count {
-            div()
-                .pb(px(20.))
-                .child(
-                    div()
-                        .w_full()
-                        .flex_shrink_0()
-                        .border_t_1()
-                        .border_color(content(0.07))
-                        .pt(px(20.))
-                        .flex()
-                        .flex_col()
-                        .gap(px(8.))
-                        .when_some(self.reply.clone(), |d, (_, author)| {
-                            d.child(
+                            ),
+                        ))
+                    })
+                    .when(self.thread.is_none(), |d| {
+                        d.when_some(self.thread_error.clone(), |d, text| d.child(error(text)))
+                    })
+                    .into_any_element()
+            } else if ix + 1 == count {
+                div()
+                    .pb(px(20.))
+                    .child(
+                        div()
+                            .w_full()
+                            .flex_shrink_0()
+                            .border_t_1()
+                            .border_color(content(0.07))
+                            .pt(px(20.))
+                            .flex()
+                            .flex_col()
+                            .gap(px(8.))
+                            .when_some(self.reply.clone(), |d, (_, author)| {
+                                d.child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(8.))
+                                        .text_size(px(12.))
+                                        .text_color(content(0.5))
+                                        .child(div().min_w_0().truncate().child(
+                                            crate::i18n::format(
+                                                "inbox-replying-to",
+                                                &[("author", author.to_string())],
+                                            ),
+                                        ))
+                                        .child(
+                                            icon_button(
+                                                "inbox-cancel-reply",
+                                                crate::i18n::text("inbox-cancel-reply"),
+                                                "close",
+                                            )
+                                            .size(px(20.))
+                                            .on_click(
+                                                cx.listener(|this, _, _, cx| {
+                                                    this.reply = None;
+                                                    this.post_error = None;
+                                                    cx.notify();
+                                                }),
+                                            ),
+                                        ),
+                                )
+                            })
+                            .child(
                                 div()
+                                    .rounded(px(6.))
+                                    .border_1()
+                                    .border_color(content(0.1))
+                                    .bg(content(0.05))
                                     .flex()
-                                    .items_center()
-                                    .gap(px(8.))
-                                    .text_size(px(12.))
-                                    .text_color(content(0.5))
+                                    .flex_col()
                                     .child(
                                         div()
-                                            .min_w_0()
-                                            .truncate()
-                                            .child(format!("Replying to {author}")),
+                                            .px(px(12.))
+                                            .py(px(8.))
+                                            .when(self.posting, |d| d.opacity(0.4))
+                                            .child(self.comment.clone()),
                                     )
                                     .child(
-                                        icon_button("inbox-cancel-reply", "Cancel reply", "close")
-                                            .size(px(20.))
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.reply = None;
-                                                this.post_error = None;
-                                                cx.notify();
-                                            })),
-                                    ),
-                            )
-                        })
-                        .child(
-                            div()
-                                .rounded(px(6.))
-                                .border_1()
-                                .border_color(content(0.1))
-                                .bg(content(0.05))
-                                .flex()
-                                .flex_col()
-                                .child(
-                                    div()
-                                        .px(px(12.))
-                                        .py(px(8.))
-                                        .when(self.posting, |d| d.opacity(0.4))
-                                        .child(self.comment.clone()),
-                                )
-                                .child(
-                                    div().px(px(8.)).pb(px(8.)).flex().justify_end().child(
-                                        action(
-                                            "inbox-post-comment",
-                                            if self.posting {
-                                                "Posting..."
-                                            } else if self.reply.is_some() {
-                                                "Reply"
-                                            } else {
-                                                "Comment"
-                                            },
-                                        )
-                                        .px(px(12.))
-                                        .bg(content(1.))
-                                        .text_color(shell_fill())
-                                        .when(!can_post, |d| d.opacity(0.4))
-                                        .on_click(
-                                            cx.listener(|this, _, _, cx| this.post_comment(cx)),
+                                        div().px(px(8.)).pb(px(8.)).flex().justify_end().child(
+                                            action(
+                                                "inbox-post-comment",
+                                                if self.posting {
+                                                    crate::i18n::text("inbox-posting")
+                                                } else if self.reply.is_some() {
+                                                    crate::i18n::text("inbox-reply")
+                                                } else {
+                                                    crate::i18n::text("inbox-comment-2")
+                                                },
+                                            )
+                                            .px(px(12.))
+                                            .bg(content(1.))
+                                            .text_color(shell_fill())
+                                            .when(!can_post, |d| d.opacity(0.4))
+                                            .on_click(
+                                                cx.listener(|this, _, _, cx| this.post_comment(cx)),
+                                            ),
                                         ),
                                     ),
-                                ),
-                        )
-                        .when_some(self.post_error.clone(), |d, text| d.child(error(text))),
-                )
-                .into_any_element()
-        } else if discussion && ix == 1 {
-            div()
-                .pb(px(if self.activity.is_empty() { 20. } else { 12. }))
-                .children(self.discussion_heading(item, window, cx))
-                .into_any_element()
-        } else {
-            div()
-                .pb(px(if ix + 2 == count { 20. } else { 0. }))
-                .child(self.discussion_row(item, ix - 2, window, cx))
-                .into_any_element()
-        };
+                            )
+                            .when_some(self.post_error.clone(), |d, text| d.child(error(text))),
+                    )
+                    .into_any_element()
+            } else if discussion && ix == 1 {
+                div()
+                    .pb(px(if self.activity.is_empty() { 20. } else { 12. }))
+                    .children(self.discussion_heading(item, window, cx))
+                    .into_any_element()
+            } else {
+                div()
+                    .pb(px(if ix + 2 == count { 20. } else { 0. }))
+                    .child(self.discussion_row(item, ix - 2, window, cx))
+                    .into_any_element()
+            };
         div()
             .id(("inbox-summary-row", ix))
             .w_full()
@@ -2037,29 +2176,31 @@ impl Inbox {
             .flex_1()
             .flex()
             .flex_col()
-            .when(self.extra_loading, |d| d.child(message("Loading changes…")))
+            .when(self.extra_loading, |d| {
+                d.child(message(crate::i18n::text("inbox-loading-changes")))
+            })
             .when_some(self.extra_error.clone(), |d, text| d.child(error(text)))
             .when(self.diff.is_some(), |d| {
                 d.child(div().flex_1().min_h_0().child(self.diff_view.clone()))
             })
             .when(self.diff.as_ref().is_some_and(|diff| diff.truncated), |d| {
-                d.child(message(
-                    "This diff is truncated. Open the pull request to see all changes.",
-                ))
+                d.child(message(crate::i18n::text(
+                    "inbox-this-diff-is-truncated-open-the-pull-request-to",
+                )))
             })
             .into_any_element()
     }
 
     fn checks_view(&self, cx: &mut Context<Self>) -> AnyElement {
         div().id("inbox-checks-scroll").min_h_0().flex_1().overflow_y_scroll().px(px(12.)).py(px(20.))
-            .when(self.extra_loading, |d| d.child(message("Loading checks…")))
+            .when(self.extra_loading, |d| d.child(message(crate::i18n::text("inbox-loading-checks"))))
             .when_some(self.extra_error.clone(), |d, text| d.child(error(text)))
             .when_some(self.checks.clone(), |d, checks| {
                 let failed = checks.checks.iter().filter(|c| matches!(c.state.to_lowercase().as_str(), "failure" | "failed" | "error" | "timed_out" | "cancelled" | "action_required")).cloned().collect::<Vec<_>>();
-                d.when(checks.checks.is_empty(), |d| d.child(message("No checks reported")))
+                d.when(checks.checks.is_empty(), |d| d.child(message(crate::i18n::text("inbox-no-checks-reported"))))
                     .when(!failed.is_empty(), |d| d.child(div().mb(px(12.)).flex().items_center().gap(px(8.))
-                        .child(div().flex_1().text_size(px(12.)).text_color(content(0.7)).child(format!("{} failing checks", failed.len())))
-                        .child(action("inbox-fix-checks", "Fix with agent").bg(content(0.1)).on_click(cx.listener(move |this, _, _, cx| {
+                        .child(div().flex_1().text_size(px(12.)).text_color(content(0.7)).child(crate::i18n::format("inbox-failing-checks", &[("count", format!("{}", failed.len()))])))
+                        .child(action("inbox-fix-checks", crate::i18n::text("inbox-fix-with-agent")).bg(content(0.1)).on_click(cx.listener(move |this, _, _, cx| {
                             if let Some(mut item) = this.item() {
                                 if item.project_path.is_empty() { item.project_path = this.start_project.to_string_lossy().into_owned(); }
                                 let evidence = failed.iter().map(|check| format!("{}: {} {}", check.name, check.state, check.url.as_deref().unwrap_or(""))).collect::<Vec<_>>().join("\n");
@@ -2078,7 +2219,7 @@ impl Inbox {
                             .child(div().flex_1().min_w_0().child(div().text_size(px(12.)).text_color(content(0.85)).child(check.name.clone()))
                                 .child(div().text_size(px(11.)).text_color(content(0.4)).child(check.workflow.clone())))
                             .child(div().text_size(px(11.)).text_color(color).child(check.state.replace('_', " ").to_lowercase()))
-                            .when(url.is_some(), |d| d.child(action(format!("inbox-check-link-{ix}"), "Details ↗").on_click(move |_, _, cx| { if let Some(url) = &url { cx.open_url(url); } })))
+                            .when(url.is_some(), |d| d.child(action(format!("inbox-check-link-{ix}"), crate::i18n::text("inbox-details")).on_click(move |_, _, cx| { if let Some(url) = &url { cx.open_url(url); } })))
                     }))
             }).into_any_element()
     }
@@ -2114,13 +2255,13 @@ impl Inbox {
         let f = &self.state.filters;
         let tracker = model::is_tracker(&self.state.source);
         let mut rows = vec![
-            caption("FILTER INBOX").into_any_element(),
+            caption(crate::i18n::text("inbox-filter-inbox-2")).into_any_element(),
             menu_row(
                 "inbox-assigned",
                 if matches!(self.state.source.as_str(), "gitlab" | "azuredevops") {
-                    "Needs my attention"
+                    crate::i18n::text("inbox-needs-my-attention")
                 } else {
-                    "Assigned to me"
+                    crate::i18n::text("inbox-assigned-to-me")
                 },
                 f.assigned_to_me,
             )
@@ -2129,13 +2270,13 @@ impl Inbox {
                 this.filters_changed(true, cx);
             }))
             .into_any_element(),
-            caption("UPDATED").into_any_element(),
+            caption(crate::i18n::text("inbox-updated-2")).into_any_element(),
         ];
         for (time, label) in [
-            ("all", "Any time"),
-            ("today", "Today"),
-            ("7d", "Last 7 days"),
-            ("30d", "Last 30 days"),
+            ("all", crate::i18n::text("inbox-any-time")),
+            ("today", crate::i18n::text("inbox-today")),
+            ("7d", crate::i18n::text("inbox-last-7-days")),
+            ("30d", crate::i18n::text("inbox-last-30-days")),
         ] {
             rows.push(
                 menu_row(format!("inbox-time-{time}"), label, f.time == time)
@@ -2146,7 +2287,7 @@ impl Inbox {
                     .into_any_element(),
             );
         }
-        rows.push(caption("STATUS").into_any_element());
+        rows.push(caption(crate::i18n::text("inbox-status")).into_any_element());
         for status in ["Open", "Draft", "Closed", "Merged"]
             .into_iter()
             .filter(|s| !tracker || matches!(*s, "Open" | "Closed"))
@@ -2158,30 +2299,40 @@ impl Inbox {
                 _ => f.status.merged,
             };
             rows.push(
-                menu_row(format!("inbox-status-{status}"), status, checked)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        let s = &mut this.state.filters.status;
-                        match status {
-                            "Open" => s.open = !s.open,
-                            "Draft" => s.draft = !s.draft,
-                            "Closed" => s.closed = !s.closed,
-                            _ => s.merged = !s.merged,
-                        }
-                        this.filters_changed(true, cx);
-                    }))
-                    .into_any_element(),
+                menu_row(
+                    format!("inbox-status-{status}"),
+                    crate::i18n::text(match status {
+                        "Open" => "inbox-open",
+                        "Draft" => "inbox-draft",
+                        "Closed" => "inbox-closed",
+                        "Merged" => "inbox-merged",
+                        _ => unreachable!(),
+                    }),
+                    checked,
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    let s = &mut this.state.filters.status;
+                    match status {
+                        "Open" => s.open = !s.open,
+                        "Draft" => s.draft = !s.draft,
+                        "Closed" => s.closed = !s.closed,
+                        _ => s.merged = !s.merged,
+                    }
+                    this.filters_changed(true, cx);
+                }))
+                .into_any_element(),
             );
         }
         if !tracker {
-            rows.push(caption("TYPE").into_any_element());
+            rows.push(caption(crate::i18n::text("inbox-type")).into_any_element());
             for (kind, label) in [
-                ("issue", "Issues"),
+                ("issue", crate::i18n::text("inbox-issues")),
                 (
                     "pr",
                     if self.state.source == "gitlab" {
-                        "Merge requests"
+                        crate::i18n::text("inbox-merge-requests")
                     } else {
-                        "Pull requests"
+                        crate::i18n::text("inbox-pull-requests")
                     },
                 ),
             ] {
@@ -2198,7 +2349,7 @@ impl Inbox {
                     .into_any_element(),
                 );
             }
-            rows.push(caption("PROJECTS").into_any_element());
+            rows.push(caption(crate::i18n::text("inbox-projects")).into_any_element());
             for (ix, project) in self.projects.iter().enumerate() {
                 let key = project.to_string_lossy().into_owned();
                 rows.push(
@@ -2224,9 +2375,9 @@ impl Inbox {
         if tracker && !provider_options.is_empty() {
             rows.push(
                 caption(if self.state.source == "linear" {
-                    "TEAMS"
+                    crate::i18n::text("inbox-teams")
                 } else {
-                    "PROJECTS"
+                    crate::i18n::text("inbox-projects")
                 })
                 .into_any_element(),
             );
@@ -2271,13 +2422,13 @@ impl Inbox {
                     })
                     .or_insert_with(|| {
                         if item.project_name.is_empty() {
-                            "No project".into()
+                            crate::i18n::text("inbox-no-project")
                         } else {
                             item.project_name.clone()
                         }
                     });
             }
-            rows.push(caption("LINEAR PROJECTS").into_any_element());
+            rows.push(caption(crate::i18n::text("inbox-linear-projects")).into_any_element());
             for (ix, (id, name)) in projects.into_iter().enumerate() {
                 rows.push(
                     menu_row(
@@ -2294,17 +2445,20 @@ impl Inbox {
             }
         }
         rows.push(
-            action("inbox-clear-filters", "Clear filters")
-                .w_full()
-                .justify_start()
-                .mt(px(8.))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.state.filters = model::Filters::default();
-                    this.state.hidden_linear_teams.clear();
-                    this.state.hidden_jira_projects.clear();
-                    this.filters_changed(true, cx);
-                }))
-                .into_any_element(),
+            action(
+                "inbox-clear-filters",
+                crate::i18n::text("inbox-clear-filters"),
+            )
+            .w_full()
+            .justify_start()
+            .mt(px(8.))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.state.filters = model::Filters::default();
+                this.state.hidden_linear_teams.clear();
+                this.state.hidden_jira_projects.clear();
+                this.filters_changed(true, cx);
+            }))
+            .into_any_element(),
         );
         popover(
             "inbox-filter-menu",
@@ -2343,7 +2497,7 @@ impl Inbox {
                 cx.notify();
             });
         })
-        .child(caption("CONNECTIONS"))
+        .child(caption(crate::i18n::text("inbox-connections")))
         .children(model::PROVIDERS.into_iter().map(|provider| {
             let connected = self
                 .snapshot
@@ -2352,7 +2506,11 @@ impl Inbox {
                 .is_some_and(|s| s.connected);
             let label = format!(
                 "{} {}",
-                if connected { "Manage" } else { "Connect" },
+                if connected {
+                    crate::i18n::text("inbox-manage")
+                } else {
+                    crate::i18n::text("inbox-connect")
+                },
                 model::provider_label(provider)
             );
             div()
@@ -2388,21 +2546,27 @@ impl Inbox {
             .is_some_and(|s| s.connected);
         let title = format!(
             "{} {}",
-            if connected { "Manage" } else { "Connect" },
+            crate::i18n::text(if connected {
+                "inbox-manage"
+            } else {
+                "inbox-connect"
+            }),
             model::provider_label(&provider)
         );
         let hint = match provider.as_str() {
-            "github" => {
-                "Install GitHub CLI, then run gh auth login in a terminal. Check again when signed in."
+            "github" => crate::i18n::text("inbox-install-github-cli-then-run-gh-auth-login-in"),
+            "linear" => {
+                crate::i18n::text("inbox-create-a-personal-api-key-in-linear-settings-security")
             }
-            "linear" => "Create a personal API key in Linear → Settings → Security & Access.",
-            "jira" => "Connect your Jira Cloud site with your Atlassian email and an API token.",
+            "jira" => {
+                crate::i18n::text("inbox-connect-your-jira-cloud-site-with-your-atlassian-email")
+            }
             "gitlab" => {
-                "Connect GitLab.com or your GitLab instance with a personal access token with API access."
+                crate::i18n::text("inbox-connect-gitlab-com-or-your-gitlab-instance-with-a")
             }
-            _ => {
-                "Connect your ADO organization using a personal access token with Boards and Repos read & write access."
-            }
+            _ => crate::i18n::text(
+                "inbox-connect-your-ado-organization-using-a-personal-access-token",
+            ),
         };
         div()
             .absolute()
@@ -2433,6 +2597,9 @@ impl Inbox {
                             .child(provider_mark(&provider))
                             .child(
                                 div()
+                                    .id("inbox-connect-title")
+                                    .role(Role::Heading)
+                                    .aria_label(title.clone())
                                     .flex_1()
                                     .text_size(px(18.))
                                     .font_weight(FontWeight::SEMIBOLD)
@@ -2440,8 +2607,13 @@ impl Inbox {
                                     .child(title),
                             )
                             .child(
-                                icon_button("inbox-close-connect", "Close connection", "close")
-                                    .on_click(cx.listener(|this, _, _, cx| {
+                                icon_button(
+                                    "inbox-close-connect",
+                                    crate::i18n::text("inbox-close-connection"),
+                                    "close",
+                                )
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
                                         if !this.connecting {
                                             this.connect_provider = None;
                                             this.connect_token.update(cx, |input, cx| {
@@ -2449,7 +2621,8 @@ impl Inbox {
                                             });
                                             cx.notify();
                                         }
-                                    })),
+                                    },
+                                )),
                             ),
                     )
                     .child(
@@ -2500,18 +2673,21 @@ impl Inbox {
                             .gap(px(8.))
                             .when(connected && provider != "github", |d| {
                                 d.child(
-                                    action("inbox-disconnect", "Disconnect")
-                                        .text_color(rgb(0xf87171))
-                                        .on_click(
-                                            cx.listener(|this, _, _, cx| this.connect(true, cx)),
-                                        ),
+                                    action(
+                                        "inbox-disconnect",
+                                        crate::i18n::text("inbox-disconnect"),
+                                    )
+                                    .text_color(rgb(0xf87171))
+                                    .on_click(cx.listener(|this, _, _, cx| this.connect(true, cx))),
                                 )
                             })
                             .when(provider == "github", |d| {
                                 d.child(
-                                    action("inbox-gh-guide", "Installation guide").on_click(
-                                        |_, _, cx| cx.open_url("https://cli.github.com/"),
-                                    ),
+                                    action(
+                                        "inbox-gh-guide",
+                                        crate::i18n::text("inbox-installation-guide"),
+                                    )
+                                    .on_click(|_, _, cx| cx.open_url("https://cli.github.com/")),
                                 )
                             })
                             .child(div().flex_1())
@@ -2520,11 +2696,11 @@ impl Inbox {
                                     crate::modal::primary_button(
                                         "inbox-connect-submit",
                                         if self.connecting {
-                                            "Connecting…"
+                                            crate::i18n::text("inbox-connecting")
                                         } else if provider == "github" {
-                                            "Check again"
+                                            crate::i18n::text("inbox-check-again")
                                         } else {
-                                            "Connect"
+                                            crate::i18n::text("inbox-connect")
                                         },
                                     ),
                                     self.connecting,
@@ -2585,18 +2761,18 @@ impl Inbox {
             [
                 (
                     "merge",
-                    "Create a merge commit",
-                    "Add every commit to the base branch.",
+                    crate::i18n::text("inbox-create-a-merge-commit"),
+                    crate::i18n::text("inbox-add-every-commit-to-the-base-branch"),
                 ),
                 (
                     "squash",
-                    "Squash and merge",
-                    "Combine the commits into one.",
+                    crate::i18n::text("inbox-squash-and-merge"),
+                    crate::i18n::text("inbox-combine-the-commits-into-one"),
                 ),
                 (
                     "rebase",
-                    "Rebase and merge",
-                    "Add the commits without a merge commit.",
+                    crate::i18n::text("inbox-rebase-and-merge"),
+                    crate::i18n::text("inbox-add-the-commits-without-a-merge-commit"),
                 ),
             ]
             .into_iter()
@@ -2604,7 +2780,7 @@ impl Inbox {
                 div()
                     .id(format!("inbox-merge-{name}"))
                     .role(Role::MenuItemRadio)
-                    .aria_label(label)
+                    .aria_label(&label)
                     .w_full()
                     .px(px(8.))
                     .py(px(8.))
@@ -2653,63 +2829,75 @@ impl Inbox {
         let action_name = self.confirm_action.clone().unwrap_or_default();
         let details = self.details.clone().unwrap_or_default();
         let source = if details.head_ref_name.is_empty() {
-            "this branch".into()
+            crate::i18n::text("inbox-this-branch")
         } else {
             format!("“{}”", details.head_ref_name)
         };
         let destination = if details.base_ref_name.is_empty() {
-            "the base branch".into()
+            crate::i18n::text("inbox-base-branch")
         } else {
             format!("“{}”", details.base_ref_name)
         };
         let (title, detail, label, progress) = match action_name.as_str() {
             "merge" => (
-                "Merge this pull request?",
-                format!(
-                    "Every commit from {source} will be added to {destination} with a merge commit."
+                crate::i18n::text("inbox-merge-this-pull-request"),
+                crate::i18n::format(
+                    "inbox-every-commit-from-will-be-added-to",
+                    &[
+                        ("source", (source).to_string()),
+                        ("destination", (destination).to_string()),
+                    ],
                 ),
-                "Merge pull request",
-                "Merging…",
+                crate::i18n::text("inbox-merge-pull-request"),
+                crate::i18n::text("inbox-merging"),
             ),
             "squash" => (
-                "Squash and merge?",
-                format!(
-                    "The commits from {source} will be combined into one commit on {destination}."
+                crate::i18n::text("inbox-squash-and-merge-2"),
+                crate::i18n::format(
+                    "inbox-the-commits-from-will-be-combined-into",
+                    &[
+                        ("source", (source).to_string()),
+                        ("destination", (destination).to_string()),
+                    ],
                 ),
-                "Squash and merge",
-                "Merging…",
+                crate::i18n::text("inbox-squash-and-merge"),
+                crate::i18n::text("inbox-merging"),
             ),
             "rebase" => (
-                "Rebase and merge?",
-                format!(
-                    "The commits from {source} will be rebased individually onto {destination}."
+                crate::i18n::text("inbox-rebase-and-merge-2"),
+                crate::i18n::format(
+                    "inbox-the-commits-from-will-be-rebased-individually",
+                    &[
+                        ("source", (source).to_string()),
+                        ("destination", (destination).to_string()),
+                    ],
                 ),
-                "Rebase and merge",
-                "Merging…",
+                crate::i18n::text("inbox-rebase-and-merge"),
+                crate::i18n::text("inbox-merging"),
             ),
             "close" => (
-                "Close this pull request?",
-                "The pull request will close without merging. You can reopen it later.".into(),
-                "Close pull request",
-                "Closing…",
+                crate::i18n::text("inbox-close-this-pull-request"),
+                crate::i18n::text("inbox-the-pull-request-will-close-without-merging-you"),
+                crate::i18n::text("inbox-close-pull-request"),
+                crate::i18n::text("inbox-closing"),
             ),
             "reopen" => (
-                "Reopen this pull request?",
-                "The pull request will return to the open state.".into(),
-                "Reopen pull request",
-                "Reopening…",
+                crate::i18n::text("inbox-reopen-this-pull-request"),
+                crate::i18n::text("inbox-the-pull-request-will-return-to-the-open"),
+                crate::i18n::text("inbox-reopen-pull-request"),
+                crate::i18n::text("inbox-reopening"),
             ),
             "ready" => (
-                "Mark as ready for review?",
-                "Reviewers will see that this pull request is ready for feedback.".into(),
-                "Ready for review",
-                "Updating…",
+                crate::i18n::text("inbox-mark-as-ready-for-review"),
+                crate::i18n::text("inbox-reviewers-will-see-that-this-pull-request-is"),
+                crate::i18n::text("inbox-ready-for-review"),
+                crate::i18n::text("inbox-updating"),
             ),
             _ => (
-                "Convert to draft?",
-                "Reviewers will see that this pull request is not ready to merge.".into(),
-                "Convert to draft",
-                "Converting…",
+                crate::i18n::text("inbox-convert-to-draft"),
+                crate::i18n::text("inbox-reviewers-will-see-that-this-pull-request-is-2"),
+                crate::i18n::text("inbox-convert-to-draft-2"),
+                crate::i18n::text("inbox-converting"),
             ),
         };
         let anchor = match action_name.as_str() {
@@ -2737,7 +2925,7 @@ impl Inbox {
                 div()
                     .id("inbox-pr-confirmation-dialog")
                     .role(Role::Dialog)
-                    .aria_label(title)
+                    .aria_label(title.clone())
                     .flex()
                     .flex_col()
                     .gap(px(4.))
@@ -2772,7 +2960,7 @@ impl Inbox {
                     .justify_end()
                     .gap(px(8.))
                     .child(
-                        action("inbox-action-cancel", "Cancel")
+                        action("inbox-action-cancel", crate::i18n::text("inbox-cancel"))
                             .when(self.acting, |d| d.opacity(0.4))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 if !this.acting {
@@ -2821,7 +3009,7 @@ impl gpui::Render for Inbox {
         div()
             .id("inbox-view")
             .role(Role::Group)
-            .aria_label("Inbox")
+            .aria_label(crate::i18n::text("inbox-inbox"))
             .track_focus(&self.focus)
             .relative()
             .size_full()
@@ -2913,10 +3101,107 @@ mod tests {
     };
     use std::sync::{Arc, Mutex};
 
+    #[test]
+    fn copy_review_chinese_review_state_belongs_to_reviewer() {
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::SimplifiedChinese);
+        let review = model::Comment {
+            kind: "review".into(),
+            author: "alice".into(),
+            state: "DISMISSED".into(),
+            ..Default::default()
+        };
+        assert!(review_event(&review));
+        assert_eq!(review_label(&review.state), "已驳回");
+        assert_eq!(
+            format!(
+                "{}{}",
+                review.author,
+                crate::i18n::text("inbox-event-dismissed")
+            ),
+            "alice的审阅已被驳回"
+        );
+        assert_eq!(crate::i18n::text("inbox-closed"), "已关闭");
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
+    }
+
     struct Fixture {
         inbox: Entity<Inbox>,
         item: Item,
     }
+    struct ConnectionFixture(Entity<Inbox>);
+    impl Render for ConnectionFixture {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            self.0.update(cx, |inbox, cx| inbox.connection_dialog(cx))
+        }
+    }
+
+    #[gpui::test]
+    fn chinese_connection_dialog_localizes_its_heading(cx: &mut TestAppContext) {
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::SimplifiedChinese);
+        let window = cx.update(|cx| {
+            cx.open_window(Default::default(), |window, cx| {
+                window.activate_accessibility_for_test();
+                cx.new(|cx| {
+                    let store = Arc::new(Mutex::new(
+                        monocode_core::store::Store::open(std::path::Path::new(":memory:"))
+                            .unwrap(),
+                    ));
+                    let inbox = cx.new(|cx| {
+                        let mut inbox = Inbox::new_inner(
+                            store,
+                            vec![],
+                            PathBuf::from("/private/tmp/inbox-regression"),
+                            false,
+                            cx,
+                        );
+                        inbox.connect_provider = Some("github".into());
+                        inbox
+                    });
+                    ConnectionFixture(inbox)
+                })
+            })
+            .unwrap()
+        });
+        for (connected, expected) in [(false, "连接 GitHub"), (true, "管理 GitHub")] {
+            window
+                .update(cx, |fixture, _, cx| {
+                    fixture.0.update(cx, |inbox, cx| {
+                        inbox.snapshot.connections.insert(
+                            "github".into(),
+                            model::Status {
+                                connected,
+                                ..Default::default()
+                            },
+                        );
+                        cx.notify();
+                    });
+                })
+                .unwrap();
+            cx.refresh().unwrap();
+            cx.run_until_parked();
+            window
+                .update(cx, |_, window, _| {
+                    let tree: serde_json::Value =
+                        serde_json::from_str(&window.debug_a11y_tree_json().unwrap()).unwrap();
+                    let node = tree["nodes"]
+                        .as_object()
+                        .unwrap()
+                        .values()
+                        .find(|node| {
+                            node["element_id"]
+                                .as_str()
+                                .is_some_and(|id| id.contains("inbox-connect-title"))
+                        })
+                        .unwrap();
+                    assert_eq!(node["aria"]["role"], "Heading");
+                    assert_eq!(node["aria"]["label"], expected);
+                    eprintln!("connection a11y={node}");
+                })
+                .unwrap();
+        }
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
+    }
+
     impl Render for Fixture {
         fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             self.inbox.update(cx, |inbox, cx| {

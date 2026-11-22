@@ -2,6 +2,8 @@
 //! contributions as a dithered calendar, today's numbers, what runs next and
 //! what it made today.
 use super::*;
+use crate::i18n::relative;
+
 use crate::right_panel::{DIFF_ADD, DIFF_DEL, format_integer, tabular};
 use crate::runtime::{Database, locked};
 use crate::visuals::dither::{
@@ -10,10 +12,40 @@ use crate::visuals::dither::{
 use chrono::{DateTime, Datelike, Duration as Days, Local, NaiveDate};
 use gpui::{Bounds, Div, FontWeight, Hsla, canvas, point, size};
 use monocode_core::contributions::{self, Contribution, Kind};
-use monocode_core::time::{now_ms, relative};
+use monocode_core::time::now_ms;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
+
+/// A scheduled habit's "Up next" label. Branch on the schedule, not the
+/// translated text: Chinese renders "now" as 现在, so a string check would
+/// fall through and print "现在后" instead of "即将开始".
+fn up_next_when(day: &str, next_run_at: u64, now: u64) -> String {
+    // Same rounding as `relative`, so the label switches units where it used to.
+    if next_run_at.saturating_sub(now).saturating_add(500) < 60_000 {
+        crate::i18n::format("monos-soon", &[("day", day.to_string())])
+    } else {
+        crate::i18n::format(
+            "monos-in",
+            &[
+                ("day", day.to_string()),
+                ("later", (relative(now, next_run_at)).to_string()),
+            ],
+        )
+    }
+}
+
+fn idle_last_active(at: u64, now: u64) -> String {
+    let seconds = now.saturating_sub(at).saturating_add(500) / 1000;
+    let key = if seconds < 60 {
+        "monos-idle-last-active-now"
+    } else if seconds >= 7 * 24 * 60 * 60 {
+        "monos-idle-last-active-date"
+    } else {
+        "monos-idle-last-active-ago"
+    };
+    crate::i18n::format(key, &[("value", relative(at, now))])
+}
 
 /// One day of a Mono's code contributions.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -306,9 +338,10 @@ fn graph(days: Arc<Vec<Day>>, tint: Hsla, motion: Motion) -> AnyElement {
                 Some(if inked(x, y, tone) { tint } else { track })
             });
             let axis = Label::mono(10., content(0.45));
-            for (r, name) in [(1, "Mon"), (3, "Wed"), (5, "Fri")] {
+            for r in [1, 3, 5] {
+                let name = crate::system_format::day(start + Days::days(r), "EEE", "%a");
                 axis.paint(
-                    name,
+                    &name,
                     grid.origin + point(px(-GUTTER), px(r as f32 * pitch + square / 2.)),
                     Align::Left,
                     window,
@@ -326,7 +359,7 @@ fn graph(days: Arc<Vec<Day>>, tint: Hsla, motion: Motion) -> AnyElement {
                 }
                 last_at = x;
                 axis.paint(
-                    &week.format("%b").to_string(),
+                    &crate::system_format::day(week, "MMM", "%b"),
                     grid.origin + point(px(x), px(-MONTHS / 2.)),
                     Align::Left,
                     window,
@@ -338,16 +371,16 @@ fn graph(days: Arc<Vec<Day>>, tint: Hsla, motion: Motion) -> AnyElement {
             let more = Label::mono(10., content(0.4));
             let edge = (grid.origin.x.as_f32() + fits as f32 * pitch - CELL).round();
             more.paint(
-                "More",
+                &crate::i18n::text("monos-more"),
                 point(px(edge), px(legend_y)),
                 Align::Right,
                 window,
                 cx,
             );
-            let right = edge - more.measure("More", window) - 6.;
+            let right = edge - more.measure(&crate::i18n::text("monos-more"), window) - 6.;
             let swatches = (right - 5. * pitch + CELL).round();
             more.paint(
-                "Less",
+                &crate::i18n::text("monos-less"),
                 point(px(swatches - 6.), px(legend_y)),
                 Align::Right,
                 window,
@@ -373,26 +406,34 @@ fn graph(days: Arc<Vec<Day>>, tint: Hsla, motion: Motion) -> AnyElement {
                 let d = &days[ix];
                 let mut rows = vec![];
                 if d.count() == 0 {
-                    rows.push((track, "Contributions".into(), "None".into()));
+                    rows.push((
+                        track,
+                        crate::i18n::text("monos-contributions"),
+                        crate::i18n::text("monos-none"),
+                    ));
                 } else {
                     for (name, n) in [
-                        ("Commits", d.commits),
-                        ("Reviews", d.reviews),
-                        ("PRs opened", d.opened),
-                        ("PRs merged", d.merged),
+                        (crate::i18n::text("monos-commits"), d.commits),
+                        (crate::i18n::text("monos-reviews"), d.reviews),
+                        (crate::i18n::text("monos-prs-opened"), d.opened),
+                        (crate::i18n::text("monos-prs-merged"), d.merged),
                     ] {
                         if n > 0 {
-                            rows.push((tint, name.into(), n.to_string()));
+                            rows.push((tint, name, crate::system_format::unsigned(n as u64)));
                         }
                     }
                     rows.push((
                         content(0.3),
-                        "Lines".into(),
-                        format!("+{} −{}", d.additions, d.deletions),
+                        crate::i18n::text("monos-lines"),
+                        format!(
+                            "+{} −{}",
+                            crate::system_format::unsigned(d.additions as u64),
+                            crate::system_format::unsigned(d.deletions as u64)
+                        ),
                     ));
                 }
                 readout(
-                    &d.date.format("%a, %b %-d").to_string(),
+                    &crate::system_format::day(d.date, "MMMEd", "%a, %b %-d"),
                     &rows,
                     grid.origin + point(px(c as f32 * pitch + square), px(r as f32 * pitch)),
                     bounds,
@@ -415,7 +456,7 @@ fn graph(days: Arc<Vec<Day>>, tint: Hsla, motion: Motion) -> AnyElement {
 /// room around the content, which still lines up with the section labels.
 const ROW_HANG: f32 = 6.;
 
-fn section(title: &'static str) -> Div {
+fn section(title: impl Into<gpui::SharedString>) -> Div {
     div()
         .flex_shrink_0()
         .w_full()
@@ -429,11 +470,11 @@ fn section(title: &'static str) -> Div {
                 .text_size(px(11.))
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(content(0.4))
-                .child(title),
+                .child(title.into()),
         )
 }
 
-fn tile(value: AnyElement, label: &'static str) -> Div {
+fn tile(value: AnyElement, label: &str) -> Div {
     div()
         .flex_1()
         .min_w_0()
@@ -452,7 +493,7 @@ fn tile(value: AnyElement, label: &'static str) -> Div {
                 .text_size(px(11.))
                 .text_color(content(0.45))
                 .truncate()
-                .child(label),
+                .child(label.to_owned()),
         )
 }
 
@@ -571,19 +612,28 @@ impl Monos {
 
         // Identity, with a live line about what it is doing right now.
         let (live, ticker) = match (state, busy.first()) {
-            ("needs-you", _) => (true, "Waiting for your input".to_string()),
+            ("needs-you", _) => (true, crate::i18n::text("monos-waiting-for-your-input")),
             (_, Some(v)) if busy.len() > 1 => (
                 true,
-                format!("Working on {} +{} more", v.title, busy.len() - 1),
-            ),
-            (_, Some(v)) => (true, format!("Working on {}", v.title)),
-            ("working", None) => (true, "Thinking…".to_string()),
-            _ => match mine.iter().map(|v| v.updated_at).max().filter(|t| *t > 0) {
-                Some(at) => (
-                    false,
-                    format!("Idle · last active {} ago", relative(at, now)),
+                crate::i18n::format(
+                    "monos-working-on-more",
+                    &[
+                        ("value", (v.title).to_string()),
+                        (
+                            "value2",
+                            crate::system_format::unsigned((busy.len() - 1) as u64),
+                        ),
+                    ],
                 ),
-                None => (false, "Idle".to_string()),
+            ),
+            (_, Some(v)) => (
+                true,
+                crate::i18n::format("monos-working-on", &[("value", (v.title).to_string())]),
+            ),
+            ("working", None) => (true, crate::i18n::text("monos-thinking")),
+            _ => match mine.iter().map(|v| v.updated_at).max().filter(|t| *t > 0) {
+                Some(at) => (false, idle_last_active(at, now)),
+                None => (false, crate::i18n::text("monos-idle")),
             },
         };
         let header = div()
@@ -658,7 +708,7 @@ impl Monos {
         let total: u32 = days.iter().map(Day::count).sum();
         let streak = streak(&days);
         let today_stats = *days.last().expect("the graph always includes today");
-        let contributions = section("Contributions")
+        let contributions = section(crate::i18n::text("monos-contributions"))
             .child(
                 div()
                     .px_1()
@@ -677,7 +727,7 @@ impl Monos {
                         div()
                             .text_size(px(12.))
                             .text_color(content(0.5))
-                            .child("in the last 6 months"),
+                            .child(crate::i18n::text("monos-in-the-last-6-months")),
                     )
                     .when(streak > 1, |d| {
                         d.child(
@@ -686,7 +736,10 @@ impl Monos {
                                 .text_size(px(11.))
                                 .font_features(tabular())
                                 .text_color(content(0.5))
-                                .child(format!("{streak}-day streak")),
+                                .child(crate::i18n::format(
+                                    "monos-day-streak",
+                                    &[("streak", crate::system_format::unsigned(streak as u64))],
+                                )),
                         )
                     }),
             )
@@ -730,29 +783,38 @@ impl Monos {
                     .text_color(rgb(DIFF_DEL))
                     .child(format!("−{}", format_integer(today_stats.deletions as i64))),
             );
-        let today_tiles = section("Today")
+        let today_tiles = section(crate::i18n::text("monos-today-2"))
             .child(
                 div()
                     .flex()
                     .gap_2()
                     .child(tile(
-                        figure(merged_today.to_string()).into_any_element(),
-                        "PRs merged",
+                        figure(crate::system_format::unsigned(merged_today as u64))
+                            .into_any_element(),
+                        &crate::i18n::text("monos-prs-merged"),
                     ))
-                    .child(tile(lines.into_any_element(), "Lines changed")),
+                    .child(tile(
+                        lines.into_any_element(),
+                        &crate::i18n::text("monos-lines-changed"),
+                    )),
             )
             .child(
                 div()
                     .flex()
                     .gap_2()
                     .child(tile(
-                        figure(sessions_today.to_string()).into_any_element(),
-                        "Sessions",
+                        figure(crate::system_format::unsigned(sessions_today as u64))
+                            .into_any_element(),
+                        &crate::i18n::text("monos-sessions"),
                     ))
                     .child(tile(
-                        figure(format!("{ran_today}/{}", ran_today + still_today))
-                            .into_any_element(),
-                        "Habits run",
+                        figure(format!(
+                            "{}/{}",
+                            crate::system_format::unsigned(ran_today as u64),
+                            crate::system_format::unsigned((ran_today + still_today) as u64)
+                        ))
+                        .into_any_element(),
+                        &crate::i18n::text("monos-habits-run"),
                     )),
             );
 
@@ -764,36 +826,41 @@ impl Monos {
             .map(|h| (self.habit_running_since(h), h))
             .collect();
         upcoming.sort_by_key(|(running, h)| (running.is_none(), h.next_run_at));
-        let up_next = section("Up next").children(upcoming.is_empty().then(|| {
-            div()
-                .px_1()
-                .text_size(px(12.))
-                .line_height(px(18.))
-                .text_color(content(0.45))
-                .child(format!(
-                    "Nothing scheduled. Ask {} to put recurring work on a habit.",
-                    mono.label()
-                ))
-                .into_any_element()
-        }));
+        let up_next =
+            section(crate::i18n::text("monos-up-next")).children(upcoming.is_empty().then(|| {
+                div()
+                    .px_1()
+                    .text_size(px(12.))
+                    .line_height(px(18.))
+                    .text_color(content(0.45))
+                    .child(crate::i18n::format(
+                        "monos-nothing-scheduled-ask-to-put-recurring-work",
+                        &[("name", mono.label().to_string())],
+                    ))
+                    .into_any_element()
+            }));
         let up_next = up_next.children(upcoming.into_iter().take(3).map(|(running, h)| {
             let id = h.id.clone();
             let at = local_day(h.next_run_at);
             // Today's runs give their time, later ones their weekday.
             let when = match running {
-                Some(since) => format!("Running · {}", relative(since, now)),
+                Some(since) => crate::i18n::format(
+                    "monos-running",
+                    &[("value", (relative(since, now)).to_string())],
+                ),
                 None => {
                     let day = DateTime::from_timestamp_millis(h.next_run_at as i64)
                         .map(|t| {
                             let t = t.with_timezone(&Local);
-                            t.format(if at == Some(today) { "%H:%M" } else { "%a" })
-                                .to_string()
+                            crate::system_format::date(
+                                t.timestamp_millis(),
+                                if at == Some(today) { "jm" } else { "E" },
+                                if at == Some(today) { "%H:%M" } else { "%a" },
+                            )
+                            .to_string()
                         })
                         .unwrap_or_default();
-                    match relative(now, h.next_run_at.max(now)) {
-                        soon if soon == "now" => format!("{day} · soon"),
-                        later => format!("{day} · in {later}"),
-                    }
+                    up_next_when(&day, h.next_run_at, now)
                 }
             };
             div()
@@ -847,7 +914,7 @@ impl Monos {
                                 .truncate()
                                 .text_size(px(11.))
                                 .text_color(content(0.45))
-                                .child(h.schedule.label()),
+                                .child(super::scheduler::schedule_label(&h.schedule)),
                         ),
                 )
                 .child(
@@ -875,14 +942,15 @@ impl Monos {
             .filter(|d| local_day(d.created_at) == Some(today))
             .collect();
         fresh.sort_by_key(|d| std::cmp::Reverse(d.created_at));
-        let new_today = section("New today").children(fresh.is_empty().then(|| {
-            div()
-                .px_1()
-                .text_size(px(12.))
-                .text_color(content(0.45))
-                .child("Nothing new yet today.")
-                .into_any_element()
-        }));
+        let new_today =
+            section(crate::i18n::text("monos-new-today")).children(fresh.is_empty().then(|| {
+                div()
+                    .px_1()
+                    .text_size(px(12.))
+                    .text_color(content(0.45))
+                    .child(crate::i18n::text("monos-nothing-new-yet-today"))
+                    .into_any_element()
+            }));
         let new_today = new_today.children(fresh.into_iter().take(4).map(|doc| {
             let id = doc.id.clone();
             div()
@@ -975,6 +1043,56 @@ impl Monos {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copy_review_chinese_idle_distinguishes_now_duration_and_date() {
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::SimplifiedChinese);
+        let at = 1_767_310_200_000_u64;
+        assert_eq!(idle_last_active(at, at + 59_499), "空闲 · 上次活跃：刚刚");
+        assert_eq!(
+            idle_last_active(at, at + 59_500),
+            format!(
+                "空闲 · 上次活跃：{}分钟前",
+                crate::system_format::unsigned(1)
+            )
+        );
+        let date = crate::system_format::date(at as i64, "MMMd", "%b %-d");
+        assert_eq!(
+            idle_last_active(at, at + 604_799_500),
+            format!("空闲 · 上次活跃：{date}")
+        );
+    }
+
+    #[test]
+    fn copy_review_english_idle_keeps_existing_output() {
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
+        let at = 1_767_310_200_000_u64;
+        assert_eq!(idle_last_active(at, at), "Idle · last active now ago");
+        assert_eq!(
+            idle_last_active(at, at + 60_000),
+            format!(
+                "Idle · last active {}m ago",
+                crate::system_format::unsigned(1)
+            )
+        );
+        let date = crate::system_format::date(at as i64, "MMMd", "%b %-d");
+        assert_eq!(
+            idle_last_active(at, at + 604_800_000),
+            format!("Idle · last active {date} ago")
+        );
+    }
+
+    #[test]
+    fn copy_review_chinese_up_next_keeps_due_habits_grammatical() {
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::SimplifiedChinese);
+        let now = 1_767_310_200_000_u64;
+        assert_eq!(up_next_when("14:30", now, now), "14:30 · 即将开始");
+        assert_eq!(
+            up_next_when("14:30", now + 60_000, now),
+            format!("14:30 · {}分钟后", crate::system_format::unsigned(1))
+        );
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
+    }
 
     fn day(count: u32) -> Day {
         Day {

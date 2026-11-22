@@ -3,17 +3,28 @@ use super::*;
 impl FileEditor {
     pub(super) fn search_panel(&self, cx: &mut Context<Self>) -> AnyElement {
         let count = if self.search_invalid {
-            "Invalid regex".into()
+            crate::i18n::text("file-editor-invalid-regex")
         } else if self.search.read(cx).content.is_empty() {
             String::new()
         } else if self.matches.is_empty() {
-            "No results".into()
+            crate::i18n::text("file-editor-no-results")
         } else {
-            format!(
-                "{} of {}{}",
-                self.match_index + 1,
-                self.matches.len().min(999),
-                if self.matches.len() > 999 { "+" } else { "" }
+            crate::i18n::format(
+                "file-editor-of",
+                &[
+                    (
+                        "value",
+                        crate::system_format::unsigned((self.match_index + 1) as u64),
+                    ),
+                    (
+                        "value2",
+                        crate::system_format::unsigned((self.matches.len().min(999)) as u64),
+                    ),
+                    (
+                        "value3",
+                        (if self.matches.len() > 999 { "+" } else { "" }).to_string(),
+                    ),
+                ],
             )
         };
         let bad = self.search_invalid
@@ -46,11 +57,11 @@ impl FileEditor {
                     })
                     .child(count),
             );
-        let toggle = |id, label: &'static str, title: &'static str, on| {
+        let toggle = |id, label: &str, title: &str, on| {
             div()
                 .id(id)
                 .role(Role::Button)
-                .aria_label(title)
+                .aria_label(title.to_owned())
                 .aria_toggled(if on {
                     gpui::Toggled::True
                 } else {
@@ -66,7 +77,7 @@ impl FileEditor {
                 .text_color(content(if on { 1. } else { 0.6 }))
                 .when(on, |d| d.bg(accent_color().opacity(0.25)))
                 .hover(|s| s.bg(content(0.1)))
-                .child(label)
+                .child(label.to_owned())
         };
         div()
             .flex_shrink_0()
@@ -81,7 +92,7 @@ impl FileEditor {
             .child(
                 icon_action(
                     "toggle-replace",
-                    "Toggle Replace",
+                    crate::i18n::text("file-editor-toggle-replace"),
                     if self.replace_open {
                         "chevron-down"
                     } else {
@@ -110,26 +121,46 @@ impl FileEditor {
                             .gap_1()
                             .child(query)
                             .child(
-                                toggle("match-case", "Aa", "Match Case", self.match_case).on_click(
-                                    cx.listener(|this, _, _, cx| {
+                                toggle(
+                                    "match-case",
+                                    "Aa",
+                                    &crate::i18n::text("file-editor-match-case"),
+                                    self.match_case,
+                                )
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
                                         this.match_case = !this.match_case;
                                         this.find_matches(cx);
-                                    }),
-                                ),
+                                    },
+                                )),
                             )
                             .child(
-                                toggle("whole-word", "ab", "Match Whole Word", self.whole_word)
-                                    .on_click(cx.listener(|this, _, _, cx| {
+                                toggle(
+                                    "whole-word",
+                                    "ab",
+                                    &crate::i18n::text("file-editor-match-whole-word"),
+                                    self.whole_word,
+                                )
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
                                         this.whole_word = !this.whole_word;
                                         this.find_matches(cx);
-                                    })),
+                                    },
+                                )),
                             )
                             .child(
-                                toggle("use-regex", ".*", "Use Regular Expression", self.regex)
-                                    .on_click(cx.listener(|this, _, _, cx| {
+                                toggle(
+                                    "use-regex",
+                                    ".*",
+                                    &crate::i18n::text("file-editor-use-regular-expression"),
+                                    self.regex,
+                                )
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
                                         this.regex = !this.regex;
                                         this.find_matches(cx);
-                                    })),
+                                    },
+                                )),
                             ),
                     )
                     .when(self.replace_open, |d| {
@@ -157,14 +188,14 @@ impl FileEditor {
                                     div()
                                         .id("replace-next")
                                         .role(Role::Button)
-                                        .aria_label("Replace")
+                                        .aria_label(crate::i18n::text("file-editor-replace"))
                                         .px_2()
                                         .py_1()
                                         .rounded_md()
                                         .text_size(px(11.))
                                         .text_color(content(0.6))
                                         .hover(|s| s.bg(content(0.1)))
-                                        .child("Replace")
+                                        .child(crate::i18n::text("file-editor-replace"))
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.replace_matches(false, cx)
                                         })),
@@ -173,14 +204,14 @@ impl FileEditor {
                                     div()
                                         .id("replace-all")
                                         .role(Role::Button)
-                                        .aria_label("Replace All")
+                                        .aria_label(crate::i18n::text("file-editor-replace-all"))
                                         .px_2()
                                         .py_1()
                                         .rounded_md()
                                         .text_size(px(11.))
                                         .text_color(content(0.6))
                                         .hover(|s| s.bg(content(0.1)))
-                                        .child("All")
+                                        .child(crate::i18n::text("file-editor-all"))
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.replace_matches(true, cx)
                                         })),
@@ -197,7 +228,7 @@ impl FileEditor {
                     .child(
                         icon_action(
                             "find-prev",
-                            "Previous Match",
+                            crate::i18n::text("file-editor-previous-match"),
                             "chevron-up",
                             !self.matches.is_empty(),
                         )
@@ -206,16 +237,21 @@ impl FileEditor {
                     .child(
                         icon_action(
                             "find-next",
-                            "Next Match",
+                            crate::i18n::text("file-editor-next-match"),
                             "chevron-down",
                             !self.matches.is_empty(),
                         )
                         .on_click(cx.listener(|this, _, _, cx| this.step_match(false, cx))),
                     )
                     .child(
-                        icon_action("close-find", "Close", "x", true)
-                            .size(px(24.))
-                            .on_click(cx.listener(|this, _, w, cx| this.dismiss_search(w, cx))),
+                        icon_action(
+                            "close-find",
+                            crate::i18n::text("file-editor-close"),
+                            "x",
+                            true,
+                        )
+                        .size(px(24.))
+                        .on_click(cx.listener(|this, _, w, cx| this.dismiss_search(w, cx))),
                     ),
             )
             .into_any_element()

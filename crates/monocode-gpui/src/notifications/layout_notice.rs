@@ -41,20 +41,72 @@ impl Render for LayoutNotice {
             return div().into_any_element();
         }
         super::surface::glass_frame()
-            .id("new-layout-notice").role(Role::Status).aria_label("Try the Focused layout")
-            .child(div().relative().p(px(12.))
-            .child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).child("Try the Focused layout"))
-            .child(div().mt(px(4.)).text_size(px(12.)).line_height(px(19.5)).text_color(content(0.6))
-                .child("A project switcher, workspace tabs and a right panel. Switch back to Classic anytime in Settings → Appearance → Layout."))
-            .child(div().mt(px(12.)).flex().justify_end().gap(px(8.))
-                .child(div().id("new-layout-not-now").role(Role::Button).aria_label("Not now").cursor_pointer()
-                    .rounded(px(6.)).px(px(10.)).py(px(6.)).text_size(px(12.)).text_color(content(0.6))
-                    .hover(|s| s.bg(content(0.1)).text_color(content(1.)))
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(LayoutNoticeEvent::Dismiss))).child("Not now"))
-                .child(div().id("new-layout-try").role(Role::Button).aria_label("Try it").cursor_pointer()
-                    .rounded(px(6.)).px(px(10.)).py(px(6.)).text_size(px(12.)).font_weight(FontWeight::MEDIUM)
-                    .bg(content(0.1)).hover(|s| s.bg(content(0.15)))
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(LayoutNoticeEvent::Try))).child("Try it")))
-            ).into_any_element()
+            .id("new-layout-notice")
+            .role(Role::Status)
+            .aria_label(crate::i18n::text("notifications-try-the-focused-layout"))
+            .child(
+                div()
+                    .relative()
+                    .p(px(12.))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(crate::i18n::text("notifications-try-the-focused-layout")),
+                    )
+                    .child(
+                        div()
+                            .mt(px(4.))
+                            .text_size(px(12.))
+                            .line_height(px(19.5))
+                            .text_color(content(0.6))
+                            .child(crate::i18n::text(
+                                "notifications-a-project-switcher-workspace-tabs-and",
+                            )),
+                    )
+                    .child(
+                        div()
+                            .mt(px(12.))
+                            .flex()
+                            .justify_end()
+                            .gap(px(8.))
+                            .child(
+                                div()
+                                    .id("new-layout-not-now")
+                                    .role(Role::Button)
+                                    .aria_label(crate::i18n::text("notifications-not-now"))
+                                    .cursor_pointer()
+                                    .rounded(px(6.))
+                                    .px(px(10.))
+                                    .py(px(6.))
+                                    .text_size(px(12.))
+                                    .text_color(content(0.6))
+                                    .hover(|s| s.bg(content(0.1)).text_color(content(1.)))
+                                    .on_click(cx.listener(|_, _, _, cx| {
+                                        cx.emit(LayoutNoticeEvent::Dismiss)
+                                    }))
+                                    .child(crate::i18n::text("notifications-not-now")),
+                            )
+                            .child(
+                                div()
+                                    .id("new-layout-try")
+                                    .role(Role::Button)
+                                    .aria_label(crate::i18n::text("notifications-try-it"))
+                                    .cursor_pointer()
+                                    .rounded(px(6.))
+                                    .px(px(10.))
+                                    .py(px(6.))
+                                    .text_size(px(12.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .bg(content(0.1))
+                                    .hover(|s| s.bg(content(0.15)))
+                                    .on_click(
+                                        cx.listener(|_, _, _, cx| cx.emit(LayoutNoticeEvent::Try)),
+                                    )
+                                    .child(crate::i18n::text("notifications-try-it")),
+                            ),
+                    ),
+            )
+            .into_any_element()
     }
 }

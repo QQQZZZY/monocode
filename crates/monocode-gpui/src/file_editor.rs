@@ -196,12 +196,22 @@ impl FileEditor {
     ) -> Self {
         let input = cx.new(Input::editor);
         let search = cx.new(|cx| {
-            let mut field = Input::field("Find", "Find", content(0.35), cx);
+            let mut field = Input::field(
+                crate::i18n::text("file-editor-find"),
+                crate::i18n::text("file-editor-find"),
+                content(0.35),
+                cx,
+            );
             field.set_font_size(12.);
             field
         });
         let replacement = cx.new(|cx| {
-            let mut field = Input::field("Replace", "Replace", content(0.35), cx);
+            let mut field = Input::field(
+                crate::i18n::text("file-editor-replace"),
+                crate::i18n::text("file-editor-replace"),
+                content(0.35),
+                cx,
+            );
             field.set_font_size(12.);
             field
         });
@@ -221,7 +231,9 @@ impl FileEditor {
                 cx.notify();
             }),
             cx.subscribe(&input, |this, _, event: &input::Rejected, cx| {
-                this.error = Some(event.0.into());
+                // The editor's own limit messages are stable text; resolve
+                // them here so the banner follows the UI language.
+                this.error = Some(crate::runtime_text::editor_rejection(event.0));
                 cx.notify();
             }),
             cx.subscribe(&search, |this, _, _: &input::Changed, cx| {
@@ -790,9 +802,12 @@ impl FileEditor {
         }
         let answer = window.prompt(
             PromptLevel::Warning,
-            "Discard your edits and reload this file?",
+            crate::i18n::text("file-editor-prompt-discard-your-edits-and-reload-this").as_str(),
             None,
-            &["Reload", "Cancel"],
+            &[
+                crate::i18n::text("file-editor-prompt-reload").as_str(),
+                crate::i18n::text("file-editor-prompt-cancel").as_str(),
+            ],
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
@@ -1037,7 +1052,7 @@ impl gpui::Render for FileEditor {
                             div()
                                 .text_size(px(12.))
                                 .text_color(content(0.5))
-                                .child("Couldn’t decode this image")
+                                .child(crate::i18n::text("file-editor-couldn-t-decode-this-image"))
                                 .into_any_element()
                         }),
                 )
@@ -1066,19 +1081,19 @@ impl gpui::Render for FileEditor {
                     self.unsupported
                         .clone()
                         .or(self.error.clone())
-                        .unwrap_or_else(|| "Opening file…".into()),
+                        .unwrap_or_else(|| crate::i18n::text("file-editor-opening-file")),
                 )
                 .when(!self.loading, |d| {
                     d.child(
                         div()
                             .id("open-file-externally")
                             .role(Role::Button)
-                            .aria_label("Open externally")
+                            .aria_label(crate::i18n::text("file-editor-open-externally"))
                             .px_3()
                             .py_1()
                             .rounded_md()
                             .hover(|s| s.bg(content(0.1)))
-                            .child("Open externally")
+                            .child(crate::i18n::text("file-editor-open-externally"))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 cx.open_url(&format!(
                                     "file://{}",
@@ -1101,24 +1116,24 @@ impl gpui::Render for FileEditor {
                                 div()
                                     .id("retry-file")
                                     .role(Role::Button)
-                                    .aria_label("Retry")
+                                    .aria_label(crate::i18n::text("file-editor-retry"))
                                     .px_3()
                                     .py_1()
                                     .rounded_md()
                                     .bg(content(0.1))
-                                    .child("Retry")
+                                    .child(crate::i18n::text("file-editor-retry"))
                                     .on_click(cx.listener(|this, _, _, cx| this.load(true, cx))),
                             )
                             .child(
                                 div()
                                     .id("reveal-file")
                                     .role(Role::Button)
-                                    .aria_label("Reveal")
+                                    .aria_label(crate::i18n::text("file-editor-reveal"))
                                     .px_3()
                                     .py_1()
                                     .rounded_md()
                                     .bg(content(0.1))
-                                    .child("Reveal")
+                                    .child(crate::i18n::text("file-editor-reveal"))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         let path = PathBuf::from(&this.path);
                                         cx.background_executor()
@@ -1132,12 +1147,12 @@ impl gpui::Render for FileEditor {
                                 div()
                                     .id("copy-file-path")
                                     .role(Role::Button)
-                                    .aria_label("Copy path")
+                                    .aria_label(crate::i18n::text("file-editor-copy-path"))
                                     .px_3()
                                     .py_1()
                                     .rounded_md()
                                     .bg(content(0.1))
-                                    .child("Copy path")
+                                    .child(crate::i18n::text("file-editor-copy-path"))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         cx.write_to_clipboard(gpui::ClipboardItem::new_string(
                                             this.path.clone(),
@@ -1227,8 +1242,9 @@ impl gpui::Render for FileEditor {
             .when(self.search_open, |d| d.child(self.search_panel(cx)))
             .when_some(
                 self.error.clone().filter(|_| ready).or_else(|| {
-                    self.disk_changed
-                        .then(|| "File changed on disk. Reload to use the new version.".into())
+                    self.disk_changed.then(|| {
+                        crate::i18n::text("file-editor-file-changed-on-disk-reload-to-use-the")
+                    })
                 }),
                 |d, error| {
                     d.child(

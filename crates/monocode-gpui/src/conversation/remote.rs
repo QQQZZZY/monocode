@@ -15,9 +15,16 @@ pub(super) struct State {
     pub(super) capabilities: std::collections::HashSet<String>,
 }
 impl State {
-    fn legacy_recovery_error(&self) -> Option<&str> {
-        self.rejected.as_ref().filter(|rejected| rejected["legacyRecovery"] == true)
-            .map(|rejected| rejected["error"].as_str().unwrap_or("Older pending requests could not be linked to one conversation. Open the original desktop to recover them."))
+    fn legacy_recovery_error(&self) -> Option<String> {
+        self.rejected
+            .as_ref()
+            .filter(|rejected| rejected["legacyRecovery"] == true)
+            .map(|rejected| {
+                rejected["error"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| crate::i18n::text("conversation-remote-legacy-recovery"))
+            })
     }
 }
 impl Conversation {
@@ -28,7 +35,7 @@ impl Conversation {
         if self.is_remote() && !self.busy {
             self.remote_state.online = false;
             self.remote_state.error = Some(error.into());
-            self.status = error.into();
+            self.status = RunStatus::parse(error);
             cx.notify();
         }
     }
@@ -169,7 +176,7 @@ impl Conversation {
                         }
                         this.loaded = true;
                         this.history_unloaded = false;
-                        this.status = "Ready".into();
+                        this.status = RunStatus::Ready;
                         let running = snapshot.as_ref().is_some_and(|s| s["status"] == "running");
                         if let Some(snapshot) = &snapshot {
                             this.context = snapshot["session"]
@@ -227,20 +234,22 @@ impl Conversation {
     }
     pub(super) fn remote_send_guard(&mut self, cx: &mut Context<Self>) -> bool {
         let error = if !self.loaded {
-            Some("Wait for this remote conversation to load.")
+            Some(crate::i18n::text("conversation-remote-wait-for-load"))
         } else if !self.remote_state.online {
-            Some("The machine is offline. Reconnect in Settings → Connections, then Retry.")
+            Some(crate::i18n::text("conversation-remote-machine-offline"))
         } else if self.remote_state.pending {
-            Some(self.remote_state.legacy_recovery_error().unwrap_or(
-                "A remote command needs confirmation. Choose Retry before sending another message.",
-            ))
+            Some(
+                self.remote_state
+                    .legacy_recovery_error()
+                    .unwrap_or_else(|| crate::i18n::text("conversation-remote-needs-confirmation")),
+            )
         } else if self.busy || self.stopping {
-            Some("Wait for this remote turn to finish before sending another message.")
+            Some(crate::i18n::text("conversation-remote-wait-for-turn"))
         } else {
             None
         };
         if let Some(error) = error {
-            self.status = error.into();
+            self.status = RunStatus::Raw(error);
             cx.notify();
             return true;
         }
@@ -256,18 +265,23 @@ impl Conversation {
                 .capabilities
                 .contains("attachments.upload")
         {
-            self.status =
-                "Update MonoCode Host in Connections settings to send attachments.".into();
+            self.status = RunStatus::Raw(crate::i18n::text(
+                "conversation-update-monocode-host-in-connections-settings-to-send",
+            ));
             cx.notify();
             return true;
         }
         if self.settings.plan && !self.remote_state.capabilities.contains("sessions.plan") {
-            self.status = "Update MonoCode Host in Connections settings to use Plan mode.".into();
+            self.status = RunStatus::Raw(crate::i18n::text(
+                "conversation-update-monocode-host-in-connections-settings-to-use",
+            ));
             cx.notify();
             return true;
         }
         if self.draft_active(cx) && !self.remote_state.capabilities.contains("sessions.draft") {
-            self.status = "Update MonoCode Host in Connections settings to save drafts.".into();
+            self.status = RunStatus::Raw(crate::i18n::text(
+                "conversation-update-monocode-host-in-connections-settings-to-save",
+            ));
             cx.notify();
             return true;
         }
@@ -284,12 +298,14 @@ impl Conversation {
                 .any(|command| text == *command || text.starts_with(&format!("{command} ")))
         {
             self.status =
-                "Only /plan, /compact and saved drafts are supported by this remote host.".into();
+                RunStatus::Raw(crate::i18n::text("conversation-remote-supported-commands"));
             cx.notify();
             return true;
         }
         if self.settings.operator || self.settings.orchestrator {
-            self.status = "Operator and orchestration are not available on remote projects.".into();
+            self.status = RunStatus::Raw(crate::i18n::text(
+                "conversation-operator-and-orchestration-are-not-available-on-remote",
+            ));
             cx.notify();
             return true;
         }
@@ -339,16 +355,64 @@ impl Conversation {
             return None;
         }
         let legacy = self.remote_state.legacy_recovery_error();
-        Some(div().mx_2().my_2().p_3().rounded_lg().bg(content(0.04)).flex().items_center().gap_2()
-            .child(div().flex_1().text_size(px(12.)).child(if let Some(error) = legacy {error.to_owned()} else if self.remote_state.pending {"A remote command needs confirmation. Retry uses its original command ID.".to_owned()} else {self.remote_state.error.clone().unwrap_or_default()}))
-            .when(legacy.is_none(), |d| d
-            .child(crate::settings::widgets::secondary_button("remote-retry",if self.remote_state.rejected.is_some() {"Restore message"} else {"Retry"},true,false).debug_selector(|| "remote-retry".into()).child(if self.remote_state.rejected.is_some() {"Restore message"} else {"Retry"}).on_click(cx.listener(|this,_,_,cx| {
-                if this.remote_state.rejected.is_some() { this.restore_remote_message(cx); } else {this.retry_remote(cx);}
-            })))).into_any_element())
+        Some(
+            div()
+                .mx_2()
+                .my_2()
+                .p_3()
+                .rounded_lg()
+                .bg(content(0.04))
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(12.))
+                        .child(if let Some(error) = &legacy {
+                            error.clone()
+                        } else if self.remote_state.pending {
+                            crate::i18n::text(
+                                "conversation-a-remote-command-needs-confirmation-retry",
+                            )
+                            .to_owned()
+                        } else {
+                            self.remote_state.error.clone().unwrap_or_default()
+                        }),
+                )
+                .when(legacy.is_none(), |d| {
+                    d.child(
+                        crate::settings::widgets::secondary_button(
+                            "remote-retry",
+                            if self.remote_state.rejected.is_some() {
+                                crate::i18n::text("conversation-restore-message")
+                            } else {
+                                crate::i18n::text("conversation-retry")
+                            },
+                            true,
+                            false,
+                        )
+                        .debug_selector(|| "remote-retry".into())
+                        .child(if self.remote_state.rejected.is_some() {
+                            crate::i18n::text("conversation-restore-message")
+                        } else {
+                            crate::i18n::text("conversation-retry")
+                        })
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if this.remote_state.rejected.is_some() {
+                                this.restore_remote_message(cx);
+                            } else {
+                                this.retry_remote(cx);
+                            }
+                        })),
+                    )
+                })
+                .into_any_element(),
+        )
     }
     fn retry_remote(&mut self, cx: &mut Context<Self>) {
         if let Some(error) = self.remote_state.legacy_recovery_error() {
-            self.status = error.to_owned();
+            self.status = RunStatus::Raw(error);
             cx.notify();
             return;
         }
@@ -367,12 +431,14 @@ impl Conversation {
     }
     fn restore_remote_message(&mut self, cx: &mut Context<Self>) {
         if let Some(error) = self.remote_state.legacy_recovery_error() {
-            self.status = error.to_owned();
+            self.status = RunStatus::Raw(error);
             cx.notify();
             return;
         }
         if !self.input.read(cx).content.trim().is_empty() || !self.attachments.is_empty() {
-            self.status = "Clear the composer before restoring the rejected message.".into();
+            self.status = RunStatus::Raw(crate::i18n::text(
+                "conversation-clear-the-composer-before-restoring-the-rejected-message",
+            ));
             cx.notify();
             return;
         }

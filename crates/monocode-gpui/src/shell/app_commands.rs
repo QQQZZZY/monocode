@@ -40,7 +40,12 @@ impl Shell {
                 })
                 .detach();
             }
-            Err(error) => self.error = Some(format!("Operator app access: {error}")),
+            Err(error) => {
+                self.error = Some(crate::i18n::format(
+                    "shell-operator-app-access",
+                    &[("error", (error).to_string())],
+                ))
+            }
         }
     }
     fn finish_app_call(

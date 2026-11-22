@@ -17,7 +17,7 @@ impl Input {
             "Ctrl+"
         };
         let selected = !self.secret && !self.selection.is_empty();
-        let action = |id, label, key, enabled: bool| {
+        let action = |id, label: &str, key, enabled: bool| {
             MenuAction::new(id, label)
                 .shortcut(format!("{modifier}{key}"))
                 .disabled(!enabled)
@@ -26,10 +26,15 @@ impl Input {
         let mut items = Vec::new();
         if self.code.is_some() {
             items.extend([
-                action("undo", "Undo", "Z", self.history_available(false)),
+                action(
+                    "undo",
+                    &crate::i18n::text("input-undo"),
+                    "Z",
+                    self.history_available(false),
+                ),
                 action(
                     "redo",
-                    "Redo",
+                    &crate::i18n::text("input-redo"),
                     if cfg!(target_os = "macos") {
                         "⇧Z"
                     } else {
@@ -41,13 +46,28 @@ impl Input {
             ]);
         }
         items.extend([
-            action("cut", "Cut", "X", selected && !self.read_only),
-            action("copy", "Copy", "C", selected),
+            action(
+                "cut",
+                &crate::i18n::text("input-cut"),
+                "X",
+                selected && !self.read_only,
+            ),
+            action("copy", &crate::i18n::text("input-copy"), "C", selected),
             // Dispatch Paste through the focused field's ancestors, just as
             // the shortcut does: composers also accept clipboard images.
-            action("paste", "Paste", "V", clipboard && !self.read_only),
+            action(
+                "paste",
+                &crate::i18n::text("input-paste"),
+                "V",
+                clipboard && !self.read_only,
+            ),
             MenuItem::Separator,
-            action("select-all", "Select All", "A", !self.content.is_empty()),
+            action(
+                "select-all",
+                &crate::i18n::text("input-select-all"),
+                "A",
+                !self.content.is_empty(),
+            ),
         ]);
         items
     }
@@ -69,7 +89,14 @@ impl Input {
             self.move_to(index, cx);
         }
         let items = self.editing_menu_items(cx.read_from_clipboard().is_some());
-        let menu = cx.new(|cx| Menu::new("Text editing", items, window, cx));
+        let menu = cx.new(|cx| {
+            Menu::new(
+                crate::i18n::text("input-menu-text-editing"),
+                items,
+                window,
+                cx,
+            )
+        });
         let events = cx.subscribe_in(&menu, window, |this, _, event, window, cx| {
             this.context_menu = None;
             if let MenuEvent::Picked(id, _) = event {

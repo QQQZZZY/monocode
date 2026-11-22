@@ -53,22 +53,34 @@ impl Shell {
                 close(self, window, cx);
                 return;
             }
-            [(label, process)] => {
-                format!("\"{process}\" is still running in {label}. Close this terminal anyway?")
-            }
-            many => format!(
-                "These terminals are still running:\n{}\n\nClose them anyway?",
-                many.iter()
-                    .map(|(label, process)| format!("• {label} ({process})"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
+            [(label, process)] => crate::i18n::format(
+                "shell-is-still-running-in-close-this-terminal",
+                &[
+                    ("process", (process).to_string()),
+                    ("label", (label).to_string()),
+                ],
+            ),
+            many => crate::i18n::format(
+                "shell-running-terminals-confirm",
+                &[(
+                    "value1",
+                    (many
+                        .iter()
+                        .map(|(label, process)| format!("• {label} ({process})"))
+                        .collect::<Vec<_>>()
+                        .join("\n"))
+                    .to_string(),
+                )],
             ),
         };
         let answer = window.prompt(
             gpui::PromptLevel::Warning,
             &message,
             None,
-            &["Close", "Cancel"],
+            &[
+                crate::i18n::text("shell-prompt-close").as_str(),
+                crate::i18n::text("shell-prompt-cancel").as_str(),
+            ],
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
@@ -326,7 +338,7 @@ impl Shell {
             .id(("terminal-pane", pane.unsigned_abs() as usize))
             .debug_selector(move || format!("terminal-pane-{pane}"))
             .role(Role::Region)
-            .aria_label("Terminal")
+            .aria_label(crate::i18n::text("shell-terminal"))
             .size_full()
             .flex()
             .flex_col()
@@ -714,7 +726,9 @@ mod tests {
         visual.simulate_keystrokes("cmd-shift-j");
         visual.run_until_parked();
         let tab = window
-            .update(&mut visual, |shell, _, _| shell.workspace.tab_of(b).unwrap())
+            .update(&mut visual, |shell, _, _| {
+                shell.workspace.tab_of(b).unwrap()
+            })
             .unwrap();
         let boundary = |visual: &mut VisualTestContext| {
             window
@@ -727,16 +741,32 @@ mod tests {
         let sash = visual.debug_bounds("pane-sash-0").unwrap().center();
         // Well clear of the middle the sash follows the pointer.
         visual.simulate_mouse_down(sash, MouseButton::Left, Default::default());
-        visual.simulate_mouse_move(sash + point(px(80.), px(0.)), MouseButton::Left, Default::default());
+        visual.simulate_mouse_move(
+            sash + point(px(80.), px(0.)),
+            MouseButton::Left,
+            Default::default(),
+        );
         let (at, snapped) = boundary(&mut visual);
         assert!(at > 0.55 && !snapped);
         // Within a few pixels of it, it settles exactly on the middle.
-        visual.simulate_mouse_move(sash + point(px(7.), px(0.)), MouseButton::Left, Default::default());
+        visual.simulate_mouse_move(
+            sash + point(px(7.), px(0.)),
+            MouseButton::Left,
+            Default::default(),
+        );
         let (at, snapped) = boundary(&mut visual);
         assert_eq!(at, 0.5);
         assert!(snapped);
-        visual.simulate_mouse_move(sash - point(px(90.), px(0.)), MouseButton::Left, Default::default());
-        visual.simulate_mouse_up(sash - point(px(90.), px(0.)), MouseButton::Left, Default::default());
+        visual.simulate_mouse_move(
+            sash - point(px(90.), px(0.)),
+            MouseButton::Left,
+            Default::default(),
+        );
+        visual.simulate_mouse_up(
+            sash - point(px(90.), px(0.)),
+            MouseButton::Left,
+            Default::default(),
+        );
         visual.run_until_parked();
         assert!(boundary(&mut visual).0 < 0.45);
         // A double-click on the sash evens the panes back out.

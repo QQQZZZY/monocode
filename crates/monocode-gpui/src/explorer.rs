@@ -35,11 +35,11 @@ const SHIFT: &str = if cfg!(target_os = "macos") {
     "Shift+"
 };
 const REVEAL_LABEL: &str = if cfg!(target_os = "macos") {
-    "Reveal in Finder"
+    "reveal-reveal-in-finder"
 } else if cfg!(target_os = "windows") {
-    "Reveal in File Explorer"
+    "reveal-reveal-in-file-explorer"
 } else {
-    "Open Containing Folder"
+    "reveal-open-containing-folder"
 };
 const ROW: f32 = 30.;
 const ENTRY_FONT_SIZE: f32 = 13.;
@@ -244,7 +244,7 @@ impl Explorer {
     ) -> Self {
         let name_input = cx.new(|cx| {
             let mut input = Input::field(
-                "Type file name. Press Enter to confirm or Escape to cancel.",
+                crate::i18n::text("explorer-type-file-name-press-enter-to"),
                 "",
                 content(0.35),
                 cx,
@@ -581,33 +581,31 @@ impl Explorer {
         } else if let Some(issue) = &issue {
             match issue.kind {
                 NameIssueKind::Empty => {
-                    vec![("A file or folder name must be provided.".into(), false)]
+                    vec![(
+                        crate::i18n::text("explorer-a-file-or-folder-name-must-be-provided"),
+                        false,
+                    )]
                 }
                 NameIssueKind::Slash => {
                     vec![(
-                        "A file or folder name cannot start with a slash.".into(),
+                        crate::i18n::text("explorer-a-file-or-folder-name-cannot-start-with"),
                         false,
                     )]
                 }
                 NameIssueKind::Exists => vec![
-                    ("A file or folder ".into(), false),
+                    (crate::i18n::text("explorer-a-file-or-folder"), false),
                     (issue.name.clone(), true),
-                    (
-                        " already exists at this location. Please choose a different name.".into(),
-                        false,
-                    ),
+                    (crate::i18n::text("explorer-name-exists-suffix"), false),
                 ],
                 NameIssueKind::Invalid => vec![
-                    ("The name ".into(), false),
+                    (crate::i18n::text("explorer-the-name"), false),
                     (issue.name.clone(), true),
-                    (
-                        " is not valid as a file or folder name. Please choose a different name."
-                            .into(),
-                        false,
-                    ),
+                    (crate::i18n::text("explorer-name-invalid-suffix"), false),
                 ],
                 NameIssueKind::Whitespace => vec![(
-                    "Leading or trailing whitespace detected in file or folder name.".into(),
+                    crate::i18n::text(
+                        "explorer-leading-or-trailing-whitespace-detected-in-file-or",
+                    ),
                     false,
                 )],
             }
@@ -874,12 +872,18 @@ impl Explorer {
         let answer = window.prompt(
             PromptLevel::Warning,
             &if is_dir {
-                format!("Delete folder “{label}” and everything inside it?")
+                crate::i18n::format(
+                    "explorer-delete-folder-and-everything-inside-it",
+                    &[("label", (label).to_string())],
+                )
             } else {
-                format!("Delete “{label}”?")
+                crate::i18n::format("explorer-delete-2", &[("label", (label).to_string())])
             },
             None,
-            &["OK", "Cancel"],
+            &[
+                crate::i18n::text("explorer-prompt-ok").as_str(),
+                crate::i18n::text("explorer-prompt-cancel").as_str(),
+            ],
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
@@ -934,7 +938,10 @@ impl Explorer {
             return;
         };
         if clip.is_dir && (dest == clip.path || dest.starts_with(&format!("{}/", clip.path))) {
-            self.fail("Cannot paste a folder into itself.".into(), cx);
+            self.fail(
+                crate::i18n::text("explorer-cannot-paste-a-folder-into-itself"),
+                cx,
+            );
             return;
         }
         let from = clip.path.clone();
@@ -1044,44 +1051,55 @@ impl Explorer {
         });
         let root = target.root;
         let items: Vec<MenuItem> = vec![
-            MenuAction::new("new-file", "New File").into(),
-            MenuAction::new("new-folder", "New Folder").into(),
+            MenuAction::new("new-file", crate::i18n::text("explorer-new-file")).into(),
+            MenuAction::new("new-folder", crate::i18n::text("explorer-new-folder")).into(),
             MenuItem::Separator,
-            MenuAction::new("cut", "Cut")
+            MenuAction::new("cut", crate::i18n::text("explorer-cut"))
                 .shortcut(format!("{MOD}X"))
                 .disabled(root)
                 .into(),
-            MenuAction::new("copy", "Copy")
+            MenuAction::new("copy", crate::i18n::text("explorer-copy"))
                 .shortcut(format!("{MOD}C"))
                 .disabled(root)
                 .into(),
-            MenuAction::new("paste", "Paste")
+            MenuAction::new("paste", crate::i18n::text("explorer-paste"))
                 .shortcut(format!("{MOD}V"))
                 .disabled(paste_blocked)
                 .into(),
-            MenuAction::new("duplicate", "Duplicate")
+            MenuAction::new("duplicate", crate::i18n::text("explorer-duplicate"))
                 .disabled(root)
                 .into(),
             MenuItem::Separator,
-            MenuAction::new("copy-path", "Copy Path")
+            MenuAction::new("copy-path", crate::i18n::text("explorer-copy-path"))
                 .shortcut(format!("{MOD}{SHIFT}C"))
                 .into(),
-            MenuAction::new("copy-relative-path", "Copy Relative Path").into(),
+            MenuAction::new(
+                "copy-relative-path",
+                crate::i18n::text("explorer-copy-relative-path"),
+            )
+            .into(),
             MenuItem::Separator,
-            MenuAction::new("rename", "Rename")
+            MenuAction::new("rename", crate::i18n::text("explorer-rename"))
                 .shortcut("F2")
                 .disabled(root)
                 .into(),
-            MenuAction::new("delete", "Delete")
+            MenuAction::new("delete", crate::i18n::text("explorer-delete"))
                 .shortcut("⌫")
                 .disabled(root)
                 .danger()
                 .into(),
             MenuItem::Separator,
-            MenuAction::new("reveal", REVEAL_LABEL).into(),
+            MenuAction::new("reveal", crate::i18n::text(REVEAL_LABEL)).into(),
         ];
         self.menu = None;
-        let menu = cx.new(|cx| Menu::new("File actions", items, window, cx));
+        let menu = cx.new(|cx| {
+            Menu::new(
+                crate::i18n::text("explorer-menu-file-actions"),
+                items,
+                window,
+                cx,
+            )
+        });
         let events = cx.subscribe_in(&menu, window, |this, _, event: &MenuEvent, window, cx| {
             let Some(open) = this.menu.take() else {
                 return;
@@ -1249,7 +1267,7 @@ impl Explorer {
         div()
             .id(id)
             .role(Role::Button)
-            .aria_label(label)
+            .aria_label(&label)
             .group(id)
             .h(px(24.))
             .min_w_0()
@@ -1494,7 +1512,7 @@ impl Render for Explorer {
                 .py_2()
                 .text_size(px(12.))
                 .text_color(content(0.5))
-                .child("No project folder")
+                .child(crate::i18n::text("explorer-no-project-folder"))
                 .into_any_element();
         }
         let root_open = self.expanded.contains(&self.cwd);
@@ -1510,7 +1528,7 @@ impl Render for Explorer {
         div()
             .id("explorer")
             .role(Role::TabPanel)
-            .aria_label("Explorer")
+            .aria_label(crate::i18n::text("explorer-explorer"))
             .key_context("Explorer")
             .track_focus(&self.focus)
             .size_full()
@@ -1620,18 +1638,23 @@ impl Render for Explorer {
                 }),
             )
             .child(
-                pane_header("explorer-header", "Explorer")
+                pane_header("explorer-header", &crate::i18n::text("explorer-explorer"))
                     .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
                     .child(
-                        Self::header_icon("explorer-new-file", "New File".into(), "file-add", true)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.start_create(false, None, window, cx)
-                            })),
+                        Self::header_icon(
+                            "explorer-new-file",
+                            crate::i18n::text("explorer-new-file").into(),
+                            "file-add",
+                            true,
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.start_create(false, None, window, cx)
+                        })),
                     )
                     .child(
                         Self::header_icon(
                             "explorer-new-folder",
-                            "New Folder".into(),
+                            crate::i18n::text("explorer-new-folder").into(),
                             "folder-add",
                             true,
                         )
@@ -1642,7 +1665,7 @@ impl Render for Explorer {
                     .child(
                         Self::header_icon(
                             "explorer-collapse",
-                            "Collapse All".into(),
+                            crate::i18n::text("explorer-collapse-all").into(),
                             "fold-vertical",
                             true,
                         )
@@ -1651,7 +1674,11 @@ impl Render for Explorer {
                     .child(
                         Self::header_icon(
                             "explorer-search",
-                            format!("Search in files ({MOD}Shift+F)").into(),
+                            crate::i18n::format(
+                                "explorer-search-in-files-shift-f",
+                                &[("MOD", (MOD).to_string())],
+                            )
+                            .into(),
                             "search",
                             true,
                         )

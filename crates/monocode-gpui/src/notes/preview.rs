@@ -89,7 +89,7 @@ impl Render for Preview {
                     div()
                         .text_size(px(13.))
                         .text_color(content(0.45))
-                        .child("No description"),
+                        .child(crate::i18n::text("notes-no-description")),
                 )
             })
             .children(self.rows.iter().enumerate().map(|(ix, row)| {

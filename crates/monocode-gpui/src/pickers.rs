@@ -89,9 +89,12 @@ pub(crate) fn remember_model(kind: Kind, model: Option<String>, cx: &mut gpui::A
 /// The accessible name of a row's favorite star.
 fn favorite_label(starred: bool, name: &str) -> String {
     if starred {
-        format!("Remove {name} from favorites")
+        crate::i18n::format(
+            "pickers-remove-from-favorites",
+            &[("name", (name).to_string())],
+        )
     } else {
-        format!("Add {name} to favorites")
+        crate::i18n::format("pickers-add-to-favorites", &[("name", (name).to_string())])
     }
 }
 fn contains_account_id(value: &str) -> bool {
@@ -428,12 +431,12 @@ mod model_label_tests {
 }
 
 fn search_field<T: 'static>(
-    label: &'static str,
-    placeholder: &'static str,
+    label: String,
+    placeholder: String,
     placeholder_alpha: f32,
     cx: &mut Context<T>,
 ) -> Entity<input::Input> {
-    cx.new(|cx| input::Input::field(label, placeholder, content(placeholder_alpha), cx))
+    cx.new(|cx| input::Input::field(&label, &placeholder, content(placeholder_alpha), cx))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -492,7 +495,12 @@ impl ModelList {
             })
             .unwrap_or_default();
         profiles.insert(provider, profile);
-        let search = search_field("Search models", "Search models", 0.4, cx);
+        let search = search_field(
+            crate::i18n::text("pickers-search-models-2"),
+            crate::i18n::text("pickers-search-models-2"),
+            0.4,
+            cx,
+        );
         let changed = cx.subscribe(&search, |this, _, _: &input::Changed, cx| {
             this.highlighted = this.current_index(cx);
             cx.notify();
@@ -555,7 +563,7 @@ impl ModelList {
     pub(crate) fn quick(mut self, cx: &mut Context<Self>) -> Self {
         self.quick = true;
         self.search.update(cx, |search, cx| {
-            search.set_placeholder("Search models…", cx)
+            search.set_placeholder(crate::i18n::text("pickers-search-models"), cx)
         });
         self
     }
@@ -900,7 +908,10 @@ impl ModelList {
     fn tab(&self, tab: ModelTab, cx: &mut Context<Self>) -> AnyElement {
         let selected = self.tab == tab;
         let (id, label): (&'static str, SharedString) = match tab {
-            ModelTab::Favorites => ("model-tab-favorites", "Favorites".into()),
+            ModelTab::Favorites => (
+                "model-tab-favorites",
+                crate::i18n::text("pickers-favorites").into(),
+            ),
             ModelTab::Harness(kind) => (
                 if kind == Kind::Claude {
                     "model-tab-claude"
@@ -915,7 +926,7 @@ impl ModelList {
         div()
             .id(id)
             .role(Role::Tab)
-            .aria_label(label)
+            .aria_label(&label)
             .aria_selected(selected)
             .group(id)
             .cursor_pointer()
@@ -962,8 +973,10 @@ impl Render for ModelList {
                 .map(|(_, error)| error.clone())
         });
         let empty = match (self.tab, self.query(cx).is_empty()) {
-            (ModelTab::Favorites, true) if entries.is_empty() => Some("No favorite models"),
-            _ if entries.is_empty() => Some("No matching models"),
+            (ModelTab::Favorites, true) if entries.is_empty() => {
+                Some(crate::i18n::text("pickers-no-favorite-models"))
+            }
+            _ if entries.is_empty() => Some(crate::i18n::text("pickers-no-matching-models")),
             _ => None,
         };
         let rows: Vec<AnyElement> = entries
@@ -1003,9 +1016,9 @@ impl Render for ModelList {
                             .aria_selected(current)
                             .when(!entry.enabled, |d| {
                                 d.aria_description(if self.missing.contains(&entry.kind) {
-                                    if self.remote_project.is_some() { "This provider is not installed on the connected machine. Install it there, then retry model discovery" } else { "This provider is not installed. Install it, then retry model discovery" }
+                                    if self.remote_project.is_some() { crate::i18n::text("pickers-this-provider-is-not-installed-on-the-connected-machine-install-it") } else { crate::i18n::text("pickers-this-provider-is-not-installed-install-it-then-retry-model-discovery") }
                                 } else {
-                                    "Wait for the current turn to finish before switching providers"
+                                    crate::i18n::text("pickers-wait-for-the-current-turn-to-finish-before-switching-providers")
                                 })
                             })
                             .cursor_pointer()
@@ -1067,7 +1080,7 @@ impl Render for ModelList {
         div()
             .id("model-flyout")
             .role(Role::Dialog)
-            .aria_label("Models")
+            .aria_label(crate::i18n::text("pickers-models"))
             .size_full()
             .min_h_0()
             .flex()
@@ -1087,7 +1100,7 @@ impl Render for ModelList {
                 div()
                     .id("model-providers")
                     .role(Role::TabList)
-                    .aria_label("Providers")
+                    .aria_label(crate::i18n::text("pickers-providers"))
                     .w(px(44.))
                     .flex_shrink_0()
                     .flex()
@@ -1143,7 +1156,7 @@ impl Render for ModelList {
                         div()
                             .id("model-list")
                             .role(Role::ListBox)
-                            .aria_label("Models")
+                            .aria_label(crate::i18n::text("pickers-models"))
                             .flex_1()
                             .min_h_0()
                             .overflow_y_scroll()
@@ -1168,7 +1181,7 @@ impl Render for ModelList {
                                         .py_2()
                                         .text_size(px(12.))
                                         .text_color(content(0.5))
-                                        .child("Loading models…"),
+                                        .child(crate::i18n::text("pickers-loading-models")),
                                 )
                             })
                             .when_some(error, |d, error| {
@@ -1183,9 +1196,11 @@ impl Render for ModelList {
                                             div()
                                                 .id("retry-models")
                                                 .role(Role::Button)
-                                                .aria_label("Retry model discovery")
+                                                .aria_label(crate::i18n::text(
+                                                    "pickers-retry-model-discovery",
+                                                ))
                                                 .py_2()
-                                                .child("Retry")
+                                                .child(crate::i18n::text("pickers-retry"))
                                                 .on_click(cx.listener(move |this, _, _, cx| {
                                                     if let Some(kind) = kind {
                                                         this.discover(kind, cx);
@@ -1211,13 +1226,13 @@ impl ModelList {
         let query = !self.query(cx).is_empty();
         let empty = entries.is_empty().then(|| {
             if query {
-                "No matching models"
+                crate::i18n::text("pickers-no-matching-models")
             } else if kind.is_none() {
-                "No favorite models"
+                crate::i18n::text("pickers-no-favorite-models")
             } else if loading {
-                "Loading models…"
+                crate::i18n::text("pickers-loading-models")
             } else {
-                "No models"
+                crate::i18n::text("pickers-no-models")
             }
         });
         let favorites = kind.is_none();
@@ -1308,7 +1323,7 @@ impl ModelList {
         div()
             .id("quick-model-selector")
             .role(Role::Group)
-            .aria_label("Model selector")
+            .aria_label(crate::i18n::text("pickers-model-selector"))
             .w_full()
             .flex()
             .flex_col()
@@ -1328,7 +1343,7 @@ impl ModelList {
                 div()
                     .id("quick-model-providers")
                     .role(Role::TabList)
-                    .aria_label("Providers")
+                    .aria_label(crate::i18n::text("pickers-providers"))
                     .h(px(44.))
                     .flex_shrink_0()
                     .flex()
@@ -1344,13 +1359,13 @@ impl ModelList {
                             ModelTab::Harness(kind) => format!("quick-tab-{}", kind.id()).into(),
                         };
                         let label = match tab {
-                            ModelTab::Favorites => "Favorites",
-                            ModelTab::Harness(kind) => kind.label(),
+                            ModelTab::Favorites => crate::i18n::text("pickers-favorites"),
+                            ModelTab::Harness(kind) => kind.label().to_owned(),
                         };
                         div()
                             .id(id.clone())
                             .role(Role::Tab)
-                            .aria_label(label)
+                            .aria_label(label.to_owned())
                             .aria_selected(selected)
                             .group(id.clone())
                             .cursor_pointer()
@@ -1399,7 +1414,7 @@ impl ModelList {
                 div()
                     .id("quick-model-list")
                     .role(Role::ListBox)
-                    .aria_label("Models")
+                    .aria_label(crate::i18n::text("pickers-models"))
                     .h(px(240.))
                     .flex_shrink_0()
                     .overflow_y_scroll()
@@ -1455,7 +1470,12 @@ pub(crate) struct ProjectPicker {
 impl EventEmitter<ProjectPicked> for ProjectPicker {}
 impl ProjectPicker {
     pub(crate) fn new(projects: &[String], current: &str, cx: &mut Context<Self>) -> Self {
-        let search = search_field("Search projects", "Search projects...", 0.35, cx);
+        let search = search_field(
+            crate::i18n::text("pickers-search-projects-2"),
+            crate::i18n::text("pickers-search-projects"),
+            0.35,
+            cx,
+        );
         let changed = cx.subscribe(&search, |this, _, _: &input::Changed, cx| {
             this.active = 0;
             cx.notify();
@@ -1503,7 +1523,7 @@ impl ProjectPicker {
         self.active_mono = active.filter(|id| monos.iter().any(|mono| &mono.id == id));
         if !monos.is_empty() {
             self.search.update(cx, |search, cx| {
-                search.set_placeholder("Search monos and projects...", cx)
+                search.set_placeholder(crate::i18n::text("pickers-search-monos-and-projects"), cx)
             });
         }
         self.monos = monos;
@@ -1586,7 +1606,10 @@ impl Render for ProjectPicker {
                         move || format!("project-picker-mono-{id}")
                     })
                     .role(Role::ListBoxOption)
-                    .aria_label(format!("{}, Mono", mono.name))
+                    .aria_label(crate::i18n::format(
+                        "pickers-mono-2",
+                        &[("value", mono.name.to_string())],
+                    ))
                     .aria_selected(current)
                     .cursor_pointer()
                     .flex_shrink_0()
@@ -1636,7 +1659,7 @@ impl Render for ProjectPicker {
                             .flex_shrink_0()
                             .text_size(px(11.))
                             .text_color(content(0.4))
-                            .child("Mono"),
+                            .child(crate::i18n::text("pickers-mono")),
                     )
                     .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
                         if *hovered {
@@ -1732,7 +1755,7 @@ impl Render for ProjectPicker {
             .id("project-picker")
             .debug_selector(|| "project-picker".into())
             .role(Role::Dialog)
-            .aria_label("Project picker")
+            .aria_label(crate::i18n::text("pickers-project-picker"))
             .size_full()
             .min_h_0()
             .flex()
@@ -1773,9 +1796,9 @@ impl Render for ProjectPicker {
                     .id("project-list")
                     .role(Role::ListBox)
                     .aria_label(if self.monos.is_empty() {
-                        "Projects"
+                        crate::i18n::text("pickers-projects")
                     } else {
-                        "Monos and projects"
+                        crate::i18n::text("pickers-monos-and-projects")
                     })
                     .flex_1()
                     .min_h_0()
@@ -1793,9 +1816,9 @@ impl Render for ProjectPicker {
                                 .text_size(px(12.))
                                 .text_color(content(0.45))
                                 .child(if self.monos.is_empty() {
-                                    "No projects found"
+                                    crate::i18n::text("pickers-no-projects-found")
                                 } else {
-                                    "No monos or projects found"
+                                    crate::i18n::text("pickers-no-monos-or-projects-found")
                                 }),
                         )
                     })
@@ -1811,7 +1834,7 @@ impl Render for ProjectPicker {
                         div()
                             .id("project-new")
                             .role(Role::Button)
-                            .aria_label("New project")
+                            .aria_label(crate::i18n::text("pickers-new-project"))
                             .group("project-new")
                             .cursor_pointer()
                             .h(px(36.))
@@ -1828,7 +1851,7 @@ impl Render for ProjectPicker {
                                     .text_color(content(0.75))
                                     .group_hover("project-new", |s| s.text_color(content(1.))),
                             )
-                            .child("New project")
+                            .child(crate::i18n::text("pickers-new-project"))
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(ProjectPicked::New))),
                     )
                     .when(self.allow_remote, |d| {
@@ -1836,7 +1859,7 @@ impl Render for ProjectPicker {
                             div()
                                 .id("project-remote")
                                 .role(Role::Button)
-                                .aria_label("Open folder on a machine")
+                                .aria_label(crate::i18n::text("pickers-open-folder-on-a-machine"))
                                 .cursor_pointer()
                                 .h(px(36.))
                                 .px(px(10.))
@@ -1848,7 +1871,7 @@ impl Render for ProjectPicker {
                                 .text_color(content(0.75))
                                 .hover(|s| s.bg(content(0.08)).text_color(content(1.)))
                                 .child(icon("globe", 16.).text_color(content(0.75)))
-                                .child("Open folder on a machine…")
+                                .child(crate::i18n::text("pickers-open-folder-on-a-machine-2"))
                                 .on_click(
                                     cx.listener(|_, _, _, cx| cx.emit(ProjectPicked::Remote)),
                                 ),

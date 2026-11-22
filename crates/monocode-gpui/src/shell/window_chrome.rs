@@ -39,8 +39,12 @@ pub(super) fn controls(
         .items_center()
         .occlude()
         .child(caption_button(
-            crate::theme::icon_button("window-minimize", "Minimize window", MINIMIZE_ICON)
-                .debug_selector(|| "window-minimize".into()),
+            crate::theme::icon_button(
+                "window-minimize",
+                crate::i18n::text("shell-minimize-window"),
+                MINIMIZE_ICON,
+            )
+            .debug_selector(|| "window-minimize".into()),
             WindowControlArea::Min,
             |_, window, _| window.minimize_window(),
         ))
@@ -48,9 +52,9 @@ pub(super) fn controls(
             crate::theme::icon_button(
                 "window-maximize",
                 if maximized {
-                    "Restore window"
+                    crate::i18n::text("shell-restore-window")
                 } else {
-                    "Maximize window"
+                    crate::i18n::text("shell-maximize-window")
                 },
                 if maximized {
                     RESTORE_ICON
@@ -63,8 +67,12 @@ pub(super) fn controls(
             |_, window, _| window.zoom_window(),
         ))
         .child(caption_button(
-            crate::theme::icon_button("window-close", "Close window", CLOSE_ICON)
-                .debug_selector(|| "window-close".into()),
+            crate::theme::icon_button(
+                "window-close",
+                crate::i18n::text("shell-close-window"),
+                CLOSE_ICON,
+            )
+            .debug_selector(|| "window-close".into()),
             WindowControlArea::Close,
             on_close,
         ))

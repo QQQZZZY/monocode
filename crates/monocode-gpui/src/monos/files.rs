@@ -75,7 +75,7 @@ impl Monos {
                 cx,
             );
             editor.update(cx, |v, cx| {
-                v.set_placeholder("Who it is, and what it should always keep in mind", cx)
+                v.set_placeholder(crate::i18n::text("monos-who-it-is-and-what-it"), cx)
             });
             let focus = editor.focus_handle(cx);
             div()
@@ -100,7 +100,7 @@ impl Monos {
                 .text_center()
                 .text_size(px(12.))
                 .text_color(content(0.45))
-                .child("Loading…")
+                .child(crate::i18n::text("monos-loading"))
                 .into_any_element()
         };
         let _ = mono;
@@ -111,11 +111,11 @@ impl Monos {
             .min_h_0()
             .flex()
             .flex_col()
-            .child(Self::settings_page_header("Soul"))
+            .child(Self::settings_page_header(&crate::i18n::text("monos-soul")))
             .child(body)
             .into_any_element()
     }
-    pub(super) fn settings_page_header(title: &'static str) -> gpui::Div {
+    pub(super) fn settings_page_header(title: &str) -> gpui::Div {
         div()
             .h(px(40.))
             .flex_shrink_0()
@@ -128,7 +128,7 @@ impl Monos {
             .border_color(content(0.04))
             .text_size(px(13.))
             .font_weight(gpui::FontWeight::MEDIUM)
-            .child(div().flex_1().min_w_0().child(title))
+            .child(div().flex_1().min_w_0().child(title.to_owned()))
     }
     pub(super) fn bind_settings_blurs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let fields = self
@@ -180,8 +180,9 @@ impl Monos {
                             this.reload_files(&id, cx);
                         }
                         Err(e) => {
-                            this.error = Some(format!(
-                                "Could not save: {e}. Your edits are still in the editor."
+                            this.error = Some(crate::i18n::format(
+                                "monos-could-not-save-your-edits-are-still",
+                                &[("e", (e).to_string())],
                             ))
                         }
                     }
@@ -221,9 +222,12 @@ impl Monos {
     ) {
         let prompt = window.prompt(
             gpui::PromptLevel::Warning,
-            "Reset conversation?",
-            Some("The chat will be cleared. Its soul, memory and habits stay."),
-            &["Cancel", "Reset"],
+            crate::i18n::text("monos-prompt-reset-conversation").as_str(),
+            Some(crate::i18n::text("monos-prompt-the-chat-will-be-cleared-its").as_str()),
+            &[
+                crate::i18n::text("monos-prompt-cancel").as_str(),
+                crate::i18n::text("monos-prompt-reset").as_str(),
+            ],
             cx,
         );
         let id = id.to_string();
@@ -252,9 +256,12 @@ impl Monos {
     pub(super) fn delete_mono(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         let prompt = window.prompt(
             gpui::PromptLevel::Warning,
-            "Delete mono?",
-            Some("Its scheduled habits stop. Sessions and notes it created stay saved."),
-            &["Cancel", "Delete"],
+            crate::i18n::text("monos-prompt-delete-mono").as_str(),
+            Some(crate::i18n::text("monos-prompt-its-scheduled-habits-stop-sessions-and").as_str()),
+            &[
+                crate::i18n::text("monos-prompt-cancel").as_str(),
+                crate::i18n::text("monos-prompt-delete").as_str(),
+            ],
             cx,
         );
         let id = id.to_string();
@@ -275,6 +282,7 @@ impl Monos {
             run.view.update(cx, |v, cx| v.mono_stop(cx));
         }
         self.roster.monos.retain(|m| m.id != id);
+        self.panel_views.remove(id);
         if self.active.as_deref() == Some(id) {
             self.active = None;
         }

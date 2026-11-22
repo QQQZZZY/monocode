@@ -33,20 +33,27 @@ pub(crate) fn card(id: &'static str, message: String, dismiss: impl IntoElement)
                                 .min_w_0()
                                 .text_size(px(13.))
                                 .font_weight(FontWeight::SEMIBOLD)
-                                .child("Error"),
+                                .child(crate::i18n::text("notifications-error")),
                         )
                         .child(dismiss),
                 )
                 .child(
                     div()
                         .id((id, 0usize))
+                        .debug_selector(move || format!("{id}-message-viewport"))
                         .min_w_0()
                         .max_h(px(220.))
                         .overflow_y_scroll()
                         .text_size(px(12.))
                         .line_height(px(19.5))
                         .text_color(content(0.8))
-                        .child(message),
+                        .child(
+                            div()
+                                .debug_selector(move || format!("{id}-message"))
+                                .w_full()
+                                .min_w_0()
+                                .child(message),
+                        ),
                 ),
         )
 }

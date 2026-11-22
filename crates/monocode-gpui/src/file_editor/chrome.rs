@@ -49,7 +49,7 @@ impl FileEditor {
             .id("file-breadcrumbs")
             .debug_selector(|| "file-breadcrumbs".into())
             .role(Role::Navigation)
-            .aria_label("File path")
+            .aria_label(crate::i18n::text("file-editor-file-path"))
             .aria_description(self.path.clone())
             .h(px(HEADER_HEIGHT))
             .flex_shrink_0()
@@ -100,8 +100,8 @@ impl FileEditor {
             .id("file-word-wrap")
             .debug_selector(|| "file-word-wrap".into())
             .role(Role::Button)
-            .aria_label("Word wrap")
-            .aria_description("Toggle word wrap (Alt+Z)")
+            .aria_label(crate::i18n::text("file-editor-word-wrap"))
+            .aria_description(crate::i18n::text("file-editor-toggle-word-wrap-alt-z"))
             .aria_toggled(if wrap {
                 gpui::Toggled::True
             } else {
@@ -119,7 +119,7 @@ impl FileEditor {
             .text_color(content(if wrap { 1. } else { 0.45 }))
             .when(wrap, |d| d.bg(content(0.15)))
             .hover(|s| s.bg(content(0.1)).text_color(content(1.)))
-            .child("Wrap")
+            .child(crate::i18n::text("file-editor-wrap"))
             .on_click(cx.listener(|this, _, _, cx| this.toggle_word_wrap(cx)))
             .into_any_element()
     }
@@ -128,7 +128,7 @@ impl FileEditor {
         div()
             .id("file-mode")
             .role(Role::TabList)
-            .aria_label("File view")
+            .aria_label(crate::i18n::text("file-editor-file-view"))
             .h(px(CONTROL_HEIGHT))
             .flex_shrink_0()
             .flex()
@@ -137,32 +137,36 @@ impl FileEditor {
             .bg(content(0.1))
             .p(px(2.))
             .children(
-                [("Preview", true), ("Source", false)]
-                    .into_iter()
-                    .map(|(label, preview)| {
-                        div()
-                            .id(label)
-                            .role(Role::Tab)
-                            .aria_label(label)
-                            .aria_selected(self.preview == preview)
-                            .cursor_pointer()
-                            .h_full()
-                            .flex()
-                            .items_center()
-                            .px_2()
-                            .rounded(px(4.))
-                            .text_size(px(11.))
-                            .line_height(px(14.))
-                            .text_color(content(if self.preview == preview { 1. } else { 0.45 }))
-                            .when(self.preview == preview, |d| d.bg(content(0.15)))
-                            .hover(|s| s.bg(content(0.1)).text_color(content(1.)))
-                            .child(label)
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                if this.preview != preview {
-                                    this.toggle_preview(window, cx);
-                                }
-                            }))
-                    }),
+                [
+                    ("Preview", true, "file-editor-preview"),
+                    ("Source", false, "file-editor-source"),
+                ]
+                .into_iter()
+                .map(|(id, preview, key)| {
+                    let label = crate::i18n::text(key);
+                    div()
+                        .id(id)
+                        .role(Role::Tab)
+                        .aria_label(label.to_owned())
+                        .aria_selected(self.preview == preview)
+                        .cursor_pointer()
+                        .h_full()
+                        .flex()
+                        .items_center()
+                        .px_2()
+                        .rounded(px(4.))
+                        .text_size(px(11.))
+                        .line_height(px(14.))
+                        .text_color(content(if self.preview == preview { 1. } else { 0.45 }))
+                        .when(self.preview == preview, |d| d.bg(content(0.15)))
+                        .hover(|s| s.bg(content(0.1)).text_color(content(1.)))
+                        .child(label)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            if this.preview != preview {
+                                this.toggle_preview(window, cx);
+                            }
+                        }))
+                }),
             )
             .into_any_element()
     }
@@ -182,16 +186,38 @@ impl FileEditor {
         } else {
             "UTF-8"
         };
-        let position = format!("Ln {line}, Col {column}");
-        let details = format!(
-            "{lines} {} · {encoding} · {ending}",
-            if lines == 1 { "line" } else { "lines" }
+        let position = crate::i18n::format(
+            "file-editor-ln-col",
+            &[("line", line.to_string()), ("column", column.to_string())],
+        );
+        let details = crate::i18n::format(
+            "file-editor-document-summary",
+            &[
+                ("lines", crate::system_format::unsigned((lines) as u64)),
+                (
+                    "value1",
+                    (if lines == 1 {
+                        crate::i18n::text("file-editor-document-summary-line")
+                    } else {
+                        crate::i18n::text("file-editor-document-summary-lines")
+                    })
+                    .to_string(),
+                ),
+                ("encoding", (encoding).to_string()),
+                ("ending", (ending).to_string()),
+            ],
         );
         div()
             .id("file-editor-status")
             .debug_selector(|| "file-editor-status".into())
             .role(Role::Status)
-            .aria_label(format!("{position} · {details}"))
+            .aria_label(crate::i18n::format(
+                "file-editor-position-details",
+                &[
+                    ("position", position.to_string()),
+                    ("details", details.to_string()),
+                ],
+            ))
             .h(px(24.))
             .flex_shrink_0()
             .min_w_0()

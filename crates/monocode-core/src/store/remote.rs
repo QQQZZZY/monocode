@@ -273,7 +273,7 @@ impl Store {
         let id = -shared::handle(&format!("remote:blank:{}", uuid::Uuid::new_v4()));
         let summary = Session {
             id,
-            title: format!("New {} session", kind.label()),
+            title: crate::session_title::default_title(kind),
             provider: provider.into(),
             cwd: project.key.clone(),
             provider_id: None,
@@ -518,6 +518,37 @@ mod tests {
             "session":{"id":id,"harness":"codex","title":"Host conversation","model":"codex:live-model",
                 "runtimeMode":"auto","modelSettings":{"reasoningEffort":"high"},"cwd":"/host/repo/worktree",
                 "blocks":[{"id":"prompt","role":"user","text":"hello"}]}})
+    }
+
+    #[test]
+    fn blank_remote_provider_change_keeps_the_default_title_in_sync() {
+        let store = Store::open(Path::new(":memory:")).unwrap();
+        let project = project(&store, "env");
+        let session = store.create("codex", &project.key).unwrap();
+        store.change_provider(session.id, "claude").unwrap();
+        let next = crate::session_title::default_title(crate::provider::Kind::Claude);
+        assert!(store
+            .replace_title(session.id, &session.title, &next)
+            .unwrap());
+        assert!(!store
+            .replace_title(session.id, &session.title, "stale")
+            .unwrap());
+        let saved = store.remote_session(session.id).unwrap().unwrap();
+        assert_eq!(saved.summary.title, next);
+        assert_eq!(saved.summary.provider, "claude");
+        let mut bound = saved;
+        bound.session_id = Some("host-session".into());
+        store.save_remote_session(&bound).unwrap();
+        assert!(!store.replace_title(session.id, &next, "Not sent").unwrap());
+        assert_eq!(
+            store
+                .remote_session(session.id)
+                .unwrap()
+                .unwrap()
+                .summary
+                .title,
+            next
+        );
     }
 
     #[test]

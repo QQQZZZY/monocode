@@ -15,9 +15,13 @@ mod code;
 mod command;
 mod context_menu;
 mod mention;
+mod prompt_assist;
 mod spelling;
 pub(crate) use command::{Command, CommandRemoved};
 use mention::{DisplayLayout, MentionIcon};
+pub(crate) use prompt_assist::{
+    AcceptGhost, DismissGhost, PromptHistory, StashDraft, StashRequested,
+};
 
 const MAX_BYTES: usize = 64 * 1024;
 const LINE_HEIGHT: f32 = 22.;
@@ -113,6 +117,8 @@ pub fn bind(cx: &mut App) {
         KeyBinding::new("shift-end", SelectEnd, Some("Composer")),
         KeyBinding::new("shift-enter", Newline, Some("Composer")),
         KeyBinding::new("enter", Submit, Some("Composer")),
+        KeyBinding::new("tab", AcceptGhost, Some("Composer")),
+        KeyBinding::new("escape", DismissGhost, Some("Composer")),
     ]);
     let modifier = if cfg!(target_os = "macos") {
         "cmd"
@@ -138,6 +144,7 @@ pub fn bind(cx: &mut App) {
         KeyBinding::new(&format!("{modifier}-c"), Copy, Some("Composer")),
         KeyBinding::new(&format!("{modifier}-v"), Paste, Some("Composer")),
         KeyBinding::new(&format!("{modifier}-x"), Cut, Some("Composer")),
+        KeyBinding::new(&format!("{modifier}-s"), StashDraft, Some("Composer")),
         KeyBinding::new(
             &format!("{modifier}-enter"),
             SubmitSecondary,
@@ -238,12 +245,21 @@ pub struct Input {
     selecting: bool,
     drag_position: Option<Point<Pixels>>,
     autoscroll: Option<gpui::Task<()>>,
+    /// Suggested next prompt painted in place of the placeholder; Tab accepts.
+    ghost: Option<SharedString>,
+    /// Supplies submitted prompts (oldest first) for Up/Down recall.
+    history: Option<PromptHistory>,
+    /// Active recall: the shown history index and the draft it replaced.
+    recall: Option<prompt_assist::Recall>,
+    /// Cmd/Ctrl+S emits [`StashRequested`] instead of propagating.
+    stash_enabled: bool,
 }
 impl EventEmitter<Submitted> for Input {}
 impl EventEmitter<AlternateSubmitted> for Input {}
 impl EventEmitter<Changed> for Input {}
 impl EventEmitter<Rejected> for Input {}
 impl EventEmitter<CodeAction> for Input {}
+impl EventEmitter<StashRequested> for Input {}
 impl Focusable for Input {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus.clone()
@@ -265,9 +281,9 @@ impl Input {
             secret: false,
             max_chars: None,
             centered: false,
-            placeholder: "Ask, build, or describe a change…".into(),
+            placeholder: crate::i18n::text("input-ask-build-or-describe-a-change").into(),
             placeholder_alpha: None,
-            label: "Message composer".into(),
+            label: crate::i18n::text("input-message-composer").into(),
             font_size: FONT_SIZE,
             line_height: LINE_HEIGHT,
             min_height: MIN_HEIGHT,
@@ -291,14 +307,18 @@ impl Input {
             selecting: false,
             drag_position: None,
             autoscroll: None,
+            ghost: None,
+            history: None,
+            recall: None,
+            stash_enabled: false,
         }
     }
     pub fn search(cx: &mut Context<Self>) -> Self {
         let mut input = Self::new(cx);
         input.height = 20.;
         input.single_line = true;
-        input.placeholder = "Search".into();
-        input.label = "Search sessions".into();
+        input.placeholder = crate::i18n::text("input-search").into();
+        input.label = crate::i18n::text("input-search-sessions").into();
         input
     }
     /// A one-line field inside a popover, such as a picker's search box.
@@ -336,7 +356,7 @@ impl Input {
     /// textarea growing to `max-h-40` less its `py-1`.
     pub fn commit_message(cx: &mut Context<Self>) -> Self {
         let mut input = Self::new(cx);
-        input.label = "Commit message".into();
+        input.label = crate::i18n::text("input-commit-message").into();
         input.font_size = 13.;
         input.line_height = 20.;
         input.height = 20.;
@@ -359,7 +379,7 @@ impl Input {
     /// An action's shell command: three rows growing to six.
     pub(crate) fn action_command(cx: &mut Context<Self>) -> Self {
         let mut input = Self::commit_message(cx);
-        input.label = "Command".into();
+        input.label = crate::i18n::text("input-command").into();
         input.placeholder = "bun test".into();
         input.height = 60.;
         input.min_height = 60.;
@@ -369,11 +389,11 @@ impl Input {
     /// InboxComments' two-row textarea grows within the discussion page.
     pub(crate) fn inbox_comment(cx: &mut Context<Self>) -> Self {
         let mut input = Self::commit_message(cx);
-        input.label = "Comment".into();
+        input.label = crate::i18n::text("input-comment").into();
         input.placeholder = if cfg!(target_os = "macos") {
-            "Leave a comment (⌘↩)"
+            crate::i18n::text("input-leave-a-comment")
         } else {
-            "Leave a comment (Ctrl+Enter)"
+            crate::i18n::text("input-leave-a-comment-ctrl-enter")
         }
         .into();
         input.height = 40.;
@@ -384,8 +404,8 @@ impl Input {
     /// AutomationEditor uses a proportional, naturally growing prompt field.
     pub(crate) fn automation_instructions(cx: &mut Context<Self>) -> Self {
         let mut input = Self::commit_message(cx);
-        input.label = "Instructions".into();
-        input.placeholder = "Tell the agent what to do when this automation runs…".into();
+        input.label = crate::i18n::text("input-instructions").into();
+        input.placeholder = crate::i18n::text("input-tell-the-agent-what-to-do").into();
         input.font_size = 14.;
         input.line_height = 22.;
         input.height = 88.;
@@ -396,8 +416,8 @@ impl Input {
     }
     pub(crate) fn automation_name(cx: &mut Context<Self>) -> Self {
         let mut input = Self::search(cx);
-        input.label = "Automation name".into();
-        input.placeholder = "Untitled".into();
+        input.label = crate::i18n::text("input-automation-name").into();
+        input.placeholder = crate::i18n::text("input-untitled").into();
         input.font_size = 20.;
         input.line_height = 25.;
         input.height = 25.;
@@ -415,7 +435,7 @@ impl Input {
         if self.min_height != LINE_HEIGHT {
             self.height = LINE_HEIGHT;
         }
-        self.label = format!("Message {name}").into();
+        self.label = crate::i18n::format("input-message", &[("name", (name).to_string())]).into();
         self.placeholder = self.label.clone();
         self.font_size = 13.;
         self.line_height = LINE_HEIGHT;
@@ -427,9 +447,8 @@ impl Input {
     /// NewHabitPage's three-row AutoTextarea, capped like React's AutoTextarea.
     pub(crate) fn habit_instructions(cx: &mut Context<Self>) -> Self {
         let mut input = Self::commit_message(cx);
-        input.label = "What it does".into();
-        input.placeholder =
-            "What it should do on each run, and when it's worth telling you about.".into();
+        input.label = crate::i18n::text("input-what-it-does").into();
+        input.placeholder = crate::i18n::text("input-what-it-should-do-on-each").into();
         input.font_size = 12.;
         input.line_height = 20.;
         input.height = 60.;
@@ -496,7 +515,7 @@ impl Input {
     /// MessageQueue.tsx keeps its one-row textarea height while Shift+Enter
     /// inserts newlines; the field scrolls to the caret within that row.
     pub(crate) fn queued_message(cx: &mut Context<Self>) -> Self {
-        let mut input = Self::memory_fact("Edit queued message", cx);
+        let mut input = Self::memory_fact(&crate::i18n::text("input-edit-queued-message"), cx);
         input.max_height = input.min_height;
         input
     }
@@ -542,6 +561,10 @@ impl Input {
         self.reveal_pending = self.reveal_in_parent;
         self.clear_folds();
         self.content = text.into();
+        if !self.content.is_empty() {
+            self.ghost = None;
+        }
+        self.recall = None;
         self.lines.clear();
         self.code_changed();
         self.selection = self.content.len()..self.content.len();
@@ -737,6 +760,10 @@ impl Input {
     }
     fn range8(&self, r: Range<usize>) -> Range<usize> {
         self.clip_range(self.from16(r.start)..self.from16(r.end))
+    }
+    #[cfg(test)]
+    pub(crate) fn diagnostic_geometry(&self) -> (Option<Bounds<Pixels>>, Pixels) {
+        (self.bounds, self.scroll_y)
     }
     fn line_height(&self) -> Pixels {
         px(if self.single_line {
@@ -950,12 +977,12 @@ impl Input {
         self.select_to(self.next_word(), cx);
     }
     fn up(&mut self, _: &Up, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.completion_step(true, cx) {
+        if !self.completion_step(true, cx) && !self.recall_step(true, cx) {
             self.move_to(self.vertical(false), cx);
         }
     }
     fn down(&mut self, _: &Down, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.completion_step(false, cx) {
+        if !self.completion_step(false, cx) && !self.recall_step(false, cx) {
             self.move_to(self.vertical(true), cx);
         }
     }
@@ -1350,6 +1377,7 @@ impl EntityInputHandler for Input {
         self.reversed = false;
         self.marked = None;
         self.command_removed(previous_command, cx);
+        self.user_edited();
         cx.emit(Changed);
         cx.notify();
     }
@@ -1405,6 +1433,7 @@ impl EntityInputHandler for Input {
             .unwrap_or(r.start + text.len()..r.start + text.len());
         self.selection = self.clip_range(selection);
         self.reversed = false;
+        self.user_edited();
         cx.emit(Changed);
         cx.notify();
     }
@@ -1646,12 +1675,10 @@ impl Element for InputElement {
             base += line.len() + 1;
             y += line.size(line_height).height;
         }
-        // Single-line fields never wrap or scroll vertically. In particular,
-        // a line taller than its viewport used to alternate between 0 and 2 px
-        // on every repaint, making even the empty placeholder visibly jump.
+        // A line taller than its viewport cannot fit, so anchor its top to avoid oscillation.
         let scroll_y = if i.manual_scroll {
             i.scroll_y
-        } else if i.single_line || caret.y < i.scroll_y {
+        } else if i.single_line || bounds.size.height < line_height || caret.y < i.scroll_y {
             caret.y
         } else if caret.y + line_height > i.scroll_y + bounds.size.height {
             caret.y + line_height - bounds.size.height
@@ -1918,6 +1945,9 @@ impl Render for Input {
             .on_action(cx.listener(Self::delete_to_end))
             .on_action(cx.listener(Self::up))
             .on_action(cx.listener(Self::down))
+            .on_action(cx.listener(Self::accept_ghost))
+            .on_action(cx.listener(Self::dismiss_ghost))
+            .on_action(cx.listener(Self::stash_draft))
             .on_action(cx.listener(Self::paste))
             .on_action(cx.listener(Self::copy))
             .on_action(cx.listener(Self::cut))
@@ -2397,6 +2427,24 @@ mod native_input_tests {
             last_visual_line.ends_with("selection.")
                 && last_visual_line.len() < input.read_with(cx, |i, _| i.content.len())
         );
+    }
+
+    #[gpui::test]
+    fn composer_placeholder_stays_still_in_short_viewport(cx: &mut TestAppContext) {
+        let window = field(cx, false);
+        window
+            .update(cx, |input, _, cx| {
+                input.height = 20.;
+                cx.notify();
+            })
+            .unwrap();
+        for _ in 0..12 {
+            cx.refresh().unwrap();
+            assert_eq!(
+                window.update(cx, |input, _, _| input.scroll_y).unwrap(),
+                px(0.)
+            );
+        }
     }
 
     #[gpui::test]

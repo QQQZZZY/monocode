@@ -838,7 +838,7 @@ fn original_app_surfaces_leave_both_new_layout_styles_tabbed(cx: &mut TestAppCon
                 _ => None,
             };
             if let Some(app) = app {
-                let selector = Box::leak(format!("app-title-tab-{}", app.label()).into_boxed_str());
+                let selector = Box::leak(format!("app-title-tab-{}", app.id()).into_boxed_str());
                 assert!(
                     visual.debug_bounds(selector).is_some(),
                     "the destination itself has a tab (boxy={boxy})"
@@ -912,7 +912,7 @@ fn new_layout_app_tabs_survive_frame_changes_and_close_like_session_tabs(cx: &mu
             app_views::AppView::Notes,
             app_views::AppView::Automations,
         ] {
-            let selector = Box::leak(format!("app-title-tab-{}", app.label()).into_boxed_str());
+            let selector = Box::leak(format!("app-title-tab-{}", app.id()).into_boxed_str());
             let tab = visual.debug_bounds(selector).unwrap();
             visual.simulate_click(tab.center(), Default::default());
             visual.run_until_parked();

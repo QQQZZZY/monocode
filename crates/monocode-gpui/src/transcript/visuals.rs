@@ -137,9 +137,9 @@ impl TranscriptView {
                 .text_color(content(0.5))
                 .child(
                     if caption.is_empty() {
-                        "Visual"
+                        crate::i18n::text("transcript-visual")
                     } else {
-                        caption
+                        caption.to_owned()
                     }
                     .to_owned(),
                 )

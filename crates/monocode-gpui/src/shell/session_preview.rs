@@ -61,12 +61,9 @@ pub(super) fn render(
                             content(0.45)
                         })
                         .child(if done {
-                            "Done".to_owned()
+                            crate::i18n::text("shell-done").to_owned()
                         } else {
-                            monocode_core::time::relative(
-                                summary.updated_at,
-                                monocode_core::time::now_ms(),
-                            )
+                            crate::i18n::relative(summary.updated_at, monocode_core::time::now_ms())
                         }),
                 ),
         )
@@ -77,10 +74,10 @@ pub(super) fn render(
                 .line_height(px(20.))
                 .font_weight(FontWeight::SEMIBOLD)
                 .text_color(content(1.))
-                .child(
-                    monocode_core::session_title::display_title(&summary.title, &summary.provider)
-                        .replace('\n', " "),
-                ),
+                .child(crate::i18n::session_title(
+                    &summary.title,
+                    &summary.provider,
+                )),
         )
         .child(
             div()
@@ -98,9 +95,9 @@ pub(super) fn render(
                         .flex_shrink_0()
                         .text_color(content(0.45))
                         .child(if worktree.is_some() {
-                            "Worktree"
+                            crate::i18n::text("shell-worktree")
                         } else {
-                            "Directory"
+                            crate::i18n::text("shell-directory")
                         }),
                 )
                 .child(

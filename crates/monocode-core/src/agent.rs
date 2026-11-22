@@ -117,6 +117,9 @@ pub struct Settings {
     pub internal_message: bool,
     #[serde(skip)]
     pub attachments: Vec<std::path::PathBuf>,
+    /// Enable provider-side next-prompt suggestions when launching turns.
+    #[serde(skip)]
+    pub prompt_suggestions: bool,
     pub revision: u64,
     pub model: Option<String>,
     pub effort: Option<String>,
@@ -178,6 +181,10 @@ pub struct TurnInfo {
     pub started_at: Option<u64>,
     pub completed_at: Option<u64>,
     pub metrics: Option<TurnMetrics>,
+    /// The user or a Mono stopped this turn. Native stops leave no transcript
+    /// row, so completion reports read this after a reload or restart.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub stopped: bool,
 }
 impl TurnInfo {
     pub fn has_duration(&self) -> bool {

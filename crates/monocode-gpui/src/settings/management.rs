@@ -40,13 +40,19 @@ impl SettingsView {
         }
         self.management_generation += 1;
         let (label, placeholder) = match target {
-            Target::Cli(_) => ("CLI path", "Auto-detected path"),
-            Target::Mcp => ("Name (optional with mcpServers)", "my-server"),
-            Target::Skill => ("Skill name", "skill-name"),
-            _ => ("New branch name", "feature/my-task"),
+            Target::Cli(_) => (
+                "settings-cli-path",
+                crate::i18n::text("settings-auto-detected-path"),
+            ),
+            Target::Mcp => (
+                "settings-name-optional-with-mcpservers",
+                "my-server".to_owned(),
+            ),
+            Target::Skill => ("settings-skill-name", "skill-name".to_owned()),
+            _ => ("settings-new-branch-name", "feature/my-task".to_owned()),
         };
         let name = cx.new(|cx| {
-            let mut input = Input::field(label, placeholder, content(0.35), cx);
+            let mut input = Input::field(crate::i18n::text(label), placeholder, content(0.35), cx);
             input.set_font_size(12.);
             input
         });
@@ -68,7 +74,7 @@ impl SettingsView {
                 input.set_text(monocode_core::skills::slug_name(&self.skill_query), cx);
             });
         }
-        let body=cx.new(|cx|Input::multiline_field("JSON configuration", "{\"mcpServers\":{\"my-server\":{\"command\":\"npx\",\"args\":[\"-y\",\"example-mcp\"]}}}",cx));
+        let body=cx.new(|cx|Input::multiline_field(&crate::i18n::text("settings-json-configuration"), "{\"mcpServers\":{\"my-server\":{\"command\":\"npx\",\"args\":[\"-y\",\"example-mcp\"]}}}",cx));
         let subscriptions = vec![
             cx.subscribe(&name, |_, _, _: &input::Changed, cx| cx.notify()),
             cx.subscribe(&body, |_, _, _: &input::Changed, cx| cx.notify()),
@@ -298,12 +304,17 @@ impl SettingsView {
                     ..Default::default()
                 }
                 .label();
-                rows.push(note(format!("Its soul goes back to the default and its name to {default}. Changes to its soul can't be recovered.")));
+                rows.push(note(crate::i18n::format(
+                    "settings-its-soul-goes-back-to-the-default",
+                    &[("default", (default).to_string())],
+                )));
                 rows.push(
                     div()
                         .text_size(px(12.))
                         .text_color(content(0.5))
-                        .child("Its conversation, projects, memory and habits will be kept.")
+                        .child(crate::i18n::text(
+                            "settings-its-conversation-projects-memory-and-habits",
+                        ))
                         .into_any_element(),
                 );
             }
@@ -320,29 +331,37 @@ impl SettingsView {
                         .justify_between()
                         .gap_3()
                         .text_size(px(12.))
-                        .child(format!("{} CLI", kind.label()))
+                        .child(crate::i18n::format(
+                            "settings-cli",
+                            &[("name", kind.label().to_string())],
+                        ))
                         .child(
-                            div()
-                                .text_size(px(10.))
-                                .text_color(content(0.5))
-                                .child(format!(
-                                    "Global path · {}",
-                                    if error.is_some() {
-                                        "Needs attention"
-                                    } else if pending {
-                                        "Restart required"
-                                    } else if overridden {
-                                        "Configured"
-                                    } else {
-                                        "Auto-detected"
-                                    }
-                                )),
+                            div().text_size(px(10.)).text_color(content(0.5)).child(
+                                crate::i18n::format(
+                                    "settings-global-path",
+                                    &[(
+                                        "value",
+                                        (if error.is_some() {
+                                            crate::i18n::text("settings-needs-attention")
+                                        } else if pending {
+                                            crate::i18n::text("settings-restart-required")
+                                        } else if overridden {
+                                            crate::i18n::text("settings-configured")
+                                        } else {
+                                            crate::i18n::text("settings-auto-detected")
+                                        })
+                                        .to_string(),
+                                    )],
+                                ),
+                            ),
                         )
                         .into_any_element(),
                 );
                 if editing {
-                    rows.push(form_field("CLI path", name, 32.));
-                    rows.push(note("Enter the absolute path to the CLI executable. Changes apply after restarting MonoCode."));
+                    rows.push(form_field("settings-cli-path", name, 32.));
+                    rows.push(note(crate::i18n::text(
+                        "settings-enter-the-absolute-path-to-the-cli",
+                    )));
                 } else {
                     rows.push(
                         div()
@@ -359,9 +378,13 @@ impl SettingsView {
                                         .map(|i| i.path.display().to_string())
                                         .unwrap_or_else(|| {
                                             if busy {
-                                                "Checking the selected CLI…".into()
+                                                crate::i18n::text(
+                                                    "settings-checking-the-selected-cli",
+                                                )
                                             } else {
-                                                "CLI could not be resolved".into()
+                                                crate::i18n::text(
+                                                    "settings-cli-could-not-be-resolved",
+                                                )
                                             }
                                         }),
                                 ),
@@ -369,9 +392,9 @@ impl SettingsView {
                             .child(div().mt_1().text_color(content(0.4)).child(
                                 inspection.map(|i| i.version).unwrap_or_else(|| {
                                     if busy {
-                                        "Checking version…".into()
+                                        crate::i18n::text("settings-checking-version")
                                     } else {
-                                        "Retry to check this CLI".into()
+                                        crate::i18n::text("settings-retry-to-check-this-cli")
                                     }
                                 }),
                             ))
@@ -387,18 +410,18 @@ impl SettingsView {
                     560.
                 }) - 46.)
                     / 2.;
-                rows.push(note(
-                    "Paste a server configuration and choose where to add it.",
-                ));
+                rows.push(note(crate::i18n::text(
+                    "settings-paste-a-server-configuration-and-choose-where-to",
+                )));
                 rows.push(
                     div()
                         .flex()
                         .gap_3()
                         .child(labeled_control(
-                            "Provider",
+                            "settings-provider",
                             self.select(
                                 "mcp-provider",
-                                "Provider",
+                                crate::i18n::text("settings-provider"),
                                 &provider,
                                 [
                                     ("claude", "Claude Code"),
@@ -427,10 +450,10 @@ impl SettingsView {
                             ),
                         ))
                         .child(labeled_control(
-                            "Scope",
+                            "settings-scope",
                             self.select(
                                 "mcp-scope",
-                                "Scope",
+                                crate::i18n::text("settings-scope"),
                                 &scope,
                                 scopes(&provider)
                                     .iter()
@@ -438,9 +461,9 @@ impl SettingsView {
                                         (
                                             s.to_string(),
                                             SharedString::from(match *s {
-                                                "local" => "Local",
-                                                "project" => "Project",
-                                                _ => "User",
+                                                "local" => crate::i18n::text("settings-local"),
+                                                "project" => crate::i18n::text("settings-project"),
+                                                _ => crate::i18n::text("settings-user"),
                                             }),
                                             None,
                                         )
@@ -458,17 +481,26 @@ impl SettingsView {
                         ))
                         .into_any_element(),
                 );
-                rows.push(form_field("Name (optional with mcpServers)", name, 32.));
-                rows.push(form_field("JSON configuration", body, 140.));
-                rows.push(note("Paste one entry from an mcpServers block, or a single server object with a name above."));
+                rows.push(form_field(
+                    "settings-name-optional-with-mcpservers",
+                    name,
+                    32.,
+                ));
+                rows.push(form_field("settings-json-configuration", body, 140.));
+                rows.push(note(crate::i18n::text(
+                    "settings-paste-one-entry-from-an-mcpservers-block",
+                )));
             }
             Target::Skill => {
-                rows.push(form_field("Skill name", name, 32.));
+                rows.push(form_field("settings-skill-name", name, 32.));
                 rows.push(self.segmented(
                     "skill-scope",
-                    "Skill scope",
+                    crate::i18n::text("settings-skill-scope"),
                     &scope,
-                    &[("project", "Project"), ("user", "Personal")],
+                    &[
+                        ("project", &crate::i18n::text("settings-project")),
+                        ("user", &crate::i18n::text("settings-personal-2")),
+                    ],
                     cx,
                     |this, v, cx| {
                         if let Some(e) = &mut this.management {
@@ -477,21 +509,28 @@ impl SettingsView {
                         cx.notify();
                     },
                 ));
-                rows.push(note(
-                    "Creates a starter SKILL.md in .agents/skills. Edit it in your file editor.",
-                ));
+                rows.push(note(crate::i18n::text(
+                    "settings-creates-a-starter-skill-md-in-agents-skills",
+                )));
             }
             Target::Worktree => {
-                rows.push(note(format!("An independent working copy of {}. Existing uncommitted changes stay in their current working copy.",self.selected_project)));
+                rows.push(note(crate::i18n::format(
+                    "settings-an-independent-working-copy-of-existing-uncommitted",
+                    &[("value", (self.selected_project).to_string())],
+                )));
                 rows.push(self.select(
                     "worktree-type",
-                    "Branch type",
+                    crate::i18n::text("settings-branch-type"),
                     if existing { "existing" } else { "new" },
                     vec![
-                        ("new".into(), "Create a new branch".into(), None),
+                        (
+                            "new".into(),
+                            crate::i18n::text("settings-create-a-new-branch").into(),
+                            None,
+                        ),
                         (
                             "existing".into(),
-                            "Use an existing local branch".into(),
+                            crate::i18n::text("settings-use-an-existing-local-branch").into(),
                             None,
                         ),
                     ],
@@ -510,7 +549,7 @@ impl SettingsView {
                     rows.push(
                         self.select(
                             "worktree-branch",
-                            "Existing branch",
+                            crate::i18n::text("settings-existing-branch"),
                             &selected,
                             self.discovery
                                 .worktrees
@@ -530,8 +569,12 @@ impl SettingsView {
                         ),
                     );
                 } else {
-                    rows.push(form_field("New branch name", name, 36.));
-                    let mut options = vec![("HEAD".into(), "Current commit".into(), None)];
+                    rows.push(form_field("settings-new-branch-name", name, 36.));
+                    let mut options = vec![(
+                        "HEAD".into(),
+                        crate::i18n::text("settings-current-commit").into(),
+                        None,
+                    )];
                     options.extend(self.discovery.worktrees.branches.iter().map(|b| {
                         let label = b
                             .remote
@@ -542,7 +585,7 @@ impl SettingsView {
                     }));
                     rows.push(self.select(
                         "worktree-base",
-                        "Start from",
+                        crate::i18n::text("settings-start-from"),
                         &base,
                         options,
                         None,
@@ -555,9 +598,12 @@ impl SettingsView {
                         },
                     ));
                 }
-                rows.push(note(format!(
-                    "Created in {}",
-                    self.discovery.worktrees.default_root.display()
+                rows.push(note(crate::i18n::format(
+                    "settings-created-in",
+                    &[(
+                        "value",
+                        (self.discovery.worktrees.default_root.display()).to_string(),
+                    )],
                 )));
             }
             Target::DeleteTree(tree) => {
@@ -569,9 +615,9 @@ impl SettingsView {
                         monocode_core::files::is_equal_or_inside(p, &tree.tree.path)
                     })
                     .count();
-                rows.push(note(
-                    "This permanently deletes the working copy and everything inside it.",
-                ));
+                rows.push(note(crate::i18n::text(
+                    "settings-this-permanently-deletes-the-working-copy-and-everything",
+                )));
                 let mut consequences = div()
                     .rounded_lg()
                     .border_1()
@@ -584,30 +630,42 @@ impl SettingsView {
                     .gap_2()
                     .child(tree.tree.path.clone());
                 if count > 0 {
-                    consequences = consequences.child(format!(
-                        "{count} sessions using this worktree are {}",
-                        if deleting {
-                            "permanently deleted."
-                        } else {
-                            "kept. Select a branch or worktree to continue them."
-                        }
+                    consequences = consequences.child(crate::i18n::format(
+                        "settings-sessions-using-this-worktree-are",
+                        &[
+                            ("count", crate::system_format::unsigned(count as u64)),
+                            (
+                                "value",
+                                (if deleting {
+                                    crate::i18n::text("settings-worktree-permanently-deleted")
+                                } else {
+                                    crate::i18n::text("settings-worktree-kept")
+                                })
+                                .to_string(),
+                            ),
+                        ],
                     ));
                 }
                 if tree.dirty != Some(false) {
-                    consequences = consequences.child(
-                        div()
-                            .text_color(gpui::rgb(0xfbbf24))
-                            .child("All uncommitted and untracked changes here are discarded."),
-                    );
+                    consequences = consequences.child(div().text_color(gpui::rgb(0xfbbf24)).child(
+                        crate::i18n::text("settings-all-uncommitted-and-untracked-changes-here"),
+                    ));
                 }
-                consequences = consequences.child(format!(
-                    "The {} branch and its commits are kept.",
-                    tree.tree.branch.as_deref().unwrap_or("worktree")
+                consequences = consequences.child(crate::i18n::format(
+                    "settings-the-branch-and-its-commits-are-kept",
+                    &[(
+                        "value",
+                        tree.tree
+                            .branch
+                            .as_deref()
+                            .unwrap_or("worktree")
+                            .to_string(),
+                    )],
                 ));
                 if tree.unpushed > 0 {
-                    consequences = consequences.child(format!(
-                        "{} unpublished commits stay on the branch.",
-                        tree.unpushed
+                    consequences = consequences.child(crate::i18n::format(
+                        "settings-unpublished-commits-stay-on-the-branch",
+                        &[("value", format!("{}", tree.unpushed))],
                     ));
                 }
                 rows.push(consequences.into_any_element());
@@ -623,10 +681,12 @@ impl SettingsView {
                             .border_1()
                             .border_color(content(0.1))
                             .text_size(px(12.5))
-                            .child("Also delete associated sessions")
+                            .child(crate::i18n::text(
+                                "settings-also-delete-associated-sessions",
+                            ))
                             .child(self.toggle(
                                 "delete-worktree-sessions",
-                                "Also delete associated sessions",
+                                crate::i18n::text("settings-also-delete-associated-sessions"),
                                 deleting,
                                 busy,
                                 cx,
@@ -657,14 +717,18 @@ impl SettingsView {
         if let Target::Cli(kind) = target {
             if !editing {
                 if self.management.as_ref().is_some_and(|e| e.error.is_some()) {
-                    actions =
-                        actions.child(
-                            secondary_button("retry-cli", "Retry CLI inspection", false, busy)
-                                .child("Retry")
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.inspect_cli(kind, false, cx)
-                                })),
-                        );
+                    actions = actions.child(
+                        secondary_button(
+                            "retry-cli",
+                            crate::i18n::text("settings-retry-cli-inspection"),
+                            false,
+                            busy,
+                        )
+                        .child(crate::i18n::text("settings-retry"))
+                        .on_click(
+                            cx.listener(move |this, _, _, cx| this.inspect_cli(kind, false, cx)),
+                        ),
+                    );
                 }
                 let path = self
                     .management
@@ -673,24 +737,34 @@ impl SettingsView {
                     .map(|i| i.path.clone());
                 actions = actions
                     .child(
-                        secondary_button("reveal-cli", "Open CLI location", false, path.is_none())
-                            .child("Open location")
-                            .on_click(move |_, _, cx| {
-                                if let Some(path) = &path {
-                                    cx.reveal_path(path);
-                                }
-                            }),
+                        secondary_button(
+                            "reveal-cli",
+                            crate::i18n::text("settings-open-cli-location"),
+                            false,
+                            path.is_none(),
+                        )
+                        .child(crate::i18n::text("settings-open-location"))
+                        .on_click(move |_, _, cx| {
+                            if let Some(path) = &path {
+                                cx.reveal_path(path);
+                            }
+                        }),
                     )
                     .child(
-                        secondary_button("edit-cli", "Edit CLI path", false, busy)
-                            .child("Edit path")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                if let Some(e) = &mut this.management {
-                                    e.editing = true;
-                                    window.focus(&e.name.read(cx).focus_handle(cx), cx);
-                                }
-                                cx.notify();
-                            })),
+                        secondary_button(
+                            "edit-cli",
+                            crate::i18n::text("settings-edit-cli-path"),
+                            false,
+                            busy,
+                        )
+                        .child(crate::i18n::text("settings-edit-path"))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            if let Some(e) = &mut this.management {
+                                e.editing = true;
+                                window.focus(&e.name.read(cx).focus_handle(cx), cx);
+                            }
+                            cx.notify();
+                        })),
                     );
                 rows.push(actions.into_any_element());
                 return div()
@@ -701,53 +775,61 @@ impl SettingsView {
                     .into_any_element();
             } else if self.prefs.binary_paths.contains_key(kind.id()) {
                 actions = actions.child(
-                    secondary_button("auto-cli", "Use auto-detected path", false, busy)
-                        .child("Use auto-detected path")
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if let Some(e) = &mut this.management {
-                                e.name.update(cx, |i, cx| i.set_text(String::new(), cx));
-                            }
-                            this.inspect_cli(kind, true, cx);
-                        })),
+                    secondary_button(
+                        "auto-cli",
+                        crate::i18n::text("settings-use-auto-detected-path"),
+                        false,
+                        busy,
+                    )
+                    .child(crate::i18n::text("settings-use-auto-detected-path"))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(e) = &mut this.management {
+                            e.name.update(cx, |i, cx| i.set_text(String::new(), cx));
+                        }
+                        this.inspect_cli(kind, true, cx);
+                    })),
                 );
             }
         }
         let label = match target {
-            Target::Cli(_) => "Save path",
+            Target::Cli(_) => crate::i18n::text("settings-save-path"),
             Target::Mcp => {
                 if busy {
-                    "Adding…"
+                    crate::i18n::text("settings-adding")
                 } else {
-                    "Add server"
+                    crate::i18n::text("settings-add-server")
                 }
             }
             Target::Skill => {
                 if busy {
-                    "Creating…"
+                    crate::i18n::text("settings-creating")
                 } else {
-                    "Create skill"
+                    crate::i18n::text("settings-create-skill")
                 }
             }
-            Target::Worktree => "Create worktree",
+            Target::Worktree => crate::i18n::text("settings-create-worktree"),
             Target::ResetMono(_) => {
                 if busy {
-                    "Resetting…"
+                    crate::i18n::text("settings-resetting")
                 } else {
-                    "Reset Mono"
+                    crate::i18n::text("settings-reset-mono")
                 }
             }
             Target::DeleteTree(_) => {
                 if deleting {
-                    "Delete worktree and sessions"
+                    crate::i18n::text("settings-delete-worktree-and-sessions")
                 } else {
-                    "Delete worktree"
+                    crate::i18n::text("settings-delete-worktree-2")
                 }
             }
         };
         actions = actions
             .child(
                 crate::modal::disabled(
-                    crate::modal::ghost_button("cancel-management", "Cancel"),
+                    crate::modal::ghost_button(
+                        "cancel-management",
+                        crate::i18n::text("settings-cancel"),
+                    ),
                     busy,
                 )
                 .on_click(cx.listener(|this, _, window, cx| this.close_management(window, cx))),
@@ -781,11 +863,17 @@ impl SettingsView {
             return None;
         }
         let title = match target {
-            Target::Cli(kind) => format!("{} CLI details", kind.label()),
-            Target::Mcp => "Add MCP server".into(),
-            Target::Worktree => "Create worktree".into(),
-            Target::DeleteTree(_) => "Delete worktree?".into(),
-            Target::ResetMono(ref mono) => format!("Reset {} to its defaults?", mono.name),
+            Target::Cli(kind) => crate::i18n::format(
+                "settings-cli-details",
+                &[("name", (kind.label()).to_string())],
+            ),
+            Target::Mcp => crate::i18n::text("settings-add-mcp-server"),
+            Target::Worktree => crate::i18n::text("settings-create-worktree"),
+            Target::DeleteTree(_) => crate::i18n::text("settings-delete-worktree"),
+            Target::ResetMono(ref mono) => crate::i18n::format(
+                "settings-reset-to-its-defaults",
+                &[("value", (mono.name).to_string())],
+            ),
             _ => String::new(),
         };
         let form = self.management_form(cx);
@@ -852,7 +940,7 @@ impl SettingsView {
                             .child(
                                 secondary_button(
                                     "close-management",
-                                    "Close dialog",
+                                    crate::i18n::text("settings-close-dialog"),
                                     false,
                                     self.management.as_ref().is_some_and(|e| e.busy),
                                 )
@@ -885,7 +973,7 @@ fn form_field(label: &str, input: Entity<Input>, height: f32) -> AnyElement {
         .gap(px(6.))
         .text_size(px(12.))
         .text_color(content(0.65))
-        .child(label.to_owned())
+        .child(crate::i18n::text(label))
         .child(
             div()
                 .h(px(height))
@@ -895,7 +983,7 @@ fn form_field(label: &str, input: Entity<Input>, height: f32) -> AnyElement {
                 .border_1()
                 .border_color(content(0.1))
                 .bg(content(0.04))
-                .when(label == "JSON configuration", |d| {
+                .when(label == "settings-json-configuration", |d| {
                     d.font_family(crate::fonts::mono())
                 })
                 .child(input),
@@ -910,7 +998,7 @@ fn labeled_control(label: &str, control: AnyElement) -> AnyElement {
         .gap_1()
         .text_size(px(12.))
         .text_color(content(0.65))
-        .child(label.to_owned())
+        .child(crate::i18n::text(label))
         .child(control)
         .into_any_element()
 }

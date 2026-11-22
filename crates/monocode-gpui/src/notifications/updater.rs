@@ -176,7 +176,10 @@ impl Updater {
                         };
                         this.message = Some(error.clone());
                         if manual {
-                            cx.emit(Event::Error(format!("Couldn’t check for updates: {error}")));
+                            cx.emit(Event::Error(crate::i18n::format(
+                                "notifications-couldn-t-check-for-updates",
+                                &[("error", (error).to_string())],
+                            )));
                         }
                     }
                 }
@@ -257,8 +260,9 @@ impl Updater {
                     if let Err(error) = app_update::schedule_relaunch(&path) {
                         this.phase = Phase::Available;
                         this.message = Some(error.clone());
-                        cx.emit(Event::Error(format!(
-                            "The update was installed. Reopen Monocode Native to finish: {error}"
+                        cx.emit(Event::Error(crate::i18n::format(
+                            "notifications-the-update-was-installed-reopen-monocode-native",
+                            &[("error", (error).to_string())],
                         )));
                         this.changed(cx);
                     } else {
@@ -269,8 +273,9 @@ impl Updater {
                 Err(error) => {
                     this.phase = Phase::Available;
                     this.message = Some(error.clone());
-                    cx.emit(Event::Error(format!(
-                        "Couldn’t install the update: {error}"
+                    cx.emit(Event::Error(crate::i18n::format(
+                        "notifications-couldn-t-install-the-update",
+                        &[("error", (error).to_string())],
                     )));
                     this.changed(cx);
                     if this.gate.lock().unwrap_or_else(|e| e.into_inner()).quitting {
@@ -292,7 +297,7 @@ pub(crate) fn action(entity: &Entity<Updater>, cx: &App) -> Action {
     let state = entity.read(cx);
     match state.phase {
         Phase::Available => Action::Install(state.pending_version()),
-        Phase::Checking => Action::Busy("Checking…".into()),
+        Phase::Checking => Action::Busy(crate::i18n::text("update-checking")),
         Phase::Downloading | Phase::Installing => Action::Busy(state.progress_label()),
         Phase::Disabled | Phase::Idle | Phase::Current => Action::Check,
     }
@@ -301,7 +306,7 @@ pub(crate) fn action(entity: &Entity<Updater>, cx: &App) -> Action {
 pub(crate) fn status(entity: &Entity<Updater>, cx: &App) -> Option<String> {
     let state = entity.read(cx);
     match state.phase {
-        Phase::Current => Some("You’re on the latest version.".into()),
+        Phase::Current => Some(crate::i18n::text("update-you-re-on-the-latest-version")),
         Phase::Checking => None,
         _ => state.message.clone(),
     }
@@ -318,11 +323,16 @@ impl Updater {
     }
     fn progress_label(&self) -> String {
         match self.phase {
-            Phase::Installing => "Installing…".into(),
+            Phase::Installing => crate::i18n::text("update-installing"),
             _ => self
                 .progress
-                .map(|p| format!("Downloading {p}%"))
-                .unwrap_or_else(|| "Downloading…".into()),
+                .map(|p| {
+                    crate::i18n::format(
+                        "update-downloading",
+                        &[("percent", crate::system_format::percent(p as f64))],
+                    )
+                })
+                .unwrap_or_else(|| crate::i18n::text("update-downloading-2")),
         }
     }
 }
@@ -333,7 +343,7 @@ pub(crate) fn row(entity: Entity<Updater>, cx: &App) -> gpui::AnyElement {
     let available = state.phase == Phase::Available;
     // Matches the desktop footer: one line, accent-tinted until it starts.
     let label = if available {
-        format!("Update to v{}", state.pending_version())
+        crate::i18n::format("update-to-version", &[("version", state.pending_version())])
     } else {
         state.progress_label()
     };
@@ -399,12 +409,17 @@ pub(crate) fn row(entity: Entity<Updater>, cx: &App) -> gpui::AnyElement {
                         .flex_shrink_0()
                         .text_size(px(11.))
                         .text_color(content(0.4))
-                        .child(format!("v{}", version())),
+                        .child(crate::i18n::format(
+                            "notifications-v",
+                            &[("value", version().to_string())],
+                        )),
                 ),
         );
     if available {
         button = button
-            .aria_label("Install the available Monocode Native update")
+            .aria_label(crate::i18n::text(
+                "notifications-install-the-available-monocode-native-update",
+            ))
             .cursor_pointer()
             .hover(|s| s.bg(accent_color().opacity(0.2)))
             .on_click(move |_, _, cx| action.update(cx, |updater, cx| updater.install(cx)));

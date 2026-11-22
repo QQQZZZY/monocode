@@ -42,7 +42,7 @@ impl Conversation {
             .items_center()
             .gap(px(6.))
             .child(
-                approval_button("approval-deny", "Deny")
+                approval_button("approval-deny", crate::i18n::text("conversation-deny"))
                     .text_color(content(0.5))
                     .hover(|s| s.bg(content(0.08)).text_color(content(0.9)))
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -51,23 +51,29 @@ impl Conversation {
             )
             .when(approval.can_remember, |d| {
                 d.child(
-                    approval_button("approval-session", "Allow for this session")
-                        .bg(content(0.06))
-                        .hover(|s| s.bg(content(0.1)))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.decide_notification_request(&session_id, Decision::Session, cx);
-                        })),
+                    approval_button(
+                        "approval-session",
+                        crate::i18n::text("conversation-allow-for-this-session"),
+                    )
+                    .bg(content(0.06))
+                    .hover(|s| s.bg(content(0.1)))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.decide_notification_request(&session_id, Decision::Session, cx);
+                    })),
                 )
             })
             .child(
-                approval_button("approval-allow", "Allow once")
-                    .bg(content(1.))
-                    .text_color(ink)
-                    .font_weight(gpui::FontWeight::MEDIUM)
-                    .hover(move |s| s.bg(content(0.85)).text_color(ink))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.decide_notification_request(&allow_id, Decision::Allow, cx);
-                    })),
+                approval_button(
+                    "approval-allow",
+                    crate::i18n::text("conversation-allow-once"),
+                )
+                .bg(content(1.))
+                .text_color(ink)
+                .font_weight(gpui::FontWeight::MEDIUM)
+                .hover(move |s| s.bg(content(0.85)).text_color(ink))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.decide_notification_request(&allow_id, Decision::Allow, cx);
+                })),
             );
         // The question and its answers share one row; any detail follows below.
         let card = composer_shelf::card("approval-request", self.classic_layout)
@@ -117,12 +123,16 @@ impl Conversation {
     }
 }
 
-fn approval_button(id: &'static str, label: &'static str) -> gpui::Stateful<gpui::Div> {
+fn approval_button(
+    id: &'static str,
+    label: impl Into<gpui::SharedString>,
+) -> gpui::Stateful<gpui::Div> {
+    let label = label.into();
     div()
         .id(id)
         .debug_selector(move || id.into())
         .role(Role::Button)
-        .aria_label(label)
+        .aria_label(label.clone())
         .cursor_pointer()
         .flex_shrink_0()
         .h(px(26.))

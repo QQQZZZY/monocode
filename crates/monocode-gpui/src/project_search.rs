@@ -83,17 +83,32 @@ impl Drop for ProjectSearch {
 impl ProjectSearch {
     pub(crate) fn new(cwd: String, active: bool, cx: &mut Context<Self>) -> Self {
         let query = cx.new(|cx| {
-            let mut input = Input::field("Search", "Search", content(0.35), cx);
+            let mut input = Input::field(
+                crate::i18n::text("project-search-search"),
+                crate::i18n::text("project-search-search"),
+                content(0.35),
+                cx,
+            );
             input.set_font_size(12.);
             input
         });
         let include = cx.new(|cx| {
-            let mut input = Input::field("files to include", "files to include", content(0.35), cx);
+            let mut input = Input::field(
+                crate::i18n::text("project-search-files-to-include"),
+                crate::i18n::text("project-search-files-to-include"),
+                content(0.35),
+                cx,
+            );
             input.set_font_size(11.);
             input
         });
         let exclude = cx.new(|cx| {
-            let mut input = Input::field("files to exclude", "files to exclude", content(0.35), cx);
+            let mut input = Input::field(
+                crate::i18n::text("project-search-files-to-exclude"),
+                crate::i18n::text("project-search-files-to-exclude"),
+                content(0.35),
+                cx,
+            );
             input.set_font_size(11.);
             input
         });
@@ -271,14 +286,14 @@ impl ProjectSearch {
 
     fn toggle(
         id: &'static str,
-        label: &'static str,
+        label: &str,
         path: &'static str,
         active: bool,
     ) -> gpui::Stateful<gpui::Div> {
         div()
             .id(id)
             .role(Role::Button)
-            .aria_label(label)
+            .aria_label(label.to_owned())
             .aria_selected(active)
             .size(px(24.))
             .flex_shrink_0()
@@ -317,25 +332,54 @@ impl Render for ProjectSearch {
                 .py_2()
                 .text_size(px(12.))
                 .text_color(content(0.5))
-                .child("No project folder")
+                .child(crate::i18n::text("project-search-no-project-folder"))
                 .into_any_element();
         }
         let status = if self.loading {
-            "Searching…".to_owned()
+            crate::i18n::text("project-search-searching")
         } else if let Some(error) = &self.error {
             error.clone()
         } else if self.query.read(cx).content.trim().is_empty() {
-            "Type to search across the project".to_owned()
+            crate::i18n::text("project-search-type-to-search-across-the-project")
         } else if self.count == 0 {
-            "No results".to_owned()
+            crate::i18n::text("project-search-no-results")
         } else {
-            format!(
-                "{} result{} in {} file{}{}",
-                self.count,
-                if self.count == 1 { "" } else { "s" },
-                self.groups.len(),
-                if self.groups.len() == 1 { "" } else { "s" },
-                if self.truncated { " (limited)" } else { "" }
+            crate::i18n::format(
+                "project-search-result-summary",
+                &[
+                    ("value1", crate::system_format::unsigned(self.count as u64)),
+                    (
+                        "value2",
+                        (if self.count == 1 {
+                            String::new()
+                        } else {
+                            crate::i18n::text("project-search-result-summary-s")
+                        })
+                        .to_string(),
+                    ),
+                    (
+                        "value3",
+                        crate::system_format::unsigned((self.groups.len()) as u64),
+                    ),
+                    (
+                        "value4",
+                        (if self.groups.len() == 1 {
+                            String::new()
+                        } else {
+                            crate::i18n::text("project-search-result-summary-s")
+                        })
+                        .to_string(),
+                    ),
+                    (
+                        "value5",
+                        (if self.truncated {
+                            crate::i18n::text("project-search-result-summary-limited")
+                        } else {
+                            String::new()
+                        })
+                        .to_string(),
+                    ),
+                ],
             )
         };
         let groups = self
@@ -375,7 +419,9 @@ impl Render for ProjectSearch {
                                     .text_size(px(10.))
                                     .font_features(tabular())
                                     .text_color(accent_color())
-                                    .child(group.matches.len().to_string()),
+                                    .child(crate::system_format::unsigned(
+                                        group.matches.len() as u64
+                                    )),
                             ),
                     )
                     .child(
@@ -448,7 +494,7 @@ impl Render for ProjectSearch {
             .id("explorer-project-search")
             .debug_selector(|| "explorer-project-search".into())
             .role(Role::TabPanel)
-            .aria_label("Search in files")
+            .aria_label(crate::i18n::text("project-search-search-in-files"))
             .size_full()
             .min_h_0()
             .min_w_0()
@@ -486,7 +532,7 @@ impl Render for ProjectSearch {
                         div()
                             .id("project-search-back")
                             .role(Role::Button)
-                            .aria_label("Back to files")
+                            .aria_label(crate::i18n::text("project-search-back-to-files"))
                             .size(px(28.))
                             .flex_shrink_0()
                             .flex()
@@ -505,7 +551,7 @@ impl Render for ProjectSearch {
                             .truncate()
                             .text_size(px(12.))
                             .text_color(content(0.55))
-                            .child("Search in files"),
+                            .child(crate::i18n::text("project-search-search-in-files")),
                     ),
             )
             .child(
@@ -540,7 +586,7 @@ impl Render for ProjectSearch {
                             .child(
                                 Self::toggle(
                                     "project-search-case",
-                                    "Match case",
+                                    &crate::i18n::text("project-search-match-case"),
                                     "case-sensitive",
                                     self.case_sensitive,
                                 )
@@ -554,7 +600,7 @@ impl Render for ProjectSearch {
                             .child(
                                 Self::toggle(
                                     "project-search-word",
-                                    "Match whole word",
+                                    &crate::i18n::text("project-search-match-whole-word"),
                                     "whole-word",
                                     self.whole_word,
                                 )
@@ -568,7 +614,7 @@ impl Render for ProjectSearch {
                             .child(
                                 Self::toggle(
                                     "project-search-regex",
-                                    "Use regular expression",
+                                    &crate::i18n::text("project-search-use-regular-expression"),
                                     "regex",
                                     self.regex,
                                 )

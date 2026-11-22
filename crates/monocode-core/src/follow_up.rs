@@ -72,6 +72,7 @@ pub struct State {
     pub messages: Vec<Message>,
     pub paused: bool,
     pub draft: Option<Message>,
+    pub stashes: Vec<Message>,
 }
 
 impl State {
@@ -87,7 +88,12 @@ impl State {
         let Some(directory) = directory else {
             return Ok(());
         };
-        for message in self.messages.iter_mut().chain(self.draft.iter_mut()) {
+        for message in self
+            .messages
+            .iter_mut()
+            .chain(self.draft.iter_mut())
+            .chain(self.stashes.iter_mut())
+        {
             let mut hash = std::collections::hash_map::DefaultHasher::new();
             message.id.hash(&mut hash);
             let root = directory
@@ -274,5 +280,40 @@ mod tests {
             std::fs::read_to_string(&retained).unwrap(),
             "original content"
         );
+    }
+
+    #[test]
+    fn stashes_round_trip_retain_attachments_and_default_from_legacy_json() {
+        let legacy: State =
+            serde_json::from_str(r#"{"revision":2,"messages":[],"paused":false}"#).unwrap();
+        assert!(legacy.stashes.is_empty());
+
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("stash-note.txt");
+        std::fs::write(&file, "stashed attachment").unwrap();
+
+        let store = crate::store::Store::open(std::path::Path::new(":memory:")).unwrap();
+        let session = store.create("claude", "/tmp").unwrap();
+        let stash = Message {
+            id: "stash-1".into(),
+            text: "Finish auth refactor".into(),
+            attachments: vec![file.clone()],
+            ..Default::default()
+        };
+        let mut state = State {
+            revision: 1,
+            stashes: vec![stash],
+            ..Default::default()
+        };
+        let data = temp.path().join("data");
+        state.retain_attachments(session.id, Some(&data)).unwrap();
+        let retained = state.stashes[0].attachments[0].clone();
+        assert_ne!(retained, file);
+
+        store.save_follow_ups(session.id, &state).unwrap();
+        let loaded = store.follow_ups(session.id).unwrap();
+        assert_eq!(loaded.stashes.len(), 1);
+        assert_eq!(loaded.stashes[0].text, "Finish auth refactor");
+        assert_eq!(loaded.stashes[0].attachments, vec![retained]);
     }
 }

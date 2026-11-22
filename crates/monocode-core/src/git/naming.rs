@@ -72,13 +72,25 @@ pub fn parse(raw: &str) -> Option<String> {
     (!fragment.is_empty()).then(|| format!("mc/{fragment}"))
 }
 
-/// Uses an isolated text request on the given provider account.
+/// Uses an isolated text request on the configured HTTP generator or provider account.
 pub fn generate(
     text: TextModel,
     cwd: &Path,
     message: &str,
     cancel: Arc<AtomicBool>,
 ) -> Option<String> {
+    if let Some(http) = text.http.as_ref().filter(|c| c.is_ready()) {
+        if let Ok(output) =
+            crate::text_generator::generate(http, None, &prompt(message), 96, cancel.clone())
+        {
+            if let Some(branch) = parse(&output) {
+                return Some(branch);
+            }
+        }
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            return None;
+        }
+    }
     let request = request(text, cwd, message, provider::resolve)?;
     let output = provider::run_text(request, cancel).ok()?;
     parse(&output)
@@ -255,5 +267,64 @@ mod tests {
         );
         assert!(rename(&cwd, &cwd, "main", "mc/rename-main").is_err());
         assert!(rename(&cwd, &manual, "mc/my-manual-name", "-invalid").is_err());
+    }
+
+    #[test]
+    fn http_text_generator_creates_branch_name() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let mut read = Vec::new();
+            loop {
+                let n = stream.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                read.extend_from_slice(&buf[..n]);
+                let raw = String::from_utf8_lossy(&read);
+                if let Some((head, rest)) = raw.split_once("\r\n\r\n") {
+                    let len = head
+                        .lines()
+                        .find_map(|l| {
+                            let (k, v) = l.split_once(':')?;
+                            k.eq_ignore_ascii_case("content-length")
+                                .then(|| v.trim().parse::<usize>().ok())
+                                .flatten()
+                        })
+                        .unwrap_or(0);
+                    if rest.len() >= len {
+                        break;
+                    }
+                }
+            }
+            let body =
+                r#"{"choices":[{"message":{"content":"{\"branch\":\"fix prompt stash\"}"}}]}"#;
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(resp.as_bytes());
+            let _ = stream.flush();
+        });
+        let http = crate::text_generator::TextGeneratorConfig {
+            enabled: true,
+            kind: crate::text_generator::TextGeneratorKind::OpenaiCompatible,
+            base_url: format!("http://{addr}/v1"),
+            api_key: String::new(),
+            model: "qwen2.5:7b".into(),
+        };
+        let text = TextModel::automatic(Kind::Hermes, Default::default()).with_http(Some(http));
+        let branch = generate(
+            text,
+            Path::new("/tmp"),
+            "Fix prompt stash restore",
+            Arc::new(AtomicBool::new(false)),
+        );
+        assert_eq!(branch.as_deref(), Some("mc/fix-prompt-stash"));
+        let _ = handle.join();
     }
 }

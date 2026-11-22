@@ -64,14 +64,14 @@ impl Card {
             "Metadata or status changed".into()
         }
     }
-    pub(crate) fn terminal_label(&self) -> Option<&'static str> {
+    pub(crate) fn terminal_label(&self) -> Option<String> {
         match (
             self.item.kind.as_str(),
             self.state.to_ascii_lowercase().as_str(),
         ) {
-            ("pr", "merged") => Some("Pull request merged"),
-            ("pr", "closed") => Some("Pull request closed"),
-            ("issue", "closed") => Some("Issue closed"),
+            ("pr", "merged") => Some(crate::i18n::text("notifications-pr-merged")),
+            ("pr", "closed") => Some(crate::i18n::text("notifications-pr-closed")),
+            ("issue", "closed") => Some(crate::i18n::text("notifications-issue-closed")),
             _ => None,
         }
     }

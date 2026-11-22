@@ -170,11 +170,11 @@ impl SessionReview {
 }
 
 /// The header's text buttons: h-7 px-2.5 at 11px, ink 50%.
-fn text_button(id: &'static str, label: &'static str, enabled: bool) -> gpui::Stateful<gpui::Div> {
+fn text_button(id: &'static str, label: String, enabled: bool) -> gpui::Stateful<gpui::Div> {
     div()
         .id(id)
         .role(Role::Button)
-        .aria_label(label)
+        .aria_label(label.to_owned())
         .h(px(28.))
         .px(px(10.))
         .flex()
@@ -257,7 +257,7 @@ impl SessionReview {
                         .text_size(px(12.))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(content(0.8))
-                        .child("Couldn’t record changes"),
+                        .child(crate::i18n::text("session-review-couldn-t-record-changes")),
                 )
                 .child(
                     div()
@@ -282,9 +282,20 @@ impl SessionReview {
         let additions = self.files.iter().map(|f| f.additions).sum();
         let deletions = self.files.iter().map(|f| f.deletions).sum();
         let count = self.files.len();
-        let title: SharedString = format!(
-            "Changed {count} {}",
-            if count == 1 { "file" } else { "files" }
+        let title: SharedString = crate::i18n::format(
+            "session-review-changed-count",
+            &[
+                ("count", crate::system_format::unsigned((count) as u64)),
+                (
+                    "value1",
+                    (if count == 1 {
+                        crate::i18n::text("session-review-changed-count-file")
+                    } else {
+                        crate::i18n::text("session-review-changed-count-files")
+                    })
+                    .to_string(),
+                ),
+            ],
         )
         .into();
         let header = div()
@@ -331,13 +342,13 @@ impl SessionReview {
                     .items_center()
                     .gap(px(2.))
                     .child(
-                        text_button("session-review-undo", "Undo", !disabled && can_undo)
+                        text_button("session-review-undo", crate::i18n::text("session-review-undo"), !disabled && can_undo)
                             .aria_label(if can_undo {
-                                "Undo the recorded changes"
+                                crate::i18n::text("session-review-undo-the-recorded-changes")
                             } else if self.undo_locked {
-                                "Undo is unavailable while another session is running in this project"
+                                crate::i18n::text("session-review-undo-is-unavailable-while-another-session-is-running-in-this-project")
                             } else {
-                                "Undo is unavailable because the workspace was shared, the branch moved, or a recorded file changed afterward"
+                                crate::i18n::text("session-review-undo-is-unavailable-because-the-workspace-was-shared-the-branch-moved")
                             })
                             .when(!disabled && can_undo, |d| {
                                 d.on_click(
@@ -346,8 +357,8 @@ impl SessionReview {
                             }),
                     )
                     .child(
-                        text_button("session-review-keep", "Keep", !disabled)
-                            .aria_label("Keep the recorded changes and dismiss this card")
+                        text_button("session-review-keep", crate::i18n::text("session-review-keep"), !disabled)
+                            .aria_label(crate::i18n::text("session-review-keep-the-recorded-changes-and-dismiss"))
                             .when(!disabled, |d| {
                                 d.on_click(
                                     cx.listener(|this, _, _, cx| this.run(Action::Keep, cx)),
@@ -358,7 +369,7 @@ impl SessionReview {
                         div()
                             .id("session-review-open")
                             .role(Role::Button)
-                            .aria_label("Review changes")
+                            .aria_label(crate::i18n::text("session-review-review-changes"))
                             .h(px(28.))
                             .px(px(10.))
                             .flex()
@@ -370,7 +381,7 @@ impl SessionReview {
                             .text_color(content(0.75))
                             .cursor_pointer()
                             .hover(|s| s.bg(content(0.12)).text_color(content(1.)))
-                            .child("Review")
+                            .child(crate::i18n::text("session-review-review"))
                             .on_click(cx.listener(|_, _, _, cx| {
                                 cx.emit(SessionReviewEvent::Open { path: None })
                             })),
@@ -418,7 +429,7 @@ impl SessionReview {
                         .text_size(px(11.))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(content(0.45))
-                        .child("Diff unavailable")
+                        .child(crate::i18n::text("session-review-diff-unavailable"))
                         .into_any_element()
                 })
                 .on_click(cx.listener(move |_, _, _, cx| {
@@ -472,11 +483,26 @@ impl SessionReview {
                             .group_hover("session-review-more", |s| s.text_color(content(0.7))),
                         )
                         .child(if expanded {
-                            "Show fewer files".to_string()
+                            crate::i18n::text("session-review-show-fewer-files")
                         } else {
-                            format!(
-                                "Show {hidden} more {}",
-                                if hidden == 1 { "file" } else { "files" }
+                            crate::i18n::format(
+                                "session-review-show-hidden-count",
+                                &[
+                                    ("hidden", crate::system_format::unsigned((hidden) as u64)),
+                                    (
+                                        "value1",
+                                        (if hidden == 1 {
+                                            crate::i18n::text(
+                                                "session-review-show-hidden-count-file",
+                                            )
+                                        } else {
+                                            crate::i18n::text(
+                                                "session-review-show-hidden-count-files",
+                                            )
+                                        })
+                                        .to_string(),
+                                    ),
+                                ],
                             )
                         })
                         .on_click(cx.listener(|this, _, _, cx| {

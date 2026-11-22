@@ -37,11 +37,15 @@ impl Accounts {
             .is_some_and(|s| !s.complete && s.error.is_none());
         let disabled = auth_running || complete || self.working;
         let label: SharedString = if running {
-            "Waiting for browser…".into()
+            crate::i18n::text("accounts-waiting-for-browser").into()
         } else if complete {
-            "Signed in".into()
+            crate::i18n::text("accounts-signed-in").into()
         } else {
-            format!("Sign in to {}", kind.label()).into()
+            crate::i18n::format(
+                "accounts-sign-in-to",
+                &[("name", (kind.label()).to_string())],
+            )
+            .into()
         };
         let click_id = id.to_owned();
         let keyboard_id = id.to_owned();
@@ -51,9 +55,9 @@ impl Accounts {
             .id("footer-provider-signin-panel")
             .role(Role::Status)
             .aria_label(if complete {
-                "Signed in"
+                crate::i18n::text("accounts-signed-in")
             } else {
-                "Authentication required"
+                crate::i18n::text("accounts-authentication-required")
             })
             .min_h(px(272.))
             .px(px(20.))
@@ -84,9 +88,12 @@ impl Accounts {
                     .font_weight(FontWeight::MEDIUM)
                     .text_center()
                     .child(if complete {
-                        format!("Signed in to {}", kind.label())
+                        crate::i18n::format(
+                            "accounts-signed-in-to",
+                            &[("name", (kind.label()).to_string())],
+                        )
                     } else {
-                        "Authentication required".into()
+                        crate::i18n::text("accounts-authentication-required")
                     }),
             )
             .child(
@@ -98,9 +105,12 @@ impl Accounts {
                     .text_color(content(0.45))
                     .text_center()
                     .child(if complete {
-                        "You can retry your last message now.".into()
+                        crate::i18n::text("accounts-you-can-retry-your-last-message")
                     } else {
-                        format!("Sign in to continue using {}.", kind.label())
+                        crate::i18n::format(
+                            "accounts-sign-in-to-continue-using",
+                            &[("name", (kind.label()).to_string())],
+                        )
                     }),
             )
             .child(
@@ -166,7 +176,7 @@ impl Accounts {
                     div()
                         .id("footer-provider-auth-cancel")
                         .role(Role::Button)
-                        .aria_label("Cancel sign-in")
+                        .aria_label(crate::i18n::text("accounts-cancel-sign-in"))
                         .mt(px(8.))
                         .px(px(8.))
                         .py(px(2.))
@@ -176,7 +186,7 @@ impl Accounts {
                         .text_color(content(0.5))
                         .cursor_pointer()
                         .hover(|s| s.text_color(content(0.8)))
-                        .child("Cancel")
+                        .child(crate::i18n::text("accounts-cancel"))
                         .on_click(cx.listener(|this, _, _, cx| this.cancel_auth(cx))),
                 )
             })

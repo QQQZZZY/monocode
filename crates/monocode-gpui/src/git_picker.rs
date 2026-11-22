@@ -112,14 +112,14 @@ impl GitPicker {
         let search = cx.new(|cx| {
             input::Input::field(
                 if mode == Mode::Worktree {
-                    "Search working copies"
+                    crate::i18n::text("git-picker-search-working-copies")
                 } else {
-                    "Search branches"
+                    crate::i18n::text("git-picker-search-branches")
                 },
                 if mode == Mode::Worktree {
-                    "Search working copies…"
+                    crate::i18n::text("git-picker-search-working-copies-placeholder")
                 } else {
-                    "Search branches…"
+                    crate::i18n::text("git-picker-search-branches-placeholder")
                 },
                 content(0.4),
                 cx,
@@ -302,7 +302,10 @@ impl gpui::Render for GitPicker {
                         (branch.name, branch.remote, selected, false, "git-branch")
                     }
                     Choice::Create(name) => (
-                        format!("Create branch ‘{name}’"),
+                        crate::i18n::format(
+                            "git-picker-create-branch",
+                            &[("name", (name).to_string())],
+                        ),
                         None,
                         false,
                         false,
@@ -321,13 +324,16 @@ impl gpui::Render for GitPicker {
                         };
                         (
                             tree.branch.unwrap_or_else(|| {
-                                format!(
-                                    "Detached {}",
-                                    tree.head.chars().take(7).collect::<String>()
+                                crate::i18n::format(
+                                    "git-picker-detached",
+                                    &[(
+                                        "value",
+                                        (tree.head.chars().take(7).collect::<String>()).to_string(),
+                                    )],
                                 )
                             }),
                             Some(if tree.main {
-                                "Project folder".into()
+                                crate::i18n::text("git-picker-project-folder")
                             } else {
                                 tree.path
                             }),
@@ -397,15 +403,15 @@ impl gpui::Render for GitPicker {
                 }
             })
             .role(Role::Dialog)
-            .aria_label(if existing_only {
-                "Existing worktrees"
+            .aria_label(crate::i18n::text(if existing_only {
+                "git-picker-existing-worktrees"
             } else if self.mode == Mode::Worktree {
-                "Working copies"
+                "git-picker-working-copies"
             } else if self.mode == Mode::Base {
-                "Worktree base branch"
+                "git-picker-worktree-base-branch"
             } else {
-                "Branches"
-            })
+                "git-picker-branches"
+            }))
             .key_context("GitPicker")
             .w_full()
             .when(!existing_only, |d| d.h_full())
@@ -459,7 +465,7 @@ impl gpui::Render for GitPicker {
                 div()
                     .id("git-choices")
                     .role(Role::ListBox)
-                    .aria_label("Working copy options")
+                    .aria_label(crate::i18n::text("git-picker-working-copy-options"))
                     .when(!existing_only, |d| d.flex_1())
                     .when(existing_only, |d| d.max_h(px(284.)))
                     .min_h_0()
@@ -475,13 +481,13 @@ impl gpui::Render for GitPicker {
                                 .text_size(px(12.))
                                 .text_color(content(0.45))
                                 .child(if self.state.is_none() && self.error.is_none() {
-                                    "Loading…"
+                                    crate::i18n::text("git-picker-loading")
                                 } else if existing_only
                                     && self.search.read(cx).content.trim().is_empty()
                                 {
-                                    "No existing worktrees"
+                                    crate::i18n::text("git-picker-no-existing-worktrees")
                                 } else {
-                                    "No matches"
+                                    crate::i18n::text("git-picker-no-matches")
                                 }),
                         )
                     }),
@@ -493,7 +499,7 @@ impl gpui::Render for GitPicker {
                         .py(px(6.))
                         .text_size(px(10.))
                         .text_color(content(0.4))
-                        .child("Type a new name to create a branch"),
+                        .child(crate::i18n::text("git-picker-type-a-new-name-to-create")),
                 )
             })
             .when_some(self.error.clone(), |d, error| {

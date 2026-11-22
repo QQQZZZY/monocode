@@ -305,7 +305,10 @@ impl Render for Arcade {
                     div()
                         .id(m)
                         .role(Role::Button)
-                        .aria_label(format!("Difficulty {m}"))
+                        .aria_label(crate::i18n::format(
+                            "arcade-difficulty",
+                            &[("m", m.to_string())],
+                        ))
                         .px_2()
                         .py_1()
                         .border_1()
@@ -319,9 +322,9 @@ impl Render for Arcade {
             let release = div()
                 .id("release-arcade")
                 .role(Role::Button)
-                .aria_label("Release game")
+                .aria_label(crate::i18n::text("arcade-release-game"))
                 .cursor_pointer()
-                .child("esc · release")
+                .child(crate::i18n::text("arcade-esc-release"))
                 .on_click(cx.listener(|this, _, window, cx| this.release(window, cx)));
             root = root.child(
                 div()
@@ -335,14 +338,23 @@ impl Render for Arcade {
                     .justify_between()
                     .text_size(px(11.))
                     .font_family(crate::fonts::mono())
-                    .child(format!(
-                        "score {} {}",
-                        self.frame.score,
-                        if index == 0 {
-                            "•".repeat(self.frame.lives as usize)
-                        } else {
-                            String::new()
-                        }
+                    .child(crate::i18n::format(
+                        "arcade-score-caption",
+                        &[
+                            (
+                                "value1",
+                                crate::system_format::unsigned(self.frame.score as u64),
+                            ),
+                            (
+                                "value2",
+                                (if index == 0 {
+                                    "•".repeat(self.frame.lives as usize)
+                                } else {
+                                    String::new()
+                                })
+                                .to_string(),
+                            ),
+                        ],
                     ))
                     .child(difficulties)
                     .child(release),
@@ -352,9 +364,9 @@ impl Render for Arcade {
                 .id("play-arcade")
                 .role(Role::Button)
                 .aria_label(if index == 0 {
-                    "Take control of Pac-man"
+                    crate::i18n::text("arcade-take-control-of-pac-man")
                 } else {
-                    "Take control of Snake"
+                    crate::i18n::text("arcade-take-control-of-snake")
                 })
                 .opacity(0.)
                 .group_hover("empty-session-arcade", |s| s.opacity(1.))
@@ -362,9 +374,9 @@ impl Render for Arcade {
                 .font_family(crate::fonts::mono())
                 .text_size(px(11.))
                 .child(if index == 0 {
-                    "[ take control · pac-man ]"
+                    crate::i18n::text("arcade-take-control-pac-man")
                 } else {
-                    "[ take control · snake ]"
+                    crate::i18n::text("arcade-take-control-snake")
                 })
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.previous = window.focused(cx);
@@ -384,7 +396,11 @@ impl Render for Arcade {
                     div()
                         .id(("game", i))
                         .role(Role::Button)
-                        .aria_label(if i == 0 { "pac-man" } else { "snake" })
+                        .aria_label(if i == 0 {
+                            crate::i18n::text("arcade-pac-man")
+                        } else {
+                            crate::i18n::text("arcade-snake")
+                        })
                         .size_4()
                         .flex()
                         .items_center()

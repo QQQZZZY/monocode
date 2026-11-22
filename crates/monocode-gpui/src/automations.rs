@@ -13,8 +13,7 @@ use gpui::{
 };
 use monocode_core::{
     automations::{
-        self, Automation, AutomationRun, AutomationTrigger, AutomationUpsert, DueAutomationRun,
-        Service,
+        Automation, AutomationRun, AutomationTrigger, AutomationUpsert, DueAutomationRun, Service,
     },
     provider::Kind,
     session_groups::Folder,
@@ -68,6 +67,16 @@ struct Template {
     prompt: String,
     trigger: serde_json::Value,
     trigger_label: String,
+}
+impl Template {
+    fn display_trigger_label(&self) -> String {
+        if self.trigger["kind"] == "time"
+            && let Ok(trigger) = serde_json::from_value::<AutomationTrigger>(self.trigger.clone())
+        {
+            return editor::trigger_label(&trigger);
+        }
+        self.trigger_label.clone()
+    }
 }
 struct TriggerFields {
     id: String,
@@ -156,8 +165,14 @@ impl Automations {
         projects: Vec<String>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let filter =
-            cx.new(|cx| Input::field("Filter automations", "Filter automations", content(0.4), cx));
+        let filter = cx.new(|cx| {
+            Input::field(
+                crate::i18n::text("automations-filter-automations"),
+                crate::i18n::text("automations-filter-automations"),
+                content(0.4),
+                cx,
+            )
+        });
         let subscription = cx.subscribe(&filter, |_, _, _: &input::Changed, cx| cx.notify());
         let mut this = Self {
             service,
@@ -254,10 +269,10 @@ impl Automations {
         let service = self.service.clone();
         let selected = self.selected.clone();
         let selected_for_work = selected.clone();
+        // Resolve UI copy on this thread; the worker must not pick a language.
+        let unavailable = crate::i18n::text("automations-automations-unavailable");
         let work = cx.background_executor().spawn(async move {
-            let mut service = service
-                .lock()
-                .map_err(|_| "Automations unavailable".to_string())?;
+            let mut service = service.lock().map_err(|_| unavailable)?;
             let list = service.list()?;
             let runs = selected_for_work
                 .as_deref()
@@ -451,10 +466,15 @@ impl Automations {
                     input
                 })
             };
-            let time = field("Trigger time", "09:00", trigger.time, cx);
+            let time = field(
+                &crate::i18n::text("automations-trigger-time"),
+                "09:00",
+                trigger.time,
+                cx,
+            );
             let repos = field(
-                "Trigger repositories",
-                "Any repository",
+                &crate::i18n::text("automations-trigger-repositories"),
+                &crate::i18n::text("automations-any-repository"),
                 trigger
                     .repos
                     .iter()
@@ -465,7 +485,12 @@ impl Automations {
                     .join(", "),
                 cx,
             );
-            let actor = field("Trigger actor", "Anyone", trigger.actor, cx);
+            let actor = field(
+                &crate::i18n::text("automations-trigger-actor"),
+                &crate::i18n::text("automations-anyone"),
+                trigger.actor,
+                cx,
+            );
             for input in [&time, &repos, &actor] {
                 editor._subscriptions.push(cx.subscribe(
                     input,
@@ -523,12 +548,10 @@ impl Automations {
         self.saving = true;
         self.error = None;
         let service = self.service.clone();
-        let work = cx.background_executor().spawn(async move {
-            service
-                .lock()
-                .map_err(|_| "Automations unavailable".to_string())?
-                .upsert(draft)
-        });
+        let unavailable = crate::i18n::text("automations-automations-unavailable");
+        let work = cx
+            .background_executor()
+            .spawn(async move { service.lock().map_err(|_| unavailable)?.upsert(draft) });
         cx.spawn(async move |this, cx| {
             let result = work.await;
             let _ = this.update(cx, |this, cx| {
@@ -549,10 +572,11 @@ impl Automations {
     }
     fn toggle(&mut self, id: String, enabled: bool, cx: &mut Context<Self>) {
         let service = self.service.clone();
+        let unavailable = crate::i18n::text("automations-automations-unavailable");
         let work = cx.background_executor().spawn(async move {
             service
                 .lock()
-                .map_err(|_| "Automations unavailable".to_string())?
+                .map_err(|_| unavailable)?
                 .set_enabled(&id, enabled)
         });
         cx.spawn(async move |this, cx| {
@@ -588,10 +612,11 @@ impl Automations {
         };
         self.running = true;
         let service = self.service.clone();
+        let unavailable = crate::i18n::text("automations-automations-unavailable");
         let work = cx.background_executor().spawn(async move {
             let run = service
                 .lock()
-                .map_err(|_| "Automations unavailable".to_string())?
+                .map_err(|_| unavailable)?
                 .run_now(&automation.id, monocode_core::time::now_ms() as i64)?;
             Ok::<_, String>(DueAutomationRun { automation, run })
         });
@@ -613,9 +638,12 @@ impl Automations {
     fn ask_delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let prompt = window.prompt(
             gpui::PromptLevel::Warning,
-            "Delete this automation?",
-            Some("Its run history will be deleted too."),
-            &["Delete", "Cancel"],
+            crate::i18n::text("automations-prompt-delete-this-automation").as_str(),
+            Some(crate::i18n::text("automations-prompt-its-run-history-will-be-deleted").as_str()),
+            &[
+                crate::i18n::text("automations-prompt-delete").as_str(),
+                crate::i18n::text("automations-prompt-cancel").as_str(),
+            ],
             cx,
         );
         cx.spawn(async move |this, cx| {
@@ -630,12 +658,10 @@ impl Automations {
             return;
         };
         let service = self.service.clone();
-        let work = cx.background_executor().spawn(async move {
-            service
-                .lock()
-                .map_err(|_| "Automations unavailable".to_string())?
-                .delete(&id)
-        });
+        let unavailable = crate::i18n::text("automations-automations-unavailable");
+        let work = cx
+            .background_executor()
+            .spawn(async move { service.lock().map_err(|_| unavailable)?.delete(&id) });
         cx.spawn(async move |this, cx| {
             let result = work.await;
             let _ = this.update(cx, |this, cx| {
@@ -694,7 +720,7 @@ impl Automations {
                         this.model_controls
                             .push(monocode_core::catalog::ModelControl {
                                 id: "reasoningEffort".into(),
-                                name: "Reasoning".into(),
+                                name: crate::i18n::text("automations-reasoning"),
                                 current: model
                                     .default_effort
                                     .clone()
@@ -712,12 +738,13 @@ impl Automations {
                             .iter()
                             .any(|c| c.id == "serviceTier" || c.id == "service_tier")
                     {
-                        let mut choices = vec![("default".into(), "Standard".into())];
+                        let mut choices =
+                            vec![("default".into(), crate::i18n::text("automations-standard"))];
                         choices.extend(model.tiers.clone());
                         this.model_controls
                             .push(monocode_core::catalog::ModelControl {
                                 id: "serviceTier".into(),
-                                name: "Speed".into(),
+                                name: crate::i18n::text("automations-speed"),
                                 current: "default".into(),
                                 choices,
                             });
@@ -823,7 +850,7 @@ impl Automations {
             files: false,
             directories: true,
             multiple: false,
-            prompt: Some("Choose project".into()),
+            prompt: Some(crate::i18n::text("automations-choose-project").into()),
         });
         cx.spawn(async move |this, cx| {
             let result = prompt.await;
@@ -896,7 +923,7 @@ impl Render for Automations {
         let mut list = div()
             .id("automations-list")
             .role(Role::ListBox)
-            .aria_label("Automations")
+            .aria_label(crate::i18n::text("automations-automations"))
             .flex_1()
             .min_h_0()
             .overflow_y_scroll()
@@ -912,11 +939,11 @@ impl Render for Automations {
                     .text_size(px(12.))
                     .text_color(content(0.45))
                     .child(if self.loading {
-                        "Loading automations…"
+                        crate::i18n::text("automations-loading-automations")
                     } else if query.trim().is_empty() {
-                        "No automations yet"
+                        crate::i18n::text("automations-no-automations-yet")
                     } else {
-                        "No matching automations"
+                        crate::i18n::text("automations-no-matching-automations")
                     }),
             );
         }
@@ -938,7 +965,10 @@ impl Render for Automations {
                         div()
                             .id(SharedString::from(format!("open-{id}")))
                             .role(Role::Button)
-                            .aria_label(format!("Open {}", automation.name))
+                            .aria_label(crate::i18n::format(
+                                "automations-open",
+                                &[("value", automation.name.to_string())],
+                            ))
                             .px(px(10.))
                             .py(px(8.))
                             .flex()
@@ -950,7 +980,7 @@ impl Render for Automations {
                                     .truncate()
                                     .text_size(px(10.))
                                     .text_color(content(0.45))
-                                    .child(automation.trigger_label()),
+                                    .child(editor::summary_label(&automation)),
                             )
                             .child(
                                 div()
@@ -1017,11 +1047,14 @@ impl Render for Automations {
                     .child(icon("search", 12.))
                     .child(div().flex_1().min_w_0().child(self.filter.clone()))
                     .child(
-                        icon_button("new-automation", "New automation", "plus").on_click(
-                            cx.listener(|this, _, _, cx| {
-                                this.show_gallery(cx);
-                            }),
-                        ),
+                        icon_button(
+                            "new-automation",
+                            crate::i18n::text("automations-new-automation"),
+                            "plus",
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.show_gallery(cx);
+                        })),
                     ),
             )
             .child(list);
@@ -1033,7 +1066,7 @@ impl Render for Automations {
         let mut root = div()
             .id("automations-view")
             .role(Role::Region)
-            .aria_label("Automations")
+            .aria_label(crate::i18n::text("automations-automations"))
             .track_focus(&self.focus)
             .size_full()
             .min_h_0()
@@ -1173,4 +1206,25 @@ impl Render for Automations {
         }
         root
     }
+}
+
+#[cfg(test)]
+#[test]
+fn time_template_labels_use_schedule_values() {
+    let templates: Vec<Template> =
+        serde_json::from_str(include_str!("automations/templates.json")).unwrap();
+    let weekly = templates.iter().find(|t| t.id == "generate-docs").unwrap();
+    assert_eq!(
+        weekly.display_trigger_label(),
+        format!(
+            "{} at {}",
+            crate::system_format::weekday(1),
+            crate::system_format::wall_time("09:00")
+        )
+    );
+    let event = templates
+        .iter()
+        .find(|t| t.id == "review-pull-requests")
+        .unwrap();
+    assert_eq!(event.display_trigger_label(), event.trigger_label);
 }

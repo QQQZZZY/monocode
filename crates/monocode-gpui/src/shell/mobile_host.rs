@@ -219,7 +219,10 @@ impl Shell {
         let (host, events) = match MobileHost::open(path) {
             Ok(opened) => opened,
             Err(error) => {
-                self.error = Some(format!("Mobile access: {error}"));
+                self.error = Some(crate::i18n::format(
+                    "shell-mobile-access-error",
+                    &[("error", error.to_string())],
+                ));
                 return;
             }
         };
@@ -289,7 +292,10 @@ impl Shell {
             let result = work.await;
             let _ = this.update(cx, |this, cx| {
                 if let Err(error) = result {
-                    this.error = Some(format!("Mobile access: {error}"));
+                    this.error = Some(crate::i18n::format(
+                        "shell-mobile-access-error",
+                        &[("error", error.to_string())],
+                    ));
                 }
                 this.publish_mobile_catalog(cx);
                 this.sync_settings(cx);
@@ -309,7 +315,12 @@ impl Shell {
             let _ = this.update(cx, |this, cx| {
                 match result {
                     Ok(invite) => this.mobile.invite = Some(invite),
-                    Err(error) => this.error = Some(format!("Mobile access: {error}")),
+                    Err(error) => {
+                        this.error = Some(crate::i18n::format(
+                            "shell-mobile-access-error",
+                            &[("error", error.to_string())],
+                        ))
+                    }
                 }
                 this.sync_settings(cx);
                 cx.notify();
@@ -330,7 +341,10 @@ impl Shell {
         if let Some(host) = &self.mobile.host
             && let Err(error) = host.revoke(device_id)
         {
-            self.error = Some(format!("Mobile access: {error}"));
+            self.error = Some(crate::i18n::format(
+                "shell-mobile-access-error",
+                &[("error", error.to_string())],
+            ));
         }
         self.sync_settings(cx);
     }
@@ -799,14 +813,14 @@ impl Shell {
                 let result = Arc::new(Mutex::new(None));
                 let slot = result.clone();
                 let params = request.params.clone();
-                let chosen = cx
-                    .try_global::<crate::settings::Preferences>()
-                    .and_then(|p| p.background_text_model());
+                let prefs = cx.try_global::<crate::settings::Preferences>();
+                let chosen = prefs.and_then(|p| p.background_text_model());
+                let http = prefs.and_then(|p| p.http_text_generator());
                 cx.background_executor()
                     .spawn(async move {
                         let cwd = PathBuf::from(cwd);
                         let outcome = project::resolve_root(&cwd, params["worktreePath"].as_str())
-                            .and_then(|root| project::git_action(&root, &params, chosen));
+                            .and_then(|root| project::git_action(&root, &params, chosen, http));
                         if let Ok(mut slot) = slot.lock() {
                             *slot = Some(outcome);
                         }
@@ -1410,7 +1424,11 @@ impl Shell {
                 if let Some(view) = self.sessions.get(&id) {
                     view.update(cx, |v, cx| v.rename(title.clone(), cx));
                 }
-                self.store_write("rename the session", cx, move |s| s.title(id, &title));
+                self.store_write(
+                    crate::i18n::text("shell-action-rename-session"),
+                    cx,
+                    move |s| s.title(id, &title),
+                );
                 self.invalidate_chrome(cx);
                 cx.notify();
                 Ok(reply)

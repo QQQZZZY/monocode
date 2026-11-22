@@ -13,7 +13,7 @@ fn account_button(
     div()
         .id(id)
         .role(Role::Button)
-        .aria_label(label)
+        .aria_label(&label)
         .size_7()
         .rounded_md()
         .flex()
@@ -43,8 +43,11 @@ impl Accounts {
             return div()
                 .child(back_header(
                     "cancel-account-edit",
-                    "Back to accounts",
-                    format!("Add {} account", editor.kind.label()),
+                    &crate::i18n::text("accounts-back-to-accounts"),
+                    crate::i18n::format(
+                        "accounts-add-account-2",
+                        &[("name", (editor.kind.label()).to_string())],
+                    ),
                     move |window, cx| back(&(), window, cx),
                 ))
                 .child(
@@ -54,9 +57,7 @@ impl Accounts {
                         .text_size(px(10.))
                         .line_height(px(16.))
                         .text_color(content(0.4))
-                        .child(
-                            "Give this account a local name, then finish sign-in in your browser.",
-                        ),
+                        .child(crate::i18n::text("accounts-give-this-account-a-local-name")),
                 )
                 .child(
                     div()
@@ -64,7 +65,7 @@ impl Accounts {
                         .text_size(px(10.))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(content(0.55))
-                        .child("Account name"),
+                        .child(crate::i18n::text("accounts-account-name")),
                 )
                 .child(
                     div()
@@ -85,7 +86,7 @@ impl Accounts {
                 .child(
                     primary_button(
                         "save-account-edit",
-                        "Sign in and add account",
+                        crate::i18n::text("accounts-sign-in-and-add-account"),
                         self.working || editor.input.read(cx).content.trim().is_empty(),
                     )
                     .mt_3()
@@ -108,9 +109,9 @@ impl Accounts {
                         ))
                     })
                     .child(if self.working {
-                        "Waiting for browser…"
+                        crate::i18n::text("accounts-waiting-for-browser")
                     } else {
-                        "Sign in and add account"
+                        crate::i18n::text("accounts-sign-in-and-add-account")
                     })
                     .on_click(cx.listener(|this, _, _, cx| this.submit_editor(cx))),
                 )
@@ -155,36 +156,39 @@ impl Accounts {
                             .child(editor.input.clone()),
                     )
                     .child(
-                        secondary_button("cancel-account-edit", "Cancel", false, false)
-                            .h_6()
-                            .border_0()
-                            .px(px(10.))
-                            .rounded(px(4.5))
-                            .bg(content(0.05))
-                            .text_size(px(11.))
-                            .text_color(content(0.45))
-                            .child("Cancel")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                if this.working {
-                                    this.cancel_auth(cx);
-                                }
-                                if let Some(focus) =
-                                    this.editor.take().and_then(|e| e.previous_focus)
-                                {
-                                    window.focus(&focus, cx);
-                                }
-                                this.error = None;
-                                this.signin = None;
-                                cx.notify();
-                            })),
+                        secondary_button(
+                            "cancel-account-edit",
+                            crate::i18n::text("accounts-cancel"),
+                            false,
+                            false,
+                        )
+                        .h_6()
+                        .border_0()
+                        .px(px(10.))
+                        .rounded(px(4.5))
+                        .bg(content(0.05))
+                        .text_size(px(11.))
+                        .text_color(content(0.45))
+                        .child(crate::i18n::text("accounts-cancel"))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            if this.working {
+                                this.cancel_auth(cx);
+                            }
+                            if let Some(focus) = this.editor.take().and_then(|e| e.previous_focus) {
+                                window.focus(&focus, cx);
+                            }
+                            this.error = None;
+                            this.signin = None;
+                            cx.notify();
+                        })),
                     )
                     .child(
                         primary_button(
                             "save-account-edit",
                             if adding {
-                                "Sign in and add"
+                                crate::i18n::text("accounts-sign-in-and-add")
                             } else {
-                                "Save account"
+                                crate::i18n::text("accounts-save-account")
                             },
                             self.working || editor.input.read(cx).content.trim().is_empty(),
                         )
@@ -208,12 +212,12 @@ impl Accounts {
                         })
                         .child(if adding {
                             if self.working {
-                                "Waiting for browser…"
+                                crate::i18n::text("accounts-waiting-for-browser")
                             } else {
-                                "Sign in and add"
+                                crate::i18n::text("accounts-sign-in-and-add")
                             }
                         } else {
-                            "Save"
+                            crate::i18n::text("accounts-save")
                         })
                         .on_click(cx.listener(|this, _, _, cx| this.submit_editor(cx))),
                     ),
@@ -267,9 +271,16 @@ impl Accounts {
                                         .mt(px(2.))
                                         .text_size(px(11.))
                                         .text_color(content(0.4))
-                                        .child(format!(
-                                            "{count} {}",
-                                            if count == 1 { "account" } else { "accounts" }
+                                        .child(crate::i18n::format(
+                                            if count == 1 {
+                                                "accounts-count-one"
+                                            } else {
+                                                "accounts-count-many"
+                                            },
+                                            &[(
+                                                "count",
+                                                crate::system_format::unsigned(count as u64),
+                                            )],
                                         )),
                                 ),
                         ),
@@ -278,12 +289,12 @@ impl Accounts {
                     d.child(
                         secondary_button(
                             SharedString::from(format!("add-account-{}", kind.id())),
-                            "Add account",
+                            crate::i18n::text("accounts-add-account"),
                             false,
                             self.working,
                         )
                         .child(icon("plus", 14.))
-                        .child("Add account")
+                        .child(crate::i18n::text("accounts-add-account"))
                         .on_click(cx.listener(
                             move |this, _, window, cx| {
                                 this.start_edit(kind, None, Surface::Settings, window, cx)
@@ -314,9 +325,9 @@ impl Accounts {
                     .and_then(|i| i.email.clone().or(i.name.clone()))
                     .unwrap_or_else(|| {
                         if account.is_default() {
-                            "Provider CLI profile".into()
+                            crate::i18n::text("accounts-provider-cli-profile")
                         } else {
-                            "Isolated profile".into()
+                            crate::i18n::text("accounts-isolated-profile")
                         }
                     });
                 let masked = self.mask_emails
@@ -338,13 +349,16 @@ impl Accounts {
                             .mr_1()
                             .text_size(px(10.))
                             .text_color(content(0.3))
-                            .child("DEFAULT"),
+                            .child(crate::i18n::text("accounts-default")),
                     );
                 }
                 controls = controls.child(
                     account_button(
                         SharedString::from(format!("rename-{id}-{}", kind.id())),
-                        SharedString::from(format!("Rename {}", account.label)),
+                        SharedString::from(crate::i18n::format(
+                            "accounts-rename-2",
+                            &[("value", (account.label).to_string())],
+                        )),
                         "pencil-edit-02",
                     )
                     .size_7()
@@ -363,7 +377,10 @@ impl Accounts {
                     controls = controls.child(
                         account_button(
                             SharedString::from(format!("remove-{id}-{}", kind.id())),
-                            SharedString::from(format!("Remove {}", account.label)),
+                            SharedString::from(crate::i18n::format(
+                                "accounts-remove-3",
+                                &[("value", (account.label).to_string())],
+                            )),
                             "delete-02",
                         )
                         .size_7()
@@ -427,9 +444,9 @@ impl Accounts {
                                                         .is_some(),
                                                 |d| {
                                                     d.role(Role::Button).aria_label(if masked {
-                                                        "Reveal email"
+                                                        crate::i18n::text("accounts-reveal-email")
                                                     } else {
-                                                        "Hide email"
+                                                        crate::i18n::text("accounts-hide-email")
                                                     })
                                                 },
                                             )
@@ -505,8 +522,11 @@ impl Accounts {
                             .justify_between()
                             .text_size(px(9.))
                             .text_color(content(0.4))
-                            .child(w.label())
-                            .child(format!("{percent:.0}%")),
+                            .child(crate::usage_footer::window_label(w))
+                            .child(crate::i18n::format(
+                                "accounts-usage-percent",
+                                &[("percent", crate::system_format::percent(percent))],
+                            )),
                     )
                     .child(
                         div()
@@ -561,7 +581,11 @@ impl Accounts {
                             kind.id()
                         )))
                         .role(Role::Button)
-                        .aria_label(if masked { "Reveal email" } else { "Hide email" })
+                        .aria_label(if masked {
+                            crate::i18n::text("accounts-reveal-email")
+                        } else {
+                            crate::i18n::text("accounts-hide-email")
+                        })
                         .min_w_0()
                         .relative()
                         .truncate()
@@ -596,7 +620,10 @@ impl Accounts {
         let mut rows = div()
             .id("provider-account-choices")
             .role(Role::Group)
-            .aria_label(format!("{} accounts", kind.label()))
+            .aria_label(crate::i18n::format(
+                "accounts-accounts",
+                &[("name", kind.label().to_string())],
+            ))
             .mt_2()
             .flex()
             .flex_col()
@@ -706,11 +733,11 @@ impl Accounts {
                     })),
             );
         }
-        let list_row = |id: &'static str, label: &'static str, ink: f32| {
+        let list_row = |id: &'static str, label: &str, ink: f32| {
             div()
                 .id(id)
                 .role(Role::Button)
-                .aria_label(label)
+                .aria_label(label.to_owned())
                 .h_8()
                 .w_full()
                 .px(px(10.))
@@ -728,8 +755,8 @@ impl Accounts {
             .on_key_down(cx.listener(Self::picker_key))
             .child(back_header(
                 "back-to-usage",
-                "Back to usage",
-                format!("{} accounts", kind.label()),
+                &crate::i18n::text("accounts-back-to-usage"),
+                crate::i18n::format("accounts-accounts", &[("name", (kind.label()).to_string())]),
                 on_back,
             ))
             .child(
@@ -739,28 +766,38 @@ impl Accounts {
                     .text_size(px(10.))
                     .line_height(px(16.))
                     .text_color(content(0.4))
-                    .child("Choosing an account moves the current conversation to it."),
+                    .child(crate::i18n::text(
+                        "accounts-choosing-an-account-moves-the-current",
+                    )),
             )
             .child(rows)
             .when(accounts::supports_profiles(kind), |d| {
                 d.child(
-                    list_row("footer-add-account", "Add account", 0.55)
-                        .mt_2()
-                        .when(self.working, |d| d.opacity(0.4))
-                        .child(icon("plus", 14.))
-                        .child("Add account")
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            if !this.working {
-                                this.start_edit(kind, None, Surface::Footer, window, cx)
-                            }
-                        })),
+                    list_row(
+                        "footer-add-account",
+                        &crate::i18n::text("accounts-add-account"),
+                        0.55,
+                    )
+                    .mt_2()
+                    .when(self.working, |d| d.opacity(0.4))
+                    .child(icon("plus", 14.))
+                    .child(crate::i18n::text("accounts-add-account"))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        if !this.working {
+                            this.start_edit(kind, None, Surface::Footer, window, cx)
+                        }
+                    })),
                 )
             })
             .child(
-                list_row("manage-provider-accounts", "Manage accounts", 0.45)
-                    .mt(px(2.))
-                    .child("Manage accounts…")
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(AccountEvent::Manage))),
+                list_row(
+                    "manage-provider-accounts",
+                    &crate::i18n::text("accounts-manage-accounts-2"),
+                    0.45,
+                )
+                .mt(px(2.))
+                .child(crate::i18n::text("accounts-manage-accounts"))
+                .on_click(cx.listener(|_, _, _, cx| cx.emit(AccountEvent::Manage))),
             )
             .into_any_element()
     }
@@ -769,7 +806,7 @@ impl Accounts {
 /// Back arrow and title, as at the top of React's account popovers.
 fn back_header(
     id: &'static str,
-    label: &'static str,
+    label: &str,
     title: String,
     on_back: impl Fn(&mut Window, &mut App) + 'static,
 ) -> Div {
@@ -782,7 +819,7 @@ fn back_header(
             div()
                 .id(id)
                 .role(Role::Button)
-                .aria_label(label)
+                .aria_label(label.to_owned())
                 .size_6()
                 .rounded_md()
                 .flex()
@@ -797,7 +834,7 @@ fn back_header(
             div()
                 .text_size(px(13.))
                 .font_weight(FontWeight::MEDIUM)
-                .child(title),
+                .child(title.to_owned()),
         )
 }
 
@@ -807,7 +844,7 @@ fn organization_tag(identity: &accounts::Identity) -> Option<String> {
     if name.is_empty() {
         None
     } else if name.ends_with("'s Organization") || name.ends_with("’s Organization") {
-        Some("Personal".into())
+        Some(crate::i18n::text("accounts-personal"))
     } else {
         Some(name.into())
     }
@@ -877,9 +914,9 @@ fn meter(w: &usage::Window, now: i64, show_remaining: bool) -> Div {
     let shown = if show_remaining { remaining } else { used };
     let full = used >= 100. && w.resets_at.is_none_or(|at| at > now);
     let reset = match w.resets_at {
-        None => w.label(),
-        Some(at) if at <= now => "reset due".into(),
-        Some(at) => usage::duration(at - now),
+        None => crate::usage_footer::window_label(w),
+        Some(at) if at <= now => crate::i18n::text("accounts-reset-due"),
+        Some(at) => crate::i18n::duration(at - now),
     };
     div()
         .flex_1()
@@ -897,7 +934,10 @@ fn meter(w: &usage::Window, now: i64, show_remaining: bool) -> Div {
                         .min_w_0()
                         .truncate()
                         .text_color(content(0.4))
-                        .child(format!("{} · {reset}", w.label())),
+                        .child(format!(
+                            "{} · {reset}",
+                            crate::usage_footer::window_label(w)
+                        )),
                 )
                 .child(
                     div()
@@ -911,11 +951,14 @@ fn meter(w: &usage::Window, now: i64, show_remaining: bool) -> Div {
                             }
                         })
                         .child(if show_remaining {
-                            format!("{remaining:.0}% left")
+                            crate::i18n::format(
+                                "usage-percent-left",
+                                &[("percent", crate::system_format::percent(remaining))],
+                            )
                         } else if full {
-                            "Full".into()
+                            crate::i18n::text("accounts-full")
                         } else {
-                            format!("{used:.0}%")
+                            crate::system_format::percent(used)
                         }),
                 ),
         )
@@ -949,19 +992,25 @@ impl Render for Accounts {
         let failed = signin.error.is_some();
         let action = signin.action;
         let title = if complete {
-            format!(
-                "Signed {} {}",
-                if action == AuthAction::SignIn {
-                    "in to"
-                } else {
-                    "out of"
-                },
-                kind.label()
+            crate::i18n::format(
+                "accounts-signed-state",
+                &[
+                    (
+                        "value1",
+                        (if action == AuthAction::SignIn {
+                            crate::i18n::text("accounts-signed-state-in-to")
+                        } else {
+                            crate::i18n::text("accounts-signed-state-out-of")
+                        })
+                        .to_string(),
+                    ),
+                    ("value2", (kind.label()).to_string()),
+                ],
             )
         } else if failed {
-            "Authentication required".into()
+            crate::i18n::text("accounts-authentication-required")
         } else {
-            "Waiting for browser…".into()
+            crate::i18n::text("accounts-waiting-for-browser")
         };
         let error = signin.error.clone();
         let retry_id = signin.profile.id.clone();
@@ -989,7 +1038,7 @@ impl Render for Accounts {
                 div()
                     .id("provider-signin-panel")
                     .role(Role::Dialog)
-                    .aria_label("Authentication required")
+                    .aria_label(crate::i18n::text("accounts-authentication-required"))
                     .track_focus(&self.dialog_focus)
                     .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
                         if event.keystroke.key == "escape" {
@@ -1007,13 +1056,20 @@ impl Render for Accounts {
                     .flex()
                     .flex_col()
                     .items_center()
-                    .child(div().w_full().flex().justify_end().child(
-                        icon_button("close-provider-signin", "Close sign-in", "close").on_click(
-                            cx.listener(|this, _, window, cx| {
-                                this.close_auth(window, cx);
-                            }),
+                    .child(
+                        div().w_full().flex().justify_end().child(
+                            icon_button(
+                                "close-provider-signin",
+                                crate::i18n::text("accounts-close-sign-in"),
+                                "close",
+                            )
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
+                                    this.close_auth(window, cx);
+                                },
+                            )),
                         ),
-                    ))
+                    )
                     .child(
                         div()
                             .size_16()
@@ -1029,7 +1085,7 @@ impl Render for Accounts {
                             .mt(px(14.))
                             .text_size(px(15.))
                             .font_weight(FontWeight::MEDIUM)
-                            .child(title),
+                            .child(title.to_owned()),
                     )
                     .child(
                         div()
@@ -1037,31 +1093,31 @@ impl Render for Accounts {
                             .text_size(px(11.))
                             .text_color(content(0.45))
                             .child(if complete {
-                                "You can retry your last message now."
+                                crate::i18n::text("accounts-you-can-retry-your-last-message")
                             } else {
-                                "The provider CLI opens its browser to complete sign-in."
+                                crate::i18n::text("accounts-the-provider-cli-opens-its-browser")
                             }),
                     )
                     .child(
                         secondary_button(
                             "provider-auth-action",
                             if complete {
-                                "Continue"
+                                crate::i18n::text("accounts-continue")
                             } else if failed {
-                                "Retry sign-in"
+                                crate::i18n::text("accounts-retry-sign-in")
                             } else {
-                                "Waiting for browser"
+                                crate::i18n::text("accounts-waiting-for-browser-2")
                             },
                             true,
                             (!complete && !failed) || self.working,
                         )
                         .mt_4()
                         .child(if complete {
-                            "Continue"
+                            crate::i18n::text("accounts-continue")
                         } else if failed {
-                            "Retry sign-in"
+                            crate::i18n::text("accounts-retry-sign-in")
                         } else {
-                            "Waiting for browser…"
+                            crate::i18n::text("accounts-waiting-for-browser")
                         })
                         .on_click(cx.listener(
                             move |this, _, window, cx| {

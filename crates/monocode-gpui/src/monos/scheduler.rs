@@ -4,6 +4,31 @@ use monocode_core::mono::habits::{Run, Schedule};
 use monocode_core::mono::heartbeat;
 use monocode_core::time::now_ms;
 
+pub(super) fn schedule_label(schedule: &Schedule) -> String {
+    let time = crate::system_format::wall_time(&schedule.time);
+    match schedule.schedule_kind.as_str() {
+        "hourly" => crate::i18n::format(
+            "automations-hourly-at",
+            &[(
+                "minute",
+                crate::system_format::padded_unsigned(schedule.minute as u64, 2),
+            )],
+        ),
+        "weekdays" => crate::i18n::format("automations-weekdays-at", &[("time", time)]),
+        "weekly" => crate::i18n::format(
+            "automations-weekday-at",
+            &[
+                (
+                    "day",
+                    crate::system_format::weekday(schedule.day_of_week.min(6) as usize),
+                ),
+                ("time", time),
+            ],
+        ),
+        _ => crate::i18n::format("automations-daily-at", &[("time", time)]),
+    }
+}
+
 enum Claimed {
     Habit(Box<Habit>),
     Heartbeat(String),
@@ -130,11 +155,23 @@ pub(super) struct HabitUi {
 fn duration(ms: u64) -> String {
     let seconds = (ms.saturating_add(500) / 1000).max(1);
     if seconds < 60 {
-        format!("{seconds}s")
+        crate::i18n::format(
+            "monos-s",
+            &[("seconds", crate::system_format::unsigned(seconds))],
+        )
     } else if seconds.is_multiple_of(60) {
-        format!("{}m", seconds / 60)
+        crate::i18n::format(
+            "monos-m-2",
+            &[("value", crate::system_format::unsigned(seconds / 60))],
+        )
     } else {
-        format!("{}m {}s", seconds / 60, seconds % 60)
+        crate::i18n::format(
+            "duration-minutes-seconds",
+            &[
+                ("whole", crate::system_format::unsigned(seconds / 60)),
+                ("rest", crate::system_format::unsigned(seconds % 60)),
+            ],
+        )
     }
 }
 fn when(at: u64, now: u64) -> String {
@@ -145,11 +182,30 @@ fn when(at: u64, now: u64) -> String {
     let today = chrono::DateTime::from_timestamp_millis(now as i64)
         .map(|d| d.with_timezone(&chrono::Local).date_naive());
     if Some(at.date_naive()) == today {
-        format!("Today {}", at.format("%H:%M"))
+        crate::i18n::format(
+            "monos-today",
+            &[(
+                "value",
+                (crate::system_format::date(at.timestamp_millis(), "jm", "%H:%M")).to_string(),
+            )],
+        )
     } else if now.saturating_sub(at.timestamp_millis().max(0) as u64) < 6 * 24 * 60 * 60 * 1000 {
-        at.format("%a %H:%M").to_string()
+        crate::system_format::date(at.timestamp_millis(), "Ejm", "%a %H:%M")
     } else {
-        at.format("%b %-d, %H:%M").to_string()
+        crate::system_format::date(at.timestamp_millis(), "MMMdjm", "%b %-d, %H:%M")
+    }
+}
+/// Map a stored run error to the current UI language. Only the scheduler's own
+/// stable values are translated; a provider's error text stays as reported.
+fn localized_run_error(error: &str) -> String {
+    if error == habits::ERROR_TIMED_OUT {
+        crate::i18n::text("monos-habit-timed-out-while-waiting-for-work-or")
+    } else if error == habits::ERROR_APP_CLOSED {
+        crate::i18n::text("monos-the-app-closed-before-this-run-finished")
+    } else {
+        // A run that recorded the conversation's stable status localizes here;
+        // provider diagnostics pass through.
+        crate::runtime_text::status(error)
     }
 }
 fn same_day(a: u64, b: u64) -> bool {
@@ -196,7 +252,7 @@ fn grouped_habits(
         later.into_iter().map(|item| item.2).collect(),
     ]
 }
-fn section(title: &'static str) -> gpui::Div {
+fn section(title: impl Into<gpui::SharedString>) -> gpui::Div {
     div()
         .w_full()
         .min_w_0()
@@ -215,10 +271,10 @@ fn section(title: &'static str) -> gpui::Div {
                 .text_size(px(11.))
                 .font_weight(gpui::FontWeight::MEDIUM)
                 .text_color(content(0.4))
-                .child(title),
+                .child(title.into()),
         )
 }
-fn property(label: &'static str, value: impl IntoElement) -> gpui::Div {
+fn property(label: &str, value: impl IntoElement) -> gpui::Div {
     div()
         .w_full()
         .min_w_0()
@@ -233,7 +289,7 @@ fn property(label: &'static str, value: impl IntoElement) -> gpui::Div {
                 .w(px(80.))
                 .flex_shrink_0()
                 .text_color(content(0.45))
-                .child(label),
+                .child(label.to_owned()),
         )
         .child(
             div()
@@ -258,13 +314,13 @@ fn habit_field(field: Entity<Input>) -> gpui::Div {
 }
 fn habit_icon_button(
     id: SharedString,
-    label: &'static str,
+    label: &str,
     glyph: &'static str,
 ) -> gpui::Stateful<gpui::Div> {
     div()
         .id(id)
         .role(Role::Button)
-        .aria_label(label)
+        .aria_label(label.to_owned())
         .flex_shrink_0()
         .size(px(24.))
         .flex()
@@ -320,7 +376,7 @@ impl Monos {
     pub(super) fn habits_list(&mut self, mono: &Mono, cx: &mut Context<Self>) -> AnyElement {
         let filter = self.field(
             "mono-habit-search",
-            "Search habits…",
+            &crate::i18n::text("monos-search-habits"),
             String::new(),
             false,
             cx,
@@ -334,25 +390,88 @@ impl Monos {
                         let h = &self.habits[*ix];
                         matches_query(
                             &query,
-                            &format!("{} {} {}", h.name, h.instructions, h.schedule.label()),
+                            &format!(
+                                "{} {} {}",
+                                h.name,
+                                h.instructions,
+                                schedule_label(&h.schedule)
+                            ),
                         )
                     })
                     .collect::<Vec<_>>()
             });
         let no_matches = !self.habits.is_empty() && groups.iter().all(|items| items.is_empty());
-        let list = div().id("mono-habits-list").debug_selector(|| "mono-habits-list".into())
-            .flex_1().min_h_0().min_w_0().overflow_y_scroll().p_2().flex().flex_col().gap_4()
-            .when(no_matches, |d| d.child(empty_state("search-01", "No habits match this search.")))
-            .when(self.habits.is_empty(), |d| d.child(
-                div().flex_1().min_h(px(160.)).flex().flex_col().items_center().justify_center()
-                    .gap_3().px_6().py_10().text_center().text_size(px(12.)).line_height(px(18.))
-                    .text_color(content(0.55)).child(icon("clock", 18.))
-                    .child(format!("Ask {} to put recurring work on a schedule, like a morning digest or a weekly report.", mono.label()))))
-            .children(["Up next today", "Done today", "Later"].into_iter().zip(groups).filter(|(_, items)| !items.is_empty()).map(|(title, items)| {
-                div().flex_shrink_0().w_full().min_w_0().flex().flex_col().gap_1p5()
-                    .child(div().px_2().text_size(px(11.)).text_color(content(0.4)).child(title))
-                    .children(items.into_iter().map(|ix| self.habit_row(&self.habits[ix], mono, cx)))
-            }));
+        let list = div()
+            .id("mono-habits-list")
+            .debug_selector(|| "mono-habits-list".into())
+            .flex_1()
+            .min_h_0()
+            .min_w_0()
+            .overflow_y_scroll()
+            .p_2()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .when(no_matches, |d| {
+                d.child(empty_state(
+                    "search-01",
+                    &crate::i18n::text("monos-no-habits-match-this-search"),
+                ))
+            })
+            .when(self.habits.is_empty(), |d| {
+                d.child(
+                    div()
+                        .flex_1()
+                        .min_h(px(160.))
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .justify_center()
+                        .gap_3()
+                        .px_6()
+                        .py_10()
+                        .text_center()
+                        .text_size(px(12.))
+                        .line_height(px(18.))
+                        .text_color(content(0.55))
+                        .child(icon("clock", 18.))
+                        .child(crate::i18n::format(
+                            "monos-ask-to-put-recurring-work-on-a",
+                            &[("name", mono.label().to_string())],
+                        )),
+                )
+            })
+            .children(
+                [
+                    crate::i18n::text("monos-up-next-today"),
+                    crate::i18n::text("monos-done-today"),
+                    crate::i18n::text("monos-later"),
+                ]
+                .into_iter()
+                .zip(groups)
+                .filter(|(_, items)| !items.is_empty())
+                .map(|(title, items)| {
+                    div()
+                        .flex_shrink_0()
+                        .w_full()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .gap_1p5()
+                        .child(
+                            div()
+                                .px_2()
+                                .text_size(px(11.))
+                                .text_color(content(0.4))
+                                .child(title),
+                        )
+                        .children(
+                            items
+                                .into_iter()
+                                .map(|ix| self.habit_row(&self.habits[ix], mono, cx)),
+                        )
+                }),
+            );
         div()
             .size_full()
             .min_w_0()
@@ -366,13 +485,22 @@ impl Monos {
         let id = h.id.clone();
         let since = self.habit_running_since(h);
         let subtitle = if let Some(since) = since {
-            format!("Running now · {}", duration(now_ms().saturating_sub(since)))
+            crate::i18n::format(
+                "monos-running-now-2",
+                &[(
+                    "value",
+                    (duration(now_ms().saturating_sub(since))).to_string(),
+                )],
+            )
         } else if self.habit_busy(h) {
-            "Starting…".into()
+            crate::i18n::text("monos-starting")
         } else if h.enabled {
-            h.schedule.label()
+            schedule_label(&h.schedule)
         } else {
-            format!("Paused · {}", h.schedule.label())
+            crate::i18n::format(
+                "monos-paused",
+                &[("name", (schedule_label(&h.schedule)).to_string())],
+            )
         };
         super::panels::outlined(div().id(SharedString::from(format!("mono-habit-{id}"))))
             .debug_selector({
@@ -473,12 +601,12 @@ impl Monos {
             .child(
                 habit_icon_button(
                     SharedString::from(format!("mono-habit-run{suffix}")),
-                    if running {
-                        "Already running"
+                    &if running {
+                        crate::i18n::text("monos-already-running")
                     } else if busy {
-                        "Starting"
+                        crate::i18n::text("monos-starting-action")
                     } else {
-                        "Run now"
+                        crate::i18n::text("monos-run-now")
                     },
                     "zap",
                 )
@@ -496,7 +624,11 @@ impl Monos {
             .child(
                 habit_icon_button(
                     SharedString::from(format!("mono-habit-toggle{suffix}")),
-                    if h.enabled { "Pause" } else { "Resume" },
+                    &if h.enabled {
+                        crate::i18n::text("monos-pause")
+                    } else {
+                        crate::i18n::text("monos-resume")
+                    },
                     if h.enabled {
                         "queue-pause"
                     } else {
@@ -512,7 +644,7 @@ impl Monos {
             .child(
                 habit_icon_button(
                     SharedString::from(format!("mono-habit-delete{suffix}")),
-                    "Remove",
+                    &crate::i18n::text("monos-remove"),
                     "trash",
                 )
                 .debug_selector(move || format!("mono-habit-delete{suffix}"))
@@ -563,13 +695,13 @@ impl Monos {
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .child(self.page_header("Habit", cx))
+                    .child(self.page_header(&crate::i18n::text("monos-habit"), cx))
                     .child(
                         div()
                             .p_4()
                             .text_size(px(12.))
                             .text_color(content(0.45))
-                            .child("This habit is no longer available."),
+                            .child(crate::i18n::text("monos-this-habit-is-no-longer-available")),
                     )
                     .into_any_element();
             };
@@ -589,19 +721,25 @@ impl Monos {
             .flex_col()
             .gap_0p5()
             .child(property(
-                "Runs",
+                &crate::i18n::text("monos-runs"),
                 if h.enabled {
-                    h.schedule.label()
+                    schedule_label(&h.schedule)
                 } else {
-                    "Paused".into()
+                    crate::i18n::text("monos-paused-2")
                 },
             ));
         if since.is_none() && self.habit_busy(&h) {
-            info = info.child(property("Next", "Starting…"));
+            info = info.child(property(
+                &crate::i18n::text("monos-next"),
+                crate::i18n::text("monos-starting"),
+            ));
         } else if h.enabled {
-            info = info.child(property("Next", when(h.next_run_at, now_ms())));
+            info = info.child(property(
+                &crate::i18n::text("monos-next"),
+                when(h.next_run_at, now_ms()),
+            ));
         }
-        let mut history = section("Recent runs");
+        let mut history = section(crate::i18n::text("monos-recent-runs"));
         if let Some(since) = since {
             history = history.child(
                 div()
@@ -621,7 +759,12 @@ impl Monos {
                             .rounded_full()
                             .bg(rgb(mono.color)),
                     )
-                    .child(div().flex_1().min_w_0().child("Running now"))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(crate::i18n::text("monos-running-now")),
+                    )
                     .child(
                         div()
                             .flex_shrink_0()
@@ -637,7 +780,7 @@ impl Monos {
                     .py_3()
                     .text_size(px(12.))
                     .text_color(content(0.4))
-                    .child("It hasn't run yet."),
+                    .child(crate::i18n::text("monos-it-hasn-t-run-yet")),
             );
         }
         for run in &h.runs {
@@ -667,7 +810,7 @@ impl Monos {
                     .flex_col()
                     .child(info)
                     .child(
-                        section("What it does").child(
+                        section(crate::i18n::text("monos-what-it-does")).child(
                             div()
                                 .id("mono-habit-instructions")
                                 .debug_selector(|| "mono-habit-instructions".into())
@@ -700,9 +843,15 @@ impl Monos {
             .or(run.error.as_ref())
             .is_some_and(|text| !text.is_empty());
         let (label, color) = match run.outcome.as_str() {
-            "posted" => ("Messaged you", rgb(mono.color).into()),
-            "quiet" => ("Nothing to report", content(0.25)),
-            _ => ("Couldn't finish", rgb(0xf87171).into()),
+            "posted" => (
+                crate::i18n::text("monos-messaged-you"),
+                rgb(mono.color).into(),
+            ),
+            "quiet" => (crate::i18n::text("monos-nothing-to-report"), content(0.25)),
+            _ => (
+                crate::i18n::text("monos-couldn-t-finish"),
+                rgb(0xf87171).into(),
+            ),
         };
         let time = format!(
             "{}{}",
@@ -731,7 +880,10 @@ impl Monos {
                         move || format!("mono-habit-history-{id}-{at}")
                     })
                     .role(Role::Button)
-                    .aria_label(format!("{label}, {time}"))
+                    .aria_label(crate::i18n::format(
+                        "monos-label-time",
+                        &[("label", label.to_string()), ("time", time.to_string())],
+                    ))
                     .w_full()
                     .min_w_0()
                     .px_2()
@@ -810,7 +962,11 @@ impl Monos {
                     ));
                 }
             } else if let Some(error) = &run.error {
-                body = body.child(div().text_color(rgb(0xf87171)).child(error.clone()));
+                body = body.child(
+                    div()
+                        .text_color(rgb(0xf87171))
+                        .child(localized_run_error(error)),
+                );
             }
             card = card.child(body);
         }
@@ -818,7 +974,13 @@ impl Monos {
     }
     fn new_habit_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let fresh = !self.fields.contains_key("habit-name");
-        let name = self.field("habit-name", "Name", String::new(), false, cx);
+        let name = self.field(
+            "habit-name",
+            &crate::i18n::text("monos-name"),
+            String::new(),
+            false,
+            cx,
+        );
         let instructions = if let Some(field) = self.fields.get("habit-instructions") {
             field.clone()
         } else {
@@ -869,9 +1031,14 @@ impl Monos {
             ("habit-minute", "0"),
             ("habit-weekday", "1"),
         ] {
-            self.field(key, key, text.into(), false, cx);
+            let text = if key == "habit-time" {
+                crate::system_format::wall_time(text)
+            } else {
+                text.to_owned()
+            };
+            self.field(key, key, text, false, cx);
         }
-        self.fields["habit-time"].update(cx, |f, _| f.set_max_chars(5));
+        self.fields["habit-time"].update(cx, |f, _| f.set_max_chars(32));
         let ready = !self.habit_ui.saving
             && !self.value("habit-name", cx).trim().is_empty()
             && !self.value("habit-instructions", cx).trim().is_empty();
@@ -879,7 +1046,7 @@ impl Monos {
             .habit_schedule(cx)
             .next(now_ms())
             .map(|at| when(at, now_ms()))
-            .unwrap_or_else(|_| "Choose a valid time (HH:MM)".into());
+            .unwrap_or_else(|_| crate::i18n::text("monos-choose-a-valid-time-hh-mm"));
         div()
             .size_full()
             .min_w_0()
@@ -888,28 +1055,29 @@ impl Monos {
             .flex()
             .flex_col()
             .child(
-                self.page_header("New habit", cx).child(
-                    button(
-                        "mono-habit-save",
-                        if self.habit_ui.saving {
-                            "Creating…"
-                        } else {
-                            "Create"
-                        },
-                    )
-                    .debug_selector(|| "mono-habit-save".into())
-                    .flex_shrink_0()
-                    .h(px(24.))
-                    .py_0()
-                    .px_2()
-                    .bg(content(0.1))
-                    .when(!ready, |d| d.opacity(0.4))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        if ready {
-                            this.save_habit(cx);
-                        }
-                    })),
-                ),
+                self.page_header(&crate::i18n::text("monos-new-habit"), cx)
+                    .child(
+                        button(
+                            "mono-habit-save",
+                            if self.habit_ui.saving {
+                                crate::i18n::text("monos-creating")
+                            } else {
+                                crate::i18n::text("monos-create")
+                            },
+                        )
+                        .debug_selector(|| "mono-habit-save".into())
+                        .flex_shrink_0()
+                        .h(px(24.))
+                        .py_0()
+                        .px_2()
+                        .bg(content(0.1))
+                        .when(!ready, |d| d.opacity(0.4))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if ready {
+                                this.save_habit(cx);
+                            }
+                        })),
+                    ),
             )
             .child(
                 div()
@@ -948,11 +1116,14 @@ impl Monos {
                             .flex()
                             .flex_col()
                             .gap_0p5()
-                            .child(property("Runs", self.schedule_controls(cx)))
-                            .child(property("Next", next)),
+                            .child(property(
+                                &crate::i18n::text("monos-runs"),
+                                self.schedule_controls(cx),
+                            ))
+                            .child(property(&crate::i18n::text("monos-next"), next)),
                     )
                     .child(
-                        section("What it does")
+                        section(crate::i18n::text("monos-what-it-does"))
                             .child(
                                 div()
                                     .id("mono-habit-prompt-field")
@@ -979,7 +1150,9 @@ impl Monos {
     fn habit_schedule(&self, cx: &App) -> Schedule {
         Schedule {
             schedule_kind: self.value("habit-kind", cx),
-            time: self.value("habit-time", cx).trim().into(),
+            time: crate::system_format::parse_wall_time(self.value("habit-time", cx).trim())
+                .map(|time| time.format("%H:%M").to_string())
+                .unwrap_or_else(|| self.value("habit-time", cx).trim().to_owned()),
             minute: self.value("habit-minute", cx).parse().unwrap_or(60),
             day_of_week: self.value("habit-weekday", cx).parse().unwrap_or(7),
         }
@@ -1006,7 +1179,13 @@ impl Monos {
             .id(field)
             .debug_selector(move || format!("mono-{field}-picker"))
             .role(Role::ComboBox)
-            .aria_label(format!("{label}: {selected}"))
+            .aria_label(crate::i18n::format(
+                "monos-selected-option",
+                &[
+                    ("label", crate::i18n::text(label)),
+                    ("selected", selected.to_string()),
+                ],
+            ))
             .aria_expanded(expanded)
             .track_focus(&focus)
             .tab_index(0)
@@ -1077,7 +1256,7 @@ impl Monos {
             })
             .collect();
         let menu = cx.new(|cx| {
-            Menu::new(label, items, window, cx)
+            Menu::new(crate::i18n::text(label), items, window, cx)
                 .width(240.)
                 .select_value(&current)
         });
@@ -1106,18 +1285,9 @@ impl Monos {
         let choices = |items: &[(&str, &str)]| {
             items
                 .iter()
-                .map(|(value, label)| (value.to_string(), label.to_string()))
+                .map(|(value, label)| (value.to_string(), crate::i18n::text(label)))
                 .collect()
         };
-        let days = [
-            "Sunday",
-            "Monday",
-            "Tuesday",
-            "Wednesday",
-            "Thursday",
-            "Friday",
-            "Saturday",
-        ];
         div()
             .id("mono-habit-schedule")
             .debug_selector(|| "mono-habit-schedule".into())
@@ -1131,40 +1301,49 @@ impl Monos {
             .py_0p5()
             .child(self.schedule_picker(
                 "habit-kind",
-                "Repeats",
+                "monos-repeats",
                 kind.clone(),
                 choices(&[
-                    ("daily", "Daily"),
-                    ("weekdays", "Weekdays"),
-                    ("weekly", "Weekly"),
-                    ("hourly", "Hourly"),
+                    ("daily", "automations-daily"),
+                    ("weekdays", "automations-weekdays"),
+                    ("weekly", "automations-weekly"),
+                    ("hourly", "automations-hourly"),
                 ]),
                 cx,
             ))
             .when(kind == "weekly", |d| {
-                d.child(div().text_color(content(0.45)).child("on")).child(
+                d.child(
                     self.schedule_picker(
                         "habit-weekday",
-                        "Day",
+                        "monos-day",
                         self.value("habit-weekday", cx),
-                        days.into_iter()
-                            .enumerate()
-                            .map(|(ix, label)| (ix.to_string(), label.into()))
+                        (0..7)
+                            .map(|ix| (ix.to_string(), crate::system_format::weekday(ix)))
                             .collect(),
                         cx,
                     ),
                 )
             })
-            .child(div().text_color(content(0.45)).child("at"))
             .when(kind == "hourly", |d| {
                 d.child(
                     self.schedule_picker(
                         "habit-minute",
-                        "Minute",
+                        "monos-minute",
                         self.value("habit-minute", cx),
                         [0, 15, 30, 45]
                             .into_iter()
-                            .map(|minute| (minute.to_string(), format!(":{minute:02}")))
+                            .map(|minute| {
+                                (
+                                    minute.to_string(),
+                                    crate::i18n::format(
+                                        "automations-minute",
+                                        &[(
+                                            "minute",
+                                            crate::system_format::padded_unsigned(minute, 2),
+                                        )],
+                                    ),
+                                )
+                            })
                             .collect(),
                         cx,
                     ),
@@ -1199,6 +1378,11 @@ impl Monos {
             .chars()
             .take(4000)
             .collect();
+        if crate::system_format::parse_wall_time(self.value("habit-time", cx).trim()).is_none() {
+            self.habit_ui.error = Some(crate::i18n::text("monos-choose-a-valid-time-hh-mm"));
+            cx.notify();
+            return;
+        }
         let habit = match Habit::new(name, instructions, self.habit_schedule(cx), now_ms()) {
             Ok(h) => h,
             Err(error) => {
@@ -1391,7 +1575,9 @@ impl Monos {
             .collect();
         for id in timed_out {
             if let Some(run) = self.running.get_mut(&id) {
-                run.failure = Some("Habit timed out while waiting for work or an answer".into());
+                // Stored verbatim in `habits.json` and sent to the phone, so a
+                // stable value here; `localized_run_error` translates it.
+                run.failure = Some(habits::ERROR_TIMED_OUT.into());
                 run.mailbox.clear();
                 run.view.update(cx, |v, cx| v.mono_stop(cx));
             }
@@ -1436,7 +1622,7 @@ impl Monos {
                                 duration_ms: now.saturating_sub(start),
                                 outcome: "interrupted".into(),
                                 report: None,
-                                error: Some("The app closed before this run finished".into()),
+                                error: Some(habits::ERROR_APP_CLOSED.into()),
                             })?;
                         }
                         if h.enabled
@@ -1822,6 +2008,35 @@ mod tests {
     }
 
     #[test]
+    fn stored_run_errors_localize_without_changing_the_stored_value() {
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::SimplifiedChinese);
+        assert_eq!(
+            localized_run_error(habits::ERROR_TIMED_OUT),
+            "习惯等待工作或回答时超时"
+        );
+        assert_eq!(
+            localized_run_error(habits::ERROR_APP_CLOSED),
+            "此次运行完成前应用已关闭"
+        );
+        // A provider's own text is shown as reported, in either language.
+        assert_eq!(localized_run_error("process exited 1"), "process exited 1");
+        // The stable values are what a run persists and what the phone receives.
+        assert_eq!(
+            habits::ERROR_APP_CLOSED,
+            "The app closed before this run finished"
+        );
+        assert_eq!(
+            habits::ERROR_TIMED_OUT,
+            "Habit timed out while waiting for work or an answer"
+        );
+        crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
+        assert_eq!(
+            localized_run_error(habits::ERROR_TIMED_OUT),
+            "Habit timed out while waiting for work or an answer"
+        );
+    }
+
+    #[test]
     fn habits_list_groups_today_with_running_first_and_paused_last() {
         let at = |day, hour| {
             chrono::Local
@@ -1887,5 +2102,44 @@ mod tests {
         );
         assert_eq!(duration(72_000), "1m 12s");
         assert_eq!(duration(60_000), "1m");
+    }
+}
+
+#[cfg(test)]
+mod schedule_message_tests {
+    use super::*;
+    #[test]
+    fn schedule_caption_preserves_stored_time_and_fallbacks() {
+        let mut schedule = Schedule::default();
+        let before = serde_json::to_value(&schedule).unwrap();
+        assert_eq!(
+            schedule_label(&schedule),
+            format!("Daily at {}", crate::system_format::wall_time("09:00"))
+        );
+        assert_eq!(serde_json::to_value(&schedule).unwrap(), before);
+        schedule.schedule_kind = "hourly".into();
+        schedule.minute = 5;
+        assert_eq!(
+            schedule_label(&schedule),
+            format!(
+                "Hourly at minute {}",
+                crate::system_format::padded_unsigned(5, 2)
+            )
+        );
+        schedule.schedule_kind = "weekly".into();
+        schedule.day_of_week = 99;
+        assert_eq!(
+            schedule_label(&schedule),
+            format!(
+                "{} at {}",
+                crate::system_format::weekday(6),
+                crate::system_format::wall_time("09:00")
+            )
+        );
+        schedule.schedule_kind = "weekdays".into();
+        assert_eq!(
+            schedule_label(&schedule),
+            format!("Weekdays at {}", crate::system_format::wall_time("09:00"))
+        );
     }
 }

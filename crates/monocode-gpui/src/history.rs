@@ -66,7 +66,12 @@ pub(crate) struct History {
 impl History {
     pub(crate) fn new(git: Entity<ProjectGit>, _: &mut Window, cx: &mut Context<Self>) -> Self {
         let search = cx.new(|cx| {
-            let mut input = Input::field("Search commits", "Search history…", content(0.35), cx);
+            let mut input = Input::field(
+                crate::i18n::text("history-search-commits"),
+                crate::i18n::text("history-search-history"),
+                content(0.35),
+                cx,
+            );
             input.set_font_size(12.);
             input
         });
@@ -265,85 +270,89 @@ impl History {
         let label: SharedString = branch
             .clone()
             .or_else(|| head.map(|h| h.commit.short_sha.clone()))
-            .unwrap_or_else(|| "History".into())
+            .unwrap_or_else(|| crate::i18n::text("history-history"))
             .into();
         let can_refresh = self.available() && !self.loading;
         div()
             .flex_shrink_0()
-            .child(pane_header("history-toolbar", "History").map(|d| {
-                if self.search_open {
-                    d.key_context("HistorySearch")
-                        .on_action(cx.listener(|this, _: &CloseSearch, window, cx| {
-                            this.close_search(window, cx)
-                        }))
-                        .child(icon("search", 14.).text_color(content(0.45)))
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .font_weight(FontWeight::NORMAL)
-                                .text_color(content(1.))
-                                .child(self.search.clone()),
-                        )
-                        .child(
-                            header_action(
-                                "history-close-search",
-                                "Close history search",
-                                "x",
-                                12.,
-                                true,
-                                false,
+            .child(
+                pane_header("history-toolbar", &crate::i18n::text("history-history")).map(|d| {
+                    if self.search_open {
+                        d.key_context("HistorySearch")
+                            .on_action(cx.listener(|this, _: &CloseSearch, window, cx| {
+                                this.close_search(window, cx)
+                            }))
+                            .child(icon("search", 14.).text_color(content(0.45)))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .font_weight(FontWeight::NORMAL)
+                                    .text_color(content(1.))
+                                    .child(self.search.clone()),
                             )
-                            .on_click(
-                                cx.listener(|this, _, window, cx| this.close_search(window, cx)),
-                            ),
-                        )
-                } else {
-                    d.child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .flex()
-                            .items_center()
-                            .gap(px(6.))
-                            .child(icon("git-branch-hi", 14.).text_color(content(0.45)))
-                            .child(div().min_w_0().truncate().child(label)),
-                    )
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .flex()
-                            .items_center()
-                            .gap(px(2.))
                             .child(
                                 header_action(
-                                    "history-search",
-                                    "Search history",
-                                    "search",
-                                    14.,
+                                    "history-close-search",
+                                    &crate::i18n::text("history-close-history-search"),
+                                    "x",
+                                    12.,
                                     true,
                                     false,
                                 )
                                 .on_click(
-                                    cx.listener(|this, _, window, cx| this.open_search(window, cx)),
+                                    cx.listener(|this, _, window, cx| {
+                                        this.close_search(window, cx)
+                                    }),
                                 ),
                             )
-                            .child(
-                                header_action(
-                                    "history-refresh",
-                                    "Refresh history",
-                                    "refresh-cw",
-                                    14.,
-                                    can_refresh,
-                                    self.loading,
+                    } else {
+                        d.child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .flex()
+                                .items_center()
+                                .gap(px(6.))
+                                .child(icon("git-branch-hi", 14.).text_color(content(0.45)))
+                                .child(div().min_w_0().truncate().child(label.to_owned())),
+                        )
+                        .child(
+                            div()
+                                .flex_shrink_0()
+                                .flex()
+                                .items_center()
+                                .gap(px(2.))
+                                .child(
+                                    header_action(
+                                        "history-search",
+                                        &crate::i18n::text("history-search-history-2"),
+                                        "search",
+                                        14.,
+                                        true,
+                                        false,
+                                    )
+                                    .on_click(cx.listener(
+                                        |this, _, window, cx| this.open_search(window, cx),
+                                    )),
                                 )
-                                .when(can_refresh, |d| {
-                                    d.on_click(cx.listener(|this, _, _, cx| this.load(cx)))
-                                }),
-                            ),
-                    )
-                }
-            }))
+                                .child(
+                                    header_action(
+                                        "history-refresh",
+                                        &crate::i18n::text("history-refresh-history"),
+                                        "refresh-cw",
+                                        14.,
+                                        can_refresh,
+                                        self.loading,
+                                    )
+                                    .when(can_refresh, |d| {
+                                        d.on_click(cx.listener(|this, _, _, cx| this.load(cx)))
+                                    }),
+                                ),
+                        )
+                    }
+                }),
+            )
             .when_some(self.error.clone(), |d, error| {
                 d.child(
                     div()
@@ -391,7 +400,7 @@ impl History {
         div()
             .id(("history-row", ix))
             .role(Role::Button)
-            .aria_label(title)
+            .aria_label(&title)
             .aria_selected(active)
             .h(px(ROW))
             .w_full()
@@ -492,7 +501,7 @@ impl History {
 /// HistoryToolbar's 24px actions: 50% ink, 5% hover.
 fn header_action(
     id: &'static str,
-    label: &'static str,
+    label: &str,
     path: &'static str,
     side: f32,
     enabled: bool,
@@ -501,7 +510,7 @@ fn header_action(
     div()
         .id(id)
         .role(Role::Button)
-        .aria_label(label)
+        .aria_label(label.to_owned())
         .group(id)
         .size(px(24.))
         .flex_shrink_0()
@@ -552,15 +561,11 @@ fn ref_pill(r: &git_graph::GraphRef) -> impl IntoElement {
         .child(div().min_w_0().truncate().child(r.name.clone()))
 }
 
-/// `Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" })` in
-/// an English locale.
+/// Short calendar date in the system region.
 fn short_date(timestamp: i64) -> Option<String> {
-    use chrono::{Datelike, Local, TimeZone};
-    let date = Local.timestamp_opt(timestamp, 0).single()?;
-    const MONTHS: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
-    Some(format!("{} {}", MONTHS[date.month0() as usize], date.day()))
+    let millis = timestamp.checked_mul(1000)?;
+    chrono::DateTime::from_timestamp_millis(millis)?;
+    Some(crate::system_format::date(millis, "MMMd", "%b %-d"))
 }
 
 /// `color-mix(in oklab, color 70%, content)`: the detailed rows' softened ink.
@@ -690,21 +695,21 @@ impl Focusable for History {
 
 impl Render for History {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let empty: Option<(&'static str, bool)> = if !self.available() {
-            Some(("No project folder", false))
+        let empty: Option<(String, bool)> = if !self.available() {
+            Some((crate::i18n::text("history-no-project-folder"), false))
         } else if self.error.is_some() && self.items.is_empty() {
             None
         } else if self.items.is_empty() {
             Some((
                 if self.loading {
-                    "Loading history…"
+                    crate::i18n::text("history-loading-history")
                 } else {
-                    "No commits yet"
+                    crate::i18n::text("history-no-commits-yet")
                 },
                 false,
             ))
         } else if self.visible.is_empty() {
-            Some(("No matching commits", true))
+            Some((crate::i18n::text("history-no-matching-commits"), true))
         } else {
             None
         };
@@ -713,7 +718,7 @@ impl Render for History {
         div()
             .id("history")
             .role(Role::TabPanel)
-            .aria_label("History")
+            .aria_label(crate::i18n::text("history-history"))
             .track_focus(&self.focus)
             .size_full()
             .min_h_0()

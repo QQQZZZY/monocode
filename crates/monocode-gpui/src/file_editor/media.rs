@@ -71,7 +71,7 @@ pub(super) struct MediaPreview {
 impl EventEmitter<MediaEvent> for MediaPreview {}
 fn file_size(bytes: u64) -> String {
     if bytes < 1024 {
-        return format!("{bytes} B");
+        return format!("{} B", crate::system_format::unsigned(bytes));
     }
     let mut value = bytes as f64 / 1024.;
     let mut unit = 0;
@@ -81,9 +81,17 @@ fn file_size(bytes: u64) -> String {
         unit += 1;
     }
     if value < 10. {
-        format!("{value:.1} {}", units[unit])
+        format!(
+            "{} {}",
+            crate::system_format::decimal(value, 1, 1),
+            units[unit]
+        )
     } else {
-        format!("{value:.0} {}", units[unit])
+        format!(
+            "{} {}",
+            crate::system_format::decimal(value, 0, 0),
+            units[unit]
+        )
     }
 }
 impl MediaPreview {
@@ -290,8 +298,11 @@ impl MediaPreview {
     fn image_menu(&mut self, at: Point<gpui::Pixels>, window: &mut Window, cx: &mut Context<Self>) {
         let menu = cx.new(|cx| {
             Menu::new(
-                "Image actions",
-                vec![MenuAction::new("copy", "Copy Original File").into()],
+                crate::i18n::text("file-editor-image-actions"),
+                vec![
+                    MenuAction::new("copy", crate::i18n::text("file-editor-copy-original-file"))
+                        .into(),
+                ],
                 window,
                 cx,
             )
@@ -469,8 +480,10 @@ impl gpui::Render for MediaPreview {
                 .p_6()
                 .text_size(px(12.))
                 .text_color(content(0.5))
-                .child("Couldn’t play this video")
-                .child("This video’s format or codec is unsupported, or the file is damaged.")
+                .child(crate::i18n::text("file-editor-couldn-t-play-this-video"))
+                .child(crate::i18n::text(
+                    "file-editor-this-video-s-format-or-codec",
+                ))
                 .child(
                     div()
                         .flex()
@@ -480,24 +493,24 @@ impl gpui::Render for MediaPreview {
                             div()
                                 .id("retry-video")
                                 .role(Role::Button)
-                                .aria_label("Retry")
+                                .aria_label(crate::i18n::text("file-editor-retry"))
                                 .px_3()
                                 .py_1()
                                 .rounded_md()
                                 .bg(content(0.1))
-                                .child("Retry")
+                                .child(crate::i18n::text("file-editor-retry"))
                                 .on_click(cx.listener(|_, _, _, cx| cx.emit(MediaEvent::Retry))),
                         )
                         .child(
                             div()
                                 .id("open-video-externally")
                                 .role(Role::Button)
-                                .aria_label("Open externally")
+                                .aria_label(crate::i18n::text("file-editor-open-externally"))
                                 .px_3()
                                 .py_1()
                                 .rounded_md()
                                 .bg(content(0.1))
-                                .child("Open externally")
+                                .child(crate::i18n::text("file-editor-open-externally"))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     cx.open_url(&format!(
                                         "file://{}",
@@ -513,12 +526,12 @@ impl gpui::Render for MediaPreview {
                             div()
                                 .id("reveal-video")
                                 .role(Role::Button)
-                                .aria_label("Reveal")
+                                .aria_label(crate::i18n::text("file-editor-reveal"))
                                 .px_3()
                                 .py_1()
                                 .rounded_md()
                                 .bg(content(0.1))
-                                .child("Reveal")
+                                .child(crate::i18n::text("file-editor-reveal"))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     let path = PathBuf::from(&this.path);
                                     cx.background_executor()
@@ -532,12 +545,12 @@ impl gpui::Render for MediaPreview {
                             div()
                                 .id("copy-video-path")
                                 .role(Role::Button)
-                                .aria_label("Copy path")
+                                .aria_label(crate::i18n::text("file-editor-copy-path"))
                                 .px_3()
                                 .py_1()
                                 .rounded_md()
                                 .bg(content(0.1))
-                                .child("Copy path")
+                                .child(crate::i18n::text("file-editor-copy-path"))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     cx.write_to_clipboard(ClipboardItem::new_string(
                                         this.path.clone(),
@@ -558,7 +571,9 @@ impl gpui::Render for MediaPreview {
             {
                 div()
                     .flex_1()
-                    .child("Video playback is unavailable on this platform")
+                    .child(crate::i18n::text(
+                        "file-editor-video-playback-is-unavailable-on-this",
+                    ))
                     .into_any_element()
             }
         };
@@ -597,9 +612,9 @@ impl gpui::Render for MediaPreview {
                         icon_action(
                             "copy-original-image",
                             if self.copied {
-                                "Copied"
+                                crate::i18n::text("file-editor-copied")
                             } else {
-                                "Copy original file"
+                                crate::i18n::text("file-editor-copy-original-file-2")
                             },
                             if self.copied { "check" } else { "copy" },
                             true,
@@ -608,27 +623,38 @@ impl gpui::Render for MediaPreview {
                     )
                 })
                 .child(
-                    icon_action("image-zoom-out", "Zoom out", "minus", true).on_click(cx.listener(
-                        |this, _, _, cx| this.zoom_at(Some(this.scale() / 1.5), None, cx),
-                    )),
+                    icon_action(
+                        "image-zoom-out",
+                        crate::i18n::text("file-editor-zoom-out"),
+                        "minus",
+                        true,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.zoom_at(Some(this.scale() / 1.5), None, cx)
+                    })),
                 )
                 .child(
                     div()
                         .id("image-fit")
                         .role(Role::Button)
-                        .aria_label("Fit to window")
+                        .aria_label(crate::i18n::text("file-editor-fit-to-window"))
                         .w(px(44.))
                         .text_center()
-                        .child(
-                            self.zoom
-                                .map_or("Fit".into(), |z| format!("{:.0}%", z * 100.)),
-                        )
+                        .child(self.zoom.map_or(crate::i18n::text("file-editor-fit"), |z| {
+                            crate::system_format::percent((z * 100.) as f64)
+                        }))
                         .on_click(cx.listener(|this, _, _, cx| this.zoom_at(None, None, cx))),
                 )
                 .child(
-                    icon_action("image-zoom-in", "Zoom in", "plus", true).on_click(cx.listener(
-                        |this, _, _, cx| this.zoom_at(Some(this.scale() * 1.5), None, cx),
-                    )),
+                    icon_action(
+                        "image-zoom-in",
+                        crate::i18n::text("file-editor-zoom-in"),
+                        "plus",
+                        true,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.zoom_at(Some(this.scale() * 1.5), None, cx)
+                    })),
                 )
             });
         div()
@@ -699,7 +725,13 @@ mod tests {
                 assert!((m.scale() - old_scale).abs() < 0.001);
             })
             .unwrap();
-        assert_eq!(file_size(1024), "1.0 KB");
-        assert_eq!(file_size(24 * 1024), "24 KB");
+        assert_eq!(
+            file_size(1024),
+            format!("{} KB", crate::system_format::decimal(1., 1, 1))
+        );
+        assert_eq!(
+            file_size(24 * 1024),
+            format!("{} KB", crate::system_format::decimal(24., 0, 0))
+        );
     }
 }

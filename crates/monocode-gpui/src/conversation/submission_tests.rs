@@ -219,7 +219,7 @@ fn worktree_setup_shows_the_prompt_immediately_and_preserves_it_on_failure(
             });
             view.send(cx);
             assert!(view.busy && view.preparing_worktree);
-            assert_eq!(view.status, "Creating worktree…");
+            assert_eq!(view.status.stable(), "Creating worktree…");
             assert!(view.input.read(cx).content.is_empty());
             assert!(!view.settings.plan);
             assert_eq!(
@@ -296,6 +296,18 @@ fn stopping_before_the_worker_runs_keeps_the_optimistic_message(cx: &mut TestApp
                         .load(view.summary.id)
                         .unwrap()
                         .rows
+                );
+                let turns = locked(&view.store)
+                    .unwrap()
+                    .agent_settings(view.summary.id)
+                    .unwrap()
+                    .unwrap_or_default()
+                    .turns;
+                // Native stops leave no row; the closed receipt keeps the stop
+                // for completion reports after a reload.
+                assert_eq!(
+                    monocode_core::response::turn_end(rows, &turns),
+                    monocode_core::response::TurnEnd::Stopped
                 );
             })
             .unwrap();

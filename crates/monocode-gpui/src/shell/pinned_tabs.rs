@@ -152,7 +152,11 @@ impl Shell {
                     None => (Face::Neutral, div().into_any_element(), "Mono".into()),
                 }
             }
-            TitleTab::Search => (Face::Neutral, neutral("search"), "Search".into()),
+            TitleTab::Search => (
+                Face::Neutral,
+                neutral("search"),
+                crate::i18n::text("shell-search").into(),
+            ),
             TitleTab::App(view) => (Face::Neutral, neutral(view.icon()), view.label().into()),
         };
         PinCard {
@@ -275,7 +279,7 @@ impl Shell {
                     .id(("pinned-tab", key))
                     .debug_selector(move || format!("pinned-tab-{key}"))
                     .role(Role::Tab)
-                    .aria_label(title)
+                    .aria_label(&title)
                     .aria_selected(selected)
                     .cursor_pointer()
                     .absolute()
@@ -355,7 +359,7 @@ impl Shell {
             .id("pinned-tab-deck")
             .debug_selector(|| "pinned-tab-deck".into())
             .role(Role::TabList)
-            .aria_label("Pinned tabs")
+            .aria_label(crate::i18n::text("shell-pinned-tabs"))
             .absolute()
             .left(px(STRIP_LEAD))
             .top(px(plate_top))

@@ -23,18 +23,7 @@ impl Conversation {
         if self.busy || monocode_core::accounts::login_arguments(kind, action).is_none() {
             return None;
         }
-        let status = self.status.to_ascii_lowercase();
-        if ![
-            "not signed in",
-            "not authenticated",
-            "authentication required",
-            "please log in",
-            "please login",
-            "no longer signed in",
-        ]
-        .iter()
-        .any(|s| status.contains(s))
-        {
+        if !self.status.needs_sign_in() {
             return None;
         }
         let id = self.settings.account.id.clone();
@@ -49,19 +38,18 @@ impl Conversation {
                 .items_center()
                 .gap_2()
                 .child(provider_icon(kind.id(), 20.))
-                .child(
-                    div()
-                        .flex_1()
-                        .child(format!("Sign in to {} to continue", kind.label())),
-                )
+                .child(div().flex_1().child(crate::i18n::format(
+                    "conversation-sign-in-to-to-continue",
+                    &[("name", kind.label().to_string())],
+                )))
                 .child(
                     crate::settings::widgets::secondary_button(
                         "conversation-sign-in",
-                        "Sign in",
+                        crate::i18n::text("conversation-sign-in"),
                         true,
                         false,
                     )
-                    .child("Sign in")
+                    .child(crate::i18n::text("conversation-sign-in"))
                     .on_click(cx.listener(move |_, _, _, cx| {
                         if let Some(center) = crate::accounts::get(cx) {
                             center.update(cx, |center, cx| {
@@ -106,7 +94,7 @@ impl Conversation {
             .settings
             .usage_limit
             .clone()
-            .or_else(|| Limit::from_error(&self.status))
+            .or_else(|| Limit::from_error(self.status.stable()))
         {
             if let Some(pending) = &mut self.settings.pending_provider_switch {
                 pending.skip_outgoing_recap = true;
@@ -134,7 +122,7 @@ impl Conversation {
         self.settings
             .usage_limit
             .clone()
-            .or_else(|| Limit::from_error(&self.status))
+            .or_else(|| Limit::from_error(self.status.stable()))
             .or_else(|| {
                 let rows = self.transcript.read(cx).source_rows();
                 let last = rows.last()?;
@@ -195,7 +183,7 @@ impl Conversation {
         {
             return;
         }
-        self.status = "Ready".into();
+        self.status = RunStatus::Ready;
         self.save_settings(cx);
         if self.settings.mono.is_some() {
             cx.emit(UsageResumed);
@@ -211,7 +199,7 @@ impl Conversation {
         if self.busy || self.stopping || self.settings.usage_limit.take().is_none() {
             return;
         }
-        self.status = "Ready".into();
+        self.status = RunStatus::Ready;
         self.follow_ups.state.paused = false;
         for message in &mut self.follow_ups.state.messages {
             message.error = None;
@@ -338,9 +326,7 @@ impl Conversation {
         self.save_follow_ups(cx);
         self.catalog_epoch += 1;
         self.catalog.clear();
-        self.status =
-            "This provider account is no longer signed in. Choose another account to continue."
-                .into();
+        self.status = RunStatus::AccountSignedOut;
         cx.notify();
     }
     pub(crate) fn account_authenticated(&mut self, cx: &mut Context<Self>) {
@@ -366,7 +352,7 @@ impl Conversation {
                 d.child(
                     usage_button(
                         "usage-model-picker",
-                        "Choose another model",
+                        &crate::i18n::text("conversation-choose-another-model"),
                         false,
                         switching,
                         true,
@@ -377,7 +363,7 @@ impl Conversation {
                     .font_weight(gpui::FontWeight::MEDIUM)
                     .text_color(content(1.))
                     .bg(content(0.1))
-                    .child("Choose another model")
+                    .child(crate::i18n::text("conversation-choose-another-model"))
                     .child(icon("chevron-down", 11.).text_color(content(0.5)))
                     .when(!switching, |d| {
                         d.on_click(cx.listener(|this, _, window, cx| {
@@ -399,7 +385,7 @@ impl Conversation {
             controls = controls.child(
                 usage_button(
                     "usage-account-picker",
-                    "Choose another account",
+                    &crate::i18n::text("conversation-choose-another-account"),
                     false,
                     switching,
                     mono,
@@ -414,11 +400,11 @@ impl Conversation {
                 })
                 .child(self.account_anchor.probe())
                 .child(if switching {
-                    "Switching…"
+                    crate::i18n::text("conversation-switching")
                 } else if mono {
-                    "Choose another account"
+                    crate::i18n::text("conversation-choose-another-account")
                 } else {
-                    "Switch account"
+                    crate::i18n::text("conversation-switch-account")
                 })
                 .child(icon("chevron-down", 12.).text_color(content(0.5)))
                 .when(!switching, |d| {
@@ -430,21 +416,21 @@ impl Conversation {
         }
         let resume = if waiting {
             if armed {
-                "Resuming at reset"
+                crate::i18n::text("conversation-resuming-at-reset")
             } else {
-                "Resume at reset"
+                crate::i18n::text("conversation-resume-at-reset")
             }
         } else {
-            "Resume"
+            crate::i18n::text("conversation-resume")
         };
         controls = controls
             .child(
                 usage_button(
                     "resume-usage-limit",
-                    if waiting && armed {
-                        "Cancel the automatic resume"
+                    &if waiting && armed {
+                        crate::i18n::text("conversation-cancel-the-automatic-resume")
                     } else {
-                        resume
+                        resume.clone()
                     },
                     waiting && armed,
                     switching,
@@ -478,7 +464,7 @@ impl Conversation {
                 controls.child(
                     usage_button(
                         "dismiss-usage-limit",
-                        "Dismiss usage limit notice",
+                        &crate::i18n::text("conversation-dismiss-usage-limit-notice"),
                         false,
                         false,
                         false,
@@ -509,27 +495,54 @@ impl Conversation {
                     .text_size(px(12.))
                     .text_color(content(0.85))
                     .child(if mono {
-                        format!("{} usage limit reached", kind.label())
+                        crate::i18n::format(
+                            "conversation-usage-limit-reached-2",
+                            &[("name", (kind.label()).to_string())],
+                        )
                     } else {
-                        "Usage limit reached".into()
+                        crate::i18n::text("conversation-usage-limit-reached")
                     }),
             );
         let notice = div()
             .id("usage-limit-notice")
             .debug_selector(|| "usage-limit-notice".into())
             .role(Role::Status)
-            .aria_label("Usage limit reached")
+            .aria_label(crate::i18n::text("conversation-usage-limit-reached"))
             .text_size(px(12.))
             .line_height(px(16.))
             .text_color(content(if mono { 0.6 } else { 0.55 }));
         Some(if mono {
-            notice.mx(px(6.)).mb(px(8.)).rounded(px(8.)).border_1().border_color(tint(AMBER_400,0.2)).bg(tint(AMBER_400,0.06))
-                .px(px(12.)).py(px(10.)).child(heading)
-                .child(div().pl(px(22.))
-                    .child(div().mt(px(4.)).text_size(px(12.)).line_height(px(19.5)).text_color(content(0.6))
-                        .child("Your conversation is saved. Choose another model or account to keep going."))
-                    .children(reset.map(|label| div().mt(px(4.)).text_color(content(0.45)).child(label)))
-                    .child(controls.mt(px(8.))))
+            notice
+                .mx(px(6.))
+                .mb(px(8.))
+                .rounded(px(8.))
+                .border_1()
+                .border_color(tint(AMBER_400, 0.2))
+                .bg(tint(AMBER_400, 0.06))
+                .px(px(12.))
+                .py(px(10.))
+                .child(heading)
+                .child(
+                    div()
+                        .pl(px(22.))
+                        .child(
+                            div()
+                                .mt(px(4.))
+                                .text_size(px(12.))
+                                .line_height(px(19.5))
+                                .text_color(content(0.6))
+                                .child(crate::i18n::text(
+                                    "conversation-your-conversation-is-saved-choose-another",
+                                )),
+                        )
+                        .children(reset.map(|label| {
+                            div()
+                                .mt(px(4.))
+                                .text_color(content(0.45))
+                                .child(label.to_owned())
+                        }))
+                        .child(controls.mt(px(8.))),
+                )
                 .into_any_element()
         } else {
             notice
@@ -565,7 +578,7 @@ impl Conversation {
 
 fn usage_button(
     id: &'static str,
-    label: &'static str,
+    label: &str,
     primary: bool,
     disabled: bool,
     raised: bool,
@@ -575,7 +588,7 @@ fn usage_button(
         .debug_selector(move || id.into())
         .group(id)
         .role(Role::Button)
-        .aria_label(label)
+        .aria_label(label.to_owned())
         .h(px(24.))
         .px(px(6.))
         .rounded_md()
@@ -605,29 +618,29 @@ fn usage_button(
 pub(super) fn usage_reset_label(limit: &Limit, now: i64) -> Option<String> {
     limit.resets_at.map(|at| {
         if at <= now {
-            return "Limit has reset".to_owned();
+            return crate::i18n::text("conversation-limit-has-reset");
         }
         let when = chrono::DateTime::from_timestamp_millis(at)
             .map(|d| {
                 let local = d.with_timezone(&chrono::Local);
                 let today = chrono::Local::now().date_naive() == local.date_naive();
-                local
-                    .format(if today {
+                crate::system_format::date(
+                    local.timestamp_millis(),
+                    if today { "jm" } else { "MMMdjm" },
+                    if today {
                         "%-I:%M %p"
                     } else {
                         "%b %-d, %-I:%M %p"
-                    })
-                    .to_string()
+                    },
+                )
             })
             .unwrap_or_default();
-        format!(
-            "Resets {when} · in {}",
-            usage::Window {
-                used_percent: 100.,
-                minutes: 300,
-                resets_at: Some(at)
-            }
-            .countdown(now)
+        crate::i18n::format(
+            "usage-resets-at",
+            &[
+                ("when", when),
+                ("duration", crate::i18n::duration(at.saturating_sub(now))),
+            ],
         )
     })
 }
@@ -694,7 +707,7 @@ mod tests {
             .unwrap();
         let view = cx.new(|cx| Conversation::new(summary, store, cx));
         view.update(cx, |view, cx| {
-            view.status = "rate_limit".into();
+            view.status = RunStatus::Raw("rate_limit".into());
             view.detect_usage_limit(cx);
             assert!(view.settings.usage_limit.is_some());
             assert!(view.follow_ups.state.paused);
@@ -731,7 +744,7 @@ mod tests {
                 cx.new(|cx| {
                     let mut view = Conversation::new(summary, store, cx);
                     view.loaded = true;
-                    view.status = "Claude Code reached its usage limit.".into();
+                    view.status = RunStatus::Raw("Claude Code reached its usage limit.".into());
                     view.settings.usage_limit = Some(Limit {
                         resets_at: Some(usage::now_ms() + 3_600_000),
                         resume_at_reset: false,
@@ -836,7 +849,7 @@ mod tests {
                 root: "/fixture".into(),
                 executable: "/fixture/binary".into(),
             });
-            v.status = "Usage limit reached: Fixture subscription exhausted".into();
+            v.status = RunStatus::Raw("Usage limit reached: Fixture subscription exhausted".into());
             v.detect_usage_limit(cx);
             assert!(v.settings.usage_limit.is_some());
             assert!(v.follow_ups.state.paused);

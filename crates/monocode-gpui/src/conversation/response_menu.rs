@@ -96,20 +96,22 @@ impl Conversation {
     ) {
         let from = self.response_provider(turn, cx);
         let label = if kind == TransferKind::Handoff {
-            "Hand this session to another agent"
+            crate::i18n::text("conversation-hand-this-session-to-another-agent")
         } else {
-            "Send this turn to another agent"
+            crate::i18n::text("conversation-send-this-turn-to-another-agent")
         };
         let mut items = vec![MenuItem::Note(
             if kind == TransferKind::Handoff {
-                "Hand this session to another agent to continue the work."
+                crate::i18n::text("conversation-hand-this-session-to-another-agent-to-continue-the")
             } else {
-                "Send this turn to another agent to review the work."
+                crate::i18n::text("conversation-send-this-turn-to-another-agent-to-review-the")
             }
             .into(),
         )];
         if catalogs.is_none() {
-            items.push(MenuItem::Note("Loading providers…".into()));
+            items.push(MenuItem::Note(
+                crate::i18n::text("conversation-loading-providers").into(),
+            ));
         }
         let mut events = Vec::new();
         let mut regions = Vec::new();
@@ -138,7 +140,11 @@ impl Conversation {
             });
             let options = cached
                 .map(|result| self.response_model_items(turn, kind, provider, result, cx))
-                .unwrap_or_else(|| vec![MenuItem::Note("Loading models…".into())]);
+                .unwrap_or_else(|| {
+                    vec![MenuItem::Note(
+                        crate::i18n::text("conversation-loading-models").into(),
+                    )]
+                });
             let models = cx.new(|cx| {
                 Menu::embedded(provider.label(), options, cx)
                     .width(240.)
@@ -176,7 +182,9 @@ impl Conversation {
             );
         }
         if items.len() == 1 {
-            items.push(MenuItem::Note("No other providers are available.".into()));
+            items.push(MenuItem::Note(
+                crate::i18n::text("conversation-no-other-providers-are-available").into(),
+            ));
         }
         let menu = cx.new(|cx| {
             Menu::new(label, items, window, cx)
@@ -280,7 +288,11 @@ impl Conversation {
             Ok(models) => models,
             Err(error) => {
                 return vec![MenuItem::Note(
-                    format!("Couldn't load models: {error}").into(),
+                    crate::i18n::format(
+                        "conversation-couldn-t-load-models",
+                        &[("error", (error).to_string())],
+                    )
+                    .into(),
                 )];
             }
         };
@@ -330,7 +342,10 @@ impl Conversation {
                 model_display_name(provider, &model.id, &model.name),
             );
             if !model.efforts.is_empty() {
-                let mut efforts = vec![MenuAction::new(target(None), "Default")];
+                let mut efforts = vec![MenuAction::new(
+                    target(None),
+                    crate::i18n::text("conversation-default"),
+                )];
                 efforts.extend(model.efforts.iter().map(|effort| {
                     MenuAction::new(target(Some(effort.clone())), effort_name(effort))
                 }));
@@ -339,7 +354,9 @@ impl Conversation {
             options.push(option.into());
         }
         if options.is_empty() {
-            options.push(MenuItem::Note("No different models are available.".into()));
+            options.push(MenuItem::Note(
+                crate::i18n::text("conversation-no-different-models-are-available").into(),
+            ));
         }
         options
     }

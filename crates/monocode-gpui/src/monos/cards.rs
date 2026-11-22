@@ -111,7 +111,10 @@ fn choices(
 fn artifact(value: &Value, cx: &mut Context<crate::transcript::TranscriptView>) -> AnyElement {
     let html = value["kind"] == "html";
     let label = if html { "visual" } else { "document" };
-    let title = value["title"].as_str().unwrap_or("Document").to_string();
+    let title = value["title"]
+        .as_str()
+        .map(str::to_owned)
+        .unwrap_or_else(|| crate::i18n::text("monos-document"));
     let card = value.clone();
     div()
         .flex()
@@ -120,7 +123,10 @@ fn artifact(value: &Value, cx: &mut Context<crate::transcript::TranscriptView>) 
                 "mono-artifact-{}",
                 value["id"].as_str().unwrap_or_default()
             )))
-            .aria_label(format!("Open {label} {title}"))
+            .aria_label(crate::i18n::format(
+                "monos-open",
+                &[("label", label.to_string()), ("title", title.to_string())],
+            ))
             .debug_selector(|| "mono-artifact-card".into())
             .min_h(px(38.))
             .py_2()
@@ -146,20 +152,46 @@ pub(crate) fn launch(
     view: Option<&crate::transcript::LaunchView>,
     cx: &mut Context<crate::transcript::TranscriptView>,
 ) -> AnyElement {
-    let title = view.map_or("Agent session".to_string(), |v| v.title.clone());
+    let title = view.map_or(crate::i18n::text("monos-agent-session"), |v| {
+        v.title.clone()
+    });
     let (label, glyph, color) = match view.map(|v| v.state) {
-        Some("working") => ("Working", "loader-03", content(0.55)),
-        Some("input") => ("Needs input", "clock", rgb(0xfbbf24).into()),
-        Some("draft") => ("Draft", "circle-dashed-hi", content(0.45)),
-        Some("failed") => ("Failed", "alert-circle", rgb(0xf87171).into()),
-        Some("stopped") => ("Stopped", "circle-x", content(0.45)),
-        Some("unavailable") => ("Unavailable", "chatting", content(0.45)),
-        Some(_) => ("Done", "check-circle", {
+        Some("working") => (
+            crate::i18n::text("monos-working"),
+            "loader-03",
+            content(0.55),
+        ),
+        Some("input") => (
+            crate::i18n::text("monos-needs-input"),
+            "clock",
+            rgb(0xfbbf24).into(),
+        ),
+        Some("draft") => (
+            crate::i18n::text("monos-draft"),
+            "circle-dashed-hi",
+            content(0.45),
+        ),
+        Some("failed") => (
+            crate::i18n::text("monos-failed"),
+            "alert-circle",
+            rgb(0xf87171).into(),
+        ),
+        Some("stopped") => (
+            crate::i18n::text("monos-stopped"),
+            "circle-x",
+            content(0.45),
+        ),
+        Some("unavailable") => (
+            crate::i18n::text("monos-unavailable"),
+            "chatting",
+            content(0.45),
+        ),
+        Some(_) => (crate::i18n::text("monos-done"), "check-circle", {
             let mut c: gpui::Hsla = rgb(0x34d399).into();
             c.a = 0.9;
             c
         }),
-        None => ("", "chatting", content(0.45)),
+        None => (String::new(), "chatting", content(0.45)),
     };
     // A working session's loader turns on the shared clock, at 15fps since
     // each step repaints the transcript it sits in.
@@ -191,9 +223,15 @@ pub(crate) fn launch(
         .child(
             line_card(("mono-launched-session", id as usize))
                 .aria_label(if label.is_empty() {
-                    format!("Open session {title}")
+                    crate::i18n::format("monos-open-session", &[("title", (title).to_string())])
                 } else {
-                    format!("Open session {title}, {}", label.to_lowercase())
+                    crate::i18n::format(
+                        "monos-open-session-2",
+                        &[
+                            ("title", (title).to_string()),
+                            ("value", (label.to_lowercase()).to_string()),
+                        ],
+                    )
                 })
                 .debug_selector(move || format!("mono-launch-card-{id}"))
                 .py(px(6.))
@@ -250,7 +288,10 @@ pub(crate) fn render(
             let view = value["state"]
                 .as_str()
                 .map(|state| crate::transcript::LaunchView {
-                    title: value["title"].as_str().unwrap_or("Agent session").into(),
+                    title: value["title"]
+                        .as_str()
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| crate::i18n::text("monos-agent-session")),
                     state: match state {
                         "working" => "working",
                         "input" => "input",
@@ -269,13 +310,13 @@ pub(crate) fn render(
     let title = value["title"]
         .as_str()
         .or_else(|| value["name"].as_str())
-        .unwrap_or(match kind {
-            "pr" => "Pull request",
-            "session" => "Session",
-            "habit" => "Suggested habit",
-            _ => "",
-        })
-        .to_string();
+        .map(str::to_owned)
+        .unwrap_or_else(|| match kind {
+            "pr" => crate::i18n::text("monos-pull-request"),
+            "session" => crate::i18n::text("monos-session"),
+            "habit" => crate::i18n::text("monos-suggested-habit"),
+            _ => String::new(),
+        });
     let card = value.clone();
     let glyph = match kind {
         "pr" => "git-pull-request",
@@ -316,10 +357,12 @@ pub(crate) fn render(
         )
         .when(kind == "session", |d| {
             d.child(
-                div()
-                    .text_size(px(12.))
-                    .text_color(content(0.5))
-                    .child(value["state"].as_str().unwrap_or("Saved").to_string()),
+                div().text_size(px(12.)).text_color(content(0.5)).child(
+                    value["state"]
+                        .as_str()
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| crate::i18n::text("monos-saved")),
+                ),
             )
         })
         .when(kind == "pr", |d| {
@@ -339,7 +382,7 @@ pub(crate) fn render(
             d.child(
                 div().text_size(px(12.)).text_color(content(0.5)).child(
                     serde_json::from_value::<habits::Schedule>(value["schedule"].clone())
-                        .map(|s| s.label())
+                        .map(|s| super::scheduler::schedule_label(&s))
                         .unwrap_or_default(),
                 ),
             )
@@ -348,9 +391,9 @@ pub(crate) fn render(
             panels::button(
                 "mono-card-open",
                 if kind == "habit" && value["started"] != true {
-                    "Start habit"
+                    crate::i18n::text("monos-start-habit")
                 } else {
-                    "Open"
+                    crate::i18n::text("monos-open-3")
                 },
             )
             .bg(content(0.08))
@@ -368,7 +411,7 @@ fn launched_state(session: &Conversation, cx: &App) -> &'static str {
         "draft"
     } else {
         match session.external_outcome(cx) {
-            (false, status) if status.starts_with("Stopped") => "stopped",
+            (false, _) if session.run_status().is_stopped() => "stopped",
             (false, _) => "failed",
             _ => "done",
         }
@@ -527,7 +570,7 @@ impl Monos {
 
     pub(super) fn card_action(&mut self, mono: &str, value: &Value, cx: &mut Context<Self>) {
         if value["type"] != "choice" {
-            self.active = Some(mono.into());
+            self.make_active(mono, cx);
             if let Some(handle) = self.parent_window {
                 let app: &mut App = cx;
                 app.defer(move |cx| {
@@ -543,6 +586,7 @@ impl Monos {
             }
             "session" => {
                 if let Some(id) = value["sessionId"].as_i64() {
+                    self.panel_check = None;
                     self.route = Some(Route::Session(id));
                     self.show_overview(cx);
                     self.overview_tab = OverviewTab::Sessions;
@@ -552,6 +596,7 @@ impl Monos {
             "document" => {
                 if let Some(id) = value["documentId"].as_str() {
                     self.open_document(id, cx);
+                    self.panel_check = None;
                     self.route = Some(Route::Document(id.into()));
                     self.show_overview(cx);
                     self.overview_tab = OverviewTab::Documents;

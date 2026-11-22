@@ -665,3 +665,42 @@ fn app_launch_submission_uses_the_saved_message_identity(cx: &mut TestAppContext
         })
         .unwrap();
 }
+
+#[gpui::test]
+fn invalid_session_id_is_a_protocol_error(cx: &mut TestAppContext) {
+    let (window, _, caller) = setup(cx);
+    for (index, input) in [
+        json!({}),
+        json!({"sessionId": true}),
+        json!({"sessionId": []}),
+        json!({"sessionId": 1.5}),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        window
+            .update(cx, |shell, _, _| {
+                assert_eq!(
+                    session_id(&input, "sessionId", &shell.store),
+                    Err("Provide sessionId".into())
+                );
+            })
+            .unwrap();
+        assert_eq!(
+            call(
+                window,
+                caller,
+                &format!("invalid-session-{index}"),
+                "sessions.read",
+                input,
+                cx
+            ),
+            Err(if index == 0 {
+                "Provide sessionId"
+            } else {
+                "sessionId must be an ID"
+            }
+            .into())
+        );
+    }
+}

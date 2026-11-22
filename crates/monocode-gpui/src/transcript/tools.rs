@@ -175,10 +175,10 @@ impl TranscriptView {
             _ => format!("{action} {}", shown.target),
         };
         let state_label = match tool.state {
-            ToolState::Running => "Running",
-            ToolState::Completed => "Completed",
-            ToolState::Failed => "Failed",
-            ToolState::Cancelled => "Cancelled",
+            ToolState::Running => crate::i18n::text("transcript-running"),
+            ToolState::Completed => crate::i18n::text("transcript-completed"),
+            ToolState::Failed => crate::i18n::text("transcript-failed"),
+            ToolState::Cancelled => crate::i18n::text("transcript-cancelled"),
         };
         // Chained commands and failures share one disclosure: steps, then error.
         let error_key = format!("tool-detail:{start}:{}", tool.id);
@@ -234,7 +234,13 @@ impl TranscriptView {
             .id(gpui::SharedString::from(format!("tool:{identity}")))
             .debug_selector(move || format!("tool-{start}"))
             .role(Role::Group)
-            .aria_label(format!("{state_label} tool call: {caption}"))
+            .aria_label(crate::i18n::format(
+                "transcript-tool-call",
+                &[
+                    ("state_label", state_label.to_string()),
+                    ("caption", caption.to_string()),
+                ],
+            ))
             .flex()
             .w_full()
             .min_w_0()
@@ -307,11 +313,17 @@ impl TranscriptView {
                                         } else {
                                             content(0.5)
                                         })
-                                        .aria_label(format!(
-                                            "{hidden} more patterns: {}",
-                                            patterns[2..].join(", ")
+                                        .aria_label(crate::i18n::format(
+                                            "transcript-more-patterns",
+                                            &[
+                                                ("hidden", format!("{}", hidden)),
+                                                ("value", patterns[2..].join(", ").to_string()),
+                                            ],
                                         ))
-                                        .child(format!("+{hidden}")),
+                                        .child(crate::i18n::format(
+                                            "transcript-hidden-count",
+                                            &[("hidden", hidden.to_string())],
+                                        )),
                                 )
                             })
                         })
@@ -326,7 +338,10 @@ impl TranscriptView {
                         })
                         .when_some(target_path, |d, path| {
                             d.role(Role::Button)
-                                .aria_label(format!("Open {path}"))
+                                .aria_label(crate::i18n::format(
+                                    "transcript-open-2",
+                                    &[("path", path.to_string())],
+                                ))
                                 .cursor_pointer()
                                 .hover(|style| style.text_color(rgb(0x7dd3fc)))
                                 .on_click(move |_, window, cx| {
@@ -389,7 +404,10 @@ impl TranscriptView {
                                             .child(div().min_w_0().truncate().child(label.clone()))
                                             .when_some(path, |d, path| {
                                                 d.role(Role::Button)
-                                                    .aria_label(format!("Open {path}"))
+                                                    .aria_label(crate::i18n::format(
+                                                        "transcript-open-2",
+                                                        &[("path", path.to_string())],
+                                                    ))
                                                     .cursor_pointer()
                                                     .hover(|style| style.text_color(rgb(0x7dd3fc)))
                                                     .on_click(move |_, window, cx| {
@@ -423,11 +441,17 @@ impl TranscriptView {
                                             } else {
                                                 content(0.5)
                                             })
-                                            .aria_label(format!(
-                                                "{hidden} more steps: {}",
-                                                rest.join(", ")
+                                            .aria_label(crate::i18n::format(
+                                                "transcript-more-steps",
+                                                &[
+                                                    ("hidden", format!("{}", hidden)),
+                                                    ("value", rest.join(", ").to_string()),
+                                                ],
                                             ))
-                                            .child(format!("+{hidden}")),
+                                            .child(crate::i18n::format(
+                                                "transcript-hidden-count",
+                                                &[("hidden", hidden.to_string())],
+                                            )),
                                     )
                                 })
                         }),
@@ -444,10 +468,29 @@ impl TranscriptView {
                             .id("error-toggle")
                             .role(Role::Button)
                             .aria_expanded(error_open)
-                            .aria_label(format!(
-                                "{} {} for {caption}",
-                                if error_open { "Hide" } else { "Show" },
-                                if has_error { "error details" } else { "steps" }
+                            .aria_label(crate::i18n::format(
+                                "transcript-for",
+                                &[
+                                    (
+                                        "value",
+                                        (if error_open {
+                                            crate::i18n::text("transcript-hide")
+                                        } else {
+                                            crate::i18n::text("transcript-show")
+                                        })
+                                        .to_string(),
+                                    ),
+                                    (
+                                        "value2",
+                                        (if has_error {
+                                            crate::i18n::text("transcript-error-details")
+                                        } else {
+                                            crate::i18n::text("transcript-step-list")
+                                        })
+                                        .to_string(),
+                                    ),
+                                    ("caption", caption.to_string()),
+                                ],
                             ))
                             .p_1()
                             .child(
@@ -514,7 +557,10 @@ impl TranscriptView {
                                     )
                                     .when_some(path, |d, path| {
                                         d.role(Role::Button)
-                                            .aria_label(format!("Open {path}"))
+                                            .aria_label(crate::i18n::format(
+                                                "transcript-open-2",
+                                                &[("path", path.to_string())],
+                                            ))
                                             .cursor_pointer()
                                             .hover(|style| style.text_color(rgb(0x7dd3fc)))
                                             .on_click(move |_, window, cx| {

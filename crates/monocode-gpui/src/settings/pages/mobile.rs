@@ -90,9 +90,18 @@ pub(super) fn qr(text: &str) -> Option<Qr> {
 /// PairPhoneDialog.tsx's status line.
 pub(super) fn countdown(left: u64) -> String {
     if left == 0 {
-        "Code expired".into()
+        crate::i18n::text("settings-code-expired")
     } else {
-        format!("Expires in {}:{:02}", left / 60, left % 60)
+        crate::i18n::format(
+            "settings-expires-in",
+            &[
+                ("value", crate::system_format::unsigned(left / 60)),
+                (
+                    "value2",
+                    crate::system_format::padded_unsigned(left % 60, 2),
+                ),
+            ],
+        )
     }
 }
 
@@ -204,7 +213,10 @@ impl SettingsView {
             })
             .flatten();
         if let Some(device) = paired {
-            self.mobile.notice = Some(format!("{} is paired.", device.name));
+            self.mobile.notice = Some(crate::i18n::format(
+                "settings-is-paired",
+                &[("value", (device.name).to_string())],
+            ));
             self.mobile.known = None;
             cx.emit(SettingsEvent::MobileCancelInvite);
         }
@@ -273,8 +285,8 @@ impl SettingsView {
         let initial = status.remote_address.clone();
         let field = cx.new(|cx| {
             let mut input = Input::field(
-                "Remote address",
-                "Public hostname or VPN IP, optionally :port",
+                crate::i18n::text("settings-remote-address"),
+                crate::i18n::text("settings-public-hostname-or-vpn-ip-optionally"),
                 content(0.35),
                 cx,
             );
@@ -331,9 +343,9 @@ impl SettingsView {
                     .border_1()
                     .border_color(content(0.1))
                     .bg(content(0.03))
-                    .child(note(
-                        "Mobile access isn’t available on this desktop right now.",
-                    ))
+                    .child(note(crate::i18n::text(
+                        "settings-mobile-access-isn-t-available-on-this-desktop",
+                    )))
                     .into_any_element(),
             );
             return page;
@@ -371,7 +383,7 @@ impl SettingsView {
     }
 
     fn mobile_header(&self, can_pair: bool, cx: &mut Context<Self>) -> AnyElement {
-        let paragraph = |text: &'static str| {
+        let paragraph = |text: String| {
             div()
                 .mt_1()
                 .text_size(px(12.))
@@ -405,7 +417,7 @@ impl SettingsView {
                                 div()
                                     .text_size(px(13.))
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .child("Your phones"),
+                                    .child(crate::i18n::text("settings-your-phones")),
                             )
                             .child(
                                 div()
@@ -418,39 +430,48 @@ impl SettingsView {
                                     .text_size(px(10.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .text_color(content(0.6))
-                                    .child("Invite-only beta"),
+                                    .child(crate::i18n::text("settings-invite-only-beta")),
                             ),
                     )
-                    .child(paragraph(
-                        "Check on projects and conversations from the MonoCode mobile app. Your phone connects straight to this desktop.",
-                    ))
+                    .child(paragraph(crate::i18n::text(
+                        "settings-check-on-projects-and-conversations-from-the-monocode",
+                    )))
                     .child(
-                        paragraph("The iPhone app is in beta on TestFlight.")
-                            .flex()
-                            .flex_wrap()
-                            .gap_x_1()
-                            .child(
-                                div()
-                                    .id("mobile-testflight")
-                                    .debug_selector(|| "mobile-testflight".into())
-                                    .role(Role::Link)
-                                    .aria_label("Get the iPhone app on TestFlight")
-                                    .text_color(content(0.7))
-                                    .underline()
-                                    .cursor_pointer()
-                                    .hover(|s| s.text_color(content(1.)))
-                                    .child("Get the iPhone app")
-                                    .on_click(|_, _, cx| cx.open_url(TESTFLIGHT_URL)),
-                            ),
+                        paragraph(crate::i18n::text(
+                            "settings-the-iphone-app-is-in-beta-on-testflight",
+                        ))
+                        .flex()
+                        .flex_wrap()
+                        .gap_x_1()
+                        .child(
+                            div()
+                                .id("mobile-testflight")
+                                .debug_selector(|| "mobile-testflight".into())
+                                .role(Role::Link)
+                                .aria_label(crate::i18n::text(
+                                    "settings-get-the-iphone-app-on-testflight",
+                                ))
+                                .text_color(content(0.7))
+                                .underline()
+                                .cursor_pointer()
+                                .hover(|s| s.text_color(content(1.)))
+                                .child(crate::i18n::text("settings-get-the-iphone-app"))
+                                .on_click(|_, _, cx| cx.open_url(TESTFLIGHT_URL)),
+                        ),
                     ),
             )
             .child(
-                secondary_button("pair-phone", "Pair phone", false, !can_pair)
-                    .child(icon("plus", 16.))
-                    .child("Pair phone")
-                    .when(can_pair, |d| {
-                        d.on_click(cx.listener(|this, _, _, cx| this.pair_phone(cx)))
-                    }),
+                secondary_button(
+                    "pair-phone",
+                    crate::i18n::text("settings-pair-phone"),
+                    false,
+                    !can_pair,
+                )
+                .child(icon("plus", 16.))
+                .child(crate::i18n::text("settings-pair-phone"))
+                .when(can_pair, |d| {
+                    d.on_click(cx.listener(|this, _, _, cx| this.pair_phone(cx)))
+                }),
             )
             .into_any_element()
     }
@@ -459,27 +480,31 @@ impl SettingsView {
     fn mobile_access(&self, status: &Status, cx: &mut Context<Self>) -> AnyElement {
         let stuck = status.enabled && !status.listening;
         let description: SharedString = if status.listening {
-            "Your phones can reach this desktop.".into()
+            crate::i18n::text("settings-your-phones-can-reach-this-desktop").into()
         } else {
-            "Your phones can’t connect because this desktop isn’t accepting connections right now."
-                .into()
+            crate::i18n::text("settings-your-phones-can-t-connect-because-this-desktop-isn").into()
         };
         let (open_router, remote) = (status.open_router, status.remote_address.clone());
         let mut controls = Vec::new();
         if stuck {
             let remote = remote.clone();
             controls.push(
-                secondary_button("mobile-reconnect", "Reconnect", false, false)
-                    .child("Reconnect")
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.configure_mobile(true, open_router, remote.clone(), cx)
-                    }))
-                    .into_any_element(),
+                secondary_button(
+                    "mobile-reconnect",
+                    crate::i18n::text("settings-reconnect"),
+                    false,
+                    false,
+                )
+                .child(crate::i18n::text("settings-reconnect"))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.configure_mobile(true, open_router, remote.clone(), cx)
+                }))
+                .into_any_element(),
             );
         }
         controls.push(self.toggle(
             "mobile-enabled",
-            "Accept connections",
+            crate::i18n::text("settings-accept-connections"),
             status.enabled,
             false,
             cx,
@@ -501,7 +526,7 @@ impl SettingsView {
             .child(self.row(
                 None,
                 true,
-                "Accept connections",
+                crate::i18n::text("settings-accept-connections"),
                 Some(description),
                 controls,
             ))
@@ -520,7 +545,9 @@ impl SettingsView {
                 .text_center()
                 .text_size(px(13.))
                 .text_color(content(0.45))
-                .child("Pair your iPhone or Android phone to get started.")
+                .child(crate::i18n::text(
+                    "settings-pair-your-iphone-or-android-phone",
+                ))
                 .into_any_element();
         }
         let last = status.devices.len() == 1;
@@ -563,13 +590,16 @@ impl SettingsView {
                                             .mt_1()
                                             .text_size(px(12.))
                                             .text_color(content(0.5))
-                                            .child("Paired"),
+                                            .child(crate::i18n::text("settings-paired")),
                                     ),
                             )
                             .child(
                                 icon_action(
                                     SharedString::from(format!("mobile-remove-{id}")),
-                                    format!("Remove {name}"),
+                                    crate::i18n::format(
+                                        "settings-remove-4",
+                                        &[("name", (name).to_string())],
+                                    ),
                                     "trash",
                                     32.,
                                     16.,
@@ -591,7 +621,10 @@ impl SettingsView {
                             div()
                                 .id(SharedString::from(format!("mobile-confirm-{id}")))
                                 .role(Role::Group)
-                                .aria_label(format!("Confirm removing {name}"))
+                                .aria_label(crate::i18n::format(
+                                    "settings-confirm-removing",
+                                    &[("name", name.to_string())],
+                                ))
                                 .flex()
                                 .flex_col()
                                 .gap_3()
@@ -608,11 +641,14 @@ impl SettingsView {
                                         .text_size(px(13.))
                                         .font_weight(FontWeight::MEDIUM)
                                         .text_color(content(1.))
-                                        .child(format!("Remove {name}?")),
+                                        .child(crate::i18n::format(
+                                            "settings-remove-2",
+                                            &[("name", name.to_string())],
+                                        )),
                                 )
-                                .child(
-                                    "It disconnects right away and can’t reach this desktop again until you pair it with a new code.",
-                                )
+                                .child(crate::i18n::text(
+                                    "settings-it-disconnects-right-away-and-can",
+                                ))
                                 .child(
                                     div()
                                         .flex()
@@ -620,39 +656,47 @@ impl SettingsView {
                                         .child(
                                             secondary_button(
                                                 "mobile-confirm-remove",
-                                                "Remove phone",
+                                                crate::i18n::text("settings-remove-phone"),
                                                 true,
                                                 false,
                                             )
-                                            .child("Remove phone")
-                                            .on_click(cx.listener(move |this, _, _, cx| {
-                                                cx.emit(SettingsEvent::MobileRevoke(id.clone()));
-                                                if last && !showing {
-                                                    cx.emit(SettingsEvent::MobileConfigure {
-                                                        enabled: false,
-                                                        open_router,
-                                                        remote_address: remote.clone(),
-                                                    });
-                                                }
-                                                this.mobile.removing = None;
-                                                this.mobile.notice =
-                                                    Some(format!("{name} was removed."));
-                                                cx.notify();
-                                            })),
+                                            .child(crate::i18n::text("settings-remove-phone"))
+                                            .on_click(
+                                                cx.listener(move |this, _, _, cx| {
+                                                    cx.emit(SettingsEvent::MobileRevoke(
+                                                        id.clone(),
+                                                    ));
+                                                    if last && !showing {
+                                                        cx.emit(SettingsEvent::MobileConfigure {
+                                                            enabled: false,
+                                                            open_router,
+                                                            remote_address: remote.clone(),
+                                                        });
+                                                    }
+                                                    this.mobile.removing = None;
+                                                    this.mobile.notice = Some(crate::i18n::format(
+                                                        "settings-was-removed",
+                                                        &[("name", (name).to_string())],
+                                                    ));
+                                                    cx.notify();
+                                                }),
+                                            ),
                                         )
                                         .child(
                                             secondary_button(
                                                 "mobile-cancel-remove",
-                                                "Cancel",
+                                                crate::i18n::text("settings-cancel"),
                                                 false,
                                                 false,
                                             )
                                             .border_0()
-                                            .child("Cancel")
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.mobile.removing = None;
-                                                cx.notify();
-                                            })),
+                                            .child(crate::i18n::text("settings-cancel"))
+                                            .on_click(
+                                                cx.listener(|this, _, _, cx| {
+                                                    this.mobile.removing = None;
+                                                    cx.notify();
+                                                }),
+                                            ),
                                         ),
                                 ),
                         )
@@ -670,16 +714,16 @@ impl SettingsView {
                 .relative()
                 .child(self.reveal_probe("mobile-remote"))
                 .role(Role::Button)
-                .aria_label("Connect away from home")
+                .aria_label(crate::i18n::text("settings-connect-away-from-home"))
                 .aria_expanded(open)
                 .mt_8()
                 .text_size(px(12.))
                 .text_color(content(0.45))
                 .cursor_pointer()
                 .child(if open {
-                    "▾ Connect away from home"
+                    crate::i18n::text("settings-connect-away-from-home-2")
                 } else {
-                    "▸ Connect away from home"
+                    crate::i18n::text("settings-connect-away-from-home-3")
                 })
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.mobile.away = !this.mobile.away;
@@ -713,7 +757,7 @@ impl SettingsView {
                 .flex_col()
                 .gap_3()
                 .child(paragraph(
-                    "On the same Wi-Fi, phones connect without any setup. To reach this desktop from anywhere else, it needs a public address. Keep the desktop awake.".into(),
+                    crate::i18n::text("settings-on-the-same-wi-fi-phones-connect-without").into(),
                 ))
                 .child(
                     div()
@@ -724,7 +768,7 @@ impl SettingsView {
                         .text_color(content(0.7))
                         .child(self.toggle(
                             "mobile-open-router",
-                            "Open the router port automatically",
+                            crate::i18n::text("settings-open-the-router-port-automatically"),
                             status.open_router,
                             false,
                             cx,
@@ -732,7 +776,9 @@ impl SettingsView {
                                 this.configure_mobile(enabled, on, remote.clone(), cx)
                             },
                         ))
-                        .child("Open the router port automatically"),
+                        .child(crate::i18n::text(
+                            "settings-open-the-router-port-automatically",
+                        )),
                 )
                 .when(!status.router_status.is_empty(), |d| {
                     d.child(paragraph(status.router_status.clone().into()))
@@ -744,7 +790,7 @@ impl SettingsView {
                         .gap(px(6.))
                         .text_size(px(12.))
                         .text_color(content(0.65))
-                        .child("Remote address")
+                        .child(crate::i18n::text("settings-remote-address"))
                         .child(
                             div()
                                 .flex()
@@ -766,11 +812,11 @@ impl SettingsView {
                                 .child(
                                     secondary_button(
                                         "mobile-save-remote",
-                                        "Save",
+                                        crate::i18n::text("settings-save"),
                                         false,
                                         !unsaved,
                                     )
-                                    .child("Save")
+                                    .child(crate::i18n::text("settings-save"))
                                     .when(unsaved, |d| {
                                         d.on_click(cx.listener(|this, _, _, cx| {
                                             this.save_remote_address(cx)
@@ -780,7 +826,10 @@ impl SettingsView {
                         ),
                 )
                 .child(paragraph(
-                    "Automatic mapping needs a public IP. Otherwise, forward UDP port 38416 to this desktop or use a VPN address. Set the address before making a pairing code.".into(),
+                    crate::i18n::text(
+                        "settings-automatic-mapping-needs-a-public-ip-otherwise-forward",
+                    )
+                    .into(),
                 ))
                 .child(
                     div()
@@ -790,14 +839,24 @@ impl SettingsView {
                         .text_size(px(12.))
                         .line_height(px(19.5))
                         .text_color(content(0.45))
-                        .child(format!("This desktop: {}", status.name))
+                        .child(crate::i18n::format(
+                            "settings-this-desktop",
+                            &[("value", status.name.to_string())],
+                        ))
                         .when_some(status.fingerprint.as_deref(), |d, fingerprint| {
-                            d.child(format!("Fingerprint: {}", short_fingerprint(fingerprint)))
+                            d.child(crate::i18n::format(
+                                "settings-fingerprint",
+                                &[("value", short_fingerprint(fingerprint).to_string())],
+                            ))
                         })
                         .child(if addresses.is_empty() {
-                            "Not reachable on any network yet.".to_owned()
+                            crate::i18n::text("settings-not-reachable-on-any-network-yet")
+                                .to_owned()
                         } else {
-                            format!("Reachable at {addresses}")
+                            crate::i18n::format(
+                                "settings-reachable-at",
+                                &[("addresses", (addresses).to_string())],
+                            )
                         }),
                 )
                 .into_any_element(),
@@ -829,16 +888,22 @@ impl SettingsView {
         let max_height = (viewport.height.as_f32() - 32.).max(0.);
         // Keep the QR square on narrow windows, without growing past size-96.
         let qr_side = QR_SIDE.min((width - 50.).max(0.));
-        let lead = "Open MonoCode on your phone, tap ";
-        let action = "Connect to desktop";
-        let instructions = format!("{lead}{action}, and scan the code.");
+        let lead = crate::i18n::text("settings-open-monocode-on-your-phone-tap");
+        let action = crate::i18n::text("settings-connect-to-desktop");
+        let instructions = crate::i18n::format(
+            "settings-and-scan-the-code",
+            &[
+                ("lead", (lead).to_string()),
+                ("action", (action).to_string()),
+            ],
+        );
         let bold = lead.len()..lead.len() + action.len();
         let url = invite.url.clone();
         let code = div()
             .id("mobile-pair-code")
             .debug_selector(|| "mobile-pair-code".into())
             .role(Role::Image)
-            .aria_label("Scan this one-use pairing code in the MonoCode mobile app")
+            .aria_label(crate::i18n::text("settings-scan-this-one-use-pairing-code"))
             .relative()
             .size(px(qr_side))
             .flex_shrink_0()
@@ -867,7 +932,7 @@ impl SettingsView {
                                 .id("mobile-new-code-expired")
                                 .debug_selector(|| "mobile-new-code-expired".into())
                                 .role(Role::Button)
-                                .aria_label("New code")
+                                .aria_label(crate::i18n::text("settings-new-code"))
                                 .rounded_lg()
                                 .bg(rgb(0x000000))
                                 .px_3()
@@ -875,7 +940,7 @@ impl SettingsView {
                                 .text_size(px(13.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(rgb(0xffffff))
-                                .child("New code")
+                                .child(crate::i18n::text("settings-new-code"))
                                 .map(|d| {
                                     if busy {
                                         d.opacity(0.4)
@@ -909,10 +974,10 @@ impl SettingsView {
             .child(
                 pairing_icon_action(
                     "mobile-copy-link",
-                    if self.mobile.copied {
-                        "Copied pairing link"
+                    &if self.mobile.copied {
+                        crate::i18n::text("settings-copied-pairing-link")
                     } else {
-                        "Copy pairing link"
+                        crate::i18n::text("settings-copy-pairing-link")
                     },
                     if self.mobile.copied {
                         "check"
@@ -929,7 +994,7 @@ impl SettingsView {
             .child(
                 pairing_icon_action(
                     "mobile-new-code",
-                    "Make a new code",
+                    &crate::i18n::text("settings-make-a-new-code"),
                     "refresh-cw",
                     false,
                     busy,
@@ -950,7 +1015,9 @@ impl SettingsView {
                     .line_height(px(33.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(content(1.))
-                    .child("Connect a phone to this desktop"),
+                    .child(crate::i18n::text(
+                        "settings-connect-a-phone-to-this-desktop",
+                    )),
             )
             .child(
                 div()
@@ -986,7 +1053,7 @@ impl SettingsView {
                     .text_size(px(12.))
                     .line_height(px(19.5))
                     .text_color(content(0.45))
-                    .child("Can’t scan? Copy the link and open it on your phone. Each code works once."),
+                    .child(crate::i18n::text("settings-can-t-scan-copy-the-link")),
             );
         Some(
             div()
@@ -1011,7 +1078,7 @@ impl SettingsView {
                         .id("mobile-pair-dialog")
                         .debug_selector(|| "mobile-pair-dialog".into())
                         .role(Role::Dialog)
-                        .aria_label("Pair a phone")
+                        .aria_label(crate::i18n::text("settings-pair-a-phone"))
                         .relative()
                         .w(px(width))
                         .max_h(px(max_height))
@@ -1046,7 +1113,7 @@ impl SettingsView {
 /// while hovered; the remaining icons brighten with the button.
 fn pairing_icon_action(
     id: &'static str,
-    label: &'static str,
+    label: &str,
     path: &'static str,
     copied: bool,
     disabled: bool,
@@ -1055,7 +1122,7 @@ fn pairing_icon_action(
         .id(id)
         .debug_selector(move || id.into())
         .role(Role::Button)
-        .aria_label(label)
+        .aria_label(label.to_owned())
         .group("pairing-icon-action")
         .size(px(28.))
         .flex_shrink_0()

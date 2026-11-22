@@ -28,8 +28,8 @@ impl Picker {
     fn new(folders: Vec<Folder>, cx: &mut Context<Self>) -> Self {
         let input = cx.new(|cx| {
             input::Input::field(
-                "Session folder",
-                "Choose or name a session folder…",
+                crate::i18n::text("shell-session-folder"),
+                crate::i18n::text("shell-choose-or-name-a-session-folder"),
                 content(0.35),
                 cx,
             )
@@ -62,7 +62,11 @@ impl Picker {
             })
             .collect();
         if !name.is_empty() && !self.folders.iter().any(|f| f.name.to_lowercase() == query) {
-            rows.push((Target::New(name.into()), format!("Create “{name}”"), None));
+            rows.push((
+                Target::New(name.into()),
+                crate::i18n::format("shell-create", &[("name", (name).to_string())]),
+                None,
+            ));
         }
         rows
     }
@@ -87,7 +91,7 @@ impl Render for Picker {
             .id("session-folder-picker")
             .debug_selector(|| "session-folder-picker".into())
             .role(Role::Dialog)
-            .aria_label("Choose a session folder")
+            .aria_label(crate::i18n::text("shell-choose-a-session-folder"))
             .key_context("SessionFolderPicker")
             .capture_action(cx.listener(|_, _: &Dismiss, _, cx| {
                 cx.emit(Target::Dismiss);
@@ -123,15 +127,19 @@ impl Render for Picker {
                     .child(icon("folder", 14.).text_color(content(0.5)))
                     .child(div().min_w_0().flex_1().child(self.input.clone()))
                     .child(
-                        icon_button("cancel-session-folder", "Cancel", "x")
-                            .on_click(cx.listener(|_, _, _, cx| cx.emit(Target::Dismiss))),
+                        icon_button(
+                            "cancel-session-folder",
+                            crate::i18n::text("shell-cancel"),
+                            "x",
+                        )
+                        .on_click(cx.listener(|_, _, _, cx| cx.emit(Target::Dismiss))),
                     ),
             )
             .child(
                 div()
                     .id("session-folders")
                     .role(Role::ListBox)
-                    .aria_label("Session folders")
+                    .aria_label(crate::i18n::text("shell-session-folders"))
                     .max_h(px(240.))
                     .overflow_y_scroll()
                     .track_scroll(&self.scroll)
@@ -143,7 +151,7 @@ impl Render for Picker {
                                 .py_2()
                                 .text_size(px(12.))
                                 .text_color(content(0.5))
-                                .child("Type a name to create the first folder"),
+                                .child(crate::i18n::text("shell-type-a-name-to-create-the")),
                         )
                     })
                     .children(rows.into_iter().enumerate().map(|(ix, (_, label, count))| {
@@ -171,7 +179,7 @@ impl Render for Picker {
                                     div()
                                         .text_size(px(11.))
                                         .text_color(content(0.4))
-                                        .child(n.to_string()),
+                                        .child(crate::system_format::unsigned(n as u64)),
                                 )
                             })
                             .on_hover(cx.listener(move |this, hovered, _, cx| {
@@ -242,9 +250,11 @@ impl Shell {
                     }
                     let groups = groups.clone();
                     let project = project.clone();
-                    this.store_write("save the session folder", cx, move |store| {
-                        store.save_groups(&project, &groups)
-                    });
+                    this.store_write(
+                        crate::i18n::text("shell-action-save-session-folder"),
+                        cx,
+                        move |store| store.save_groups(&project, &groups),
+                    );
                     this.sessions[&id].update(cx, |session, cx| session.folder_chosen(cx));
                     this.invalidate_chrome(cx);
                 }

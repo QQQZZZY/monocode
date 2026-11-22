@@ -60,7 +60,10 @@ impl Render for InstalledUpdateNotice {
         let Some(version) = self.version.clone() else {
             return div().into_any_element();
         };
-        let label = format!("Updated to {version}");
+        let label = crate::i18n::format(
+            "notifications-updated-to-2",
+            &[("version", (version).to_string())],
+        );
         div()
             .id("installed-update-notice")
             .role(Role::Status)
@@ -114,7 +117,7 @@ impl Render for InstalledUpdateNotice {
                                     .mt(px(2.))
                                     .text_size(px(11.))
                                     .text_color(content(0.5))
-                                    .child("What's new"),
+                                    .child(crate::i18n::text("notifications-what-s-new")),
                             ),
                     ),
             )
@@ -122,7 +125,9 @@ impl Render for InstalledUpdateNotice {
                 div()
                     .id("dismiss-installed-update")
                     .role(Role::Button)
-                    .aria_label("Dismiss update notification")
+                    .aria_label(crate::i18n::text(
+                        "notifications-dismiss-update-notification",
+                    ))
                     .debug_selector(|| "dismiss-installed-update".into())
                     // The X sits over the clickable card; keep its click from opening What's new.
                     .block_mouse_except_scroll()
@@ -189,23 +194,11 @@ fn release_notes(version: &str) -> Option<ReleaseNotes> {
     })
 }
 fn format_date(iso: &str) -> String {
-    let months = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
-    let month = iso[5..7]
-        .parse::<usize>()
-        .ok()
-        .and_then(|n| n.checked_sub(1))
-        .and_then(|n| months.get(n));
-    match month {
-        Some(month) => format!(
-            "{} {month} {}",
-            iso[8..10].parse::<u32>().unwrap_or(0),
-            &iso[..4]
-        ),
-        None => iso.into(),
-    }
+    chrono::NaiveDate::parse_from_str(iso, "%Y-%m-%d")
+        .map(|date| crate::system_format::day(date, "yMMMd", "%-d %b %Y"))
+        .unwrap_or_else(|_| iso.to_owned())
 }
+
 pub(crate) enum WhatsNewEvent {
     Close,
 }
@@ -248,13 +241,20 @@ impl WhatsNew {
 
 impl Render for WhatsNew {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let description = format!(
-            "MonoCode {}{}",
-            self.version,
-            self.date
-                .as_ref()
-                .map(|d| format!(" · {d}"))
-                .unwrap_or_default()
+        let description = crate::i18n::format(
+            "notifications-monocode",
+            &[
+                ("value", (self.version).to_string()),
+                (
+                    "value2",
+                    (self
+                        .date
+                        .as_ref()
+                        .map(|d| format!(" · {d}"))
+                        .unwrap_or_default())
+                    .to_string(),
+                ),
+            ],
         );
         let mut body = div()
             .id("whats-new-scroll")
@@ -264,12 +264,9 @@ impl Render for WhatsNew {
             .px(px(20.))
             .py(px(16.));
         if self.rows.is_empty() {
-            body = body.child(
-                div()
-                    .text_size(px(13.))
-                    .text_color(content(0.6))
-                    .child("Release notes for this version are not available in this build."),
-            );
+            body = body.child(div().text_size(px(13.)).text_color(content(0.6)).child(
+                crate::i18n::text("notifications-release-notes-for-this-version-are"),
+            ));
         }
         for (ix, row) in self.rows.iter().enumerate() {
             body = body.child(div().pt(px(if ix == 0 { 0. } else { row.gap })).child(
@@ -285,7 +282,7 @@ impl Render for WhatsNew {
         div()
             .id("whats-new-dialog")
             .role(Role::Dialog)
-            .aria_label("What's new")
+            .aria_label(crate::i18n::text("notifications-what-s-new"))
             .relative()
             .w(px(512.))
             .max_w_full()
@@ -316,7 +313,7 @@ impl Render for WhatsNew {
                                 div()
                                     .text_size(px(16.))
                                     .font_weight(FontWeight::SEMIBOLD)
-                                    .child("What's new"),
+                                    .child(crate::i18n::text("notifications-what-s-new")),
                             )
                             .child(
                                 div()
@@ -330,7 +327,7 @@ impl Render for WhatsNew {
                         div()
                             .id("close-whats-new")
                             .role(Role::Button)
-                            .aria_label("Close")
+                            .aria_label(crate::i18n::text("notifications-close"))
                             .cursor_pointer()
                             .size(px(24.))
                             .flex()

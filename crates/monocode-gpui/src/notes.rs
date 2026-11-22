@@ -61,10 +61,22 @@ impl Focusable for Notes {
 
 impl Notes {
     pub(crate) fn new(store: Database, cx: &mut Context<Self>) -> Self {
-        let query = cx.new(|cx| Input::field("Filter notes", "Filter notes", content(0.4), cx));
+        let query = cx.new(|cx| {
+            Input::field(
+                crate::i18n::text("notes-filter-notes"),
+                crate::i18n::text("notes-filter-notes"),
+                content(0.4),
+                cx,
+            )
+        });
         query.update(cx, |input, _| input.set_font_size(12.));
         let title = cx.new(|cx| {
-            let mut input = Input::field("Note title", "Untitled", content(0.35), cx);
+            let mut input = Input::field(
+                crate::i18n::text("notes-note-title"),
+                crate::i18n::text("notes-untitled"),
+                content(0.35),
+                cx,
+            );
             input.set_font_size(20.);
             input.set_max_chars(notes::MAX_TITLE);
             input
@@ -77,13 +89,24 @@ impl Notes {
             input
         });
         let tag = cx.new(|cx| {
-            let mut input = Input::field("Add note tag", "Add tag…", content(0.35), cx);
+            let mut input = Input::field(
+                crate::i18n::text("notes-add-note-tag"),
+                crate::i18n::text("notes-add-tag"),
+                content(0.35),
+                cx,
+            );
             input.set_font_size(11.);
             input.set_max_chars(notes::MAX_TAG_LENGTH + 1);
             input
         });
-        let project_query =
-            cx.new(|cx| Input::field("Find project", "Find project…", content(0.4), cx));
+        let project_query = cx.new(|cx| {
+            Input::field(
+                crate::i18n::text("notes-find-project"),
+                crate::i18n::text("notes-find-project-2"),
+                content(0.4),
+                cx,
+            )
+        });
         let subscriptions = vec![
             cx.subscribe(&query, |_, _, _: &input::Changed, cx| cx.notify()),
             cx.subscribe(&title, |this, _, _: &input::Changed, cx| this.edited(cx)),
@@ -92,7 +115,7 @@ impl Notes {
                 this.edited(cx);
             }),
             cx.subscribe(&body, |this, _, event: &input::Rejected, cx| {
-                this.error = Some(event.0.into());
+                this.error = Some(crate::runtime_text::editor_rejection(event.0));
                 cx.notify();
             }),
             cx.subscribe(&tag, |this, _, _: &input::Changed, cx| {
@@ -308,7 +331,12 @@ impl Notes {
                 self.dirty = false;
                 self.error = None;
             }
-            Err(error) => self.error = Some(format!("Could not save note: {error}")),
+            Err(error) => {
+                self.error = Some(crate::i18n::format(
+                    "notes-could-not-save-note",
+                    &[("error", (error).to_string())],
+                ))
+            }
         }
         cx.notify();
     }
@@ -486,6 +514,8 @@ impl Notes {
         let store = self.store.clone();
         self.image_busy = true;
         self.image_drag = false;
+        // Resolve UI copy on this thread; the worker must not pick a language.
+        let drop_image = crate::i18n::text("notes-drop-a-png-jpg-gif-webp-or-svg-image");
         let work = cx.background_executor().spawn(async move {
             let store = locked(&store)?;
             let mut images = Vec::new();
@@ -497,9 +527,7 @@ impl Notes {
                 }
             }
             if images.is_empty() {
-                return Err(
-                    failure.unwrap_or_else(|| "Drop a PNG, JPG, GIF, WebP, or SVG image.".into())
-                );
+                return Err(failure.unwrap_or(drop_image));
             }
             Ok((id, images))
         });
@@ -622,13 +650,13 @@ impl Notes {
                     div()
                         .id("note-no-project")
                         .role(Role::Button)
-                        .aria_label("No project")
+                        .aria_label(crate::i18n::text("notes-no-project"))
                         .px_2()
                         .py_1p5()
                         .rounded_md()
                         .text_size(px(12.))
                         .hover(|style| style.bg(content(0.08)))
-                        .child("No project")
+                        .child(crate::i18n::text("notes-no-project"))
                         .on_click(cx.listener(|this, _, _, cx| this.move_project("~".into(), cx))),
                 )
                 .child(
@@ -672,7 +700,7 @@ impl Notes {
             .relative()
             .id("note-move-project")
             .role(Role::Button)
-            .aria_label("Move note to project")
+            .aria_label(crate::i18n::text("notes-move-note-to-project"))
             .rounded_md()
             .px_1p5()
             .py_1()
@@ -689,7 +717,10 @@ impl Notes {
                             .map(|path| self.project_mark(path, 12.))
                             .unwrap_or_else(|| icon("folder", 12.).into_any_element()),
                     )
-                    .child(note.project_name().unwrap_or_else(|| "No project".into()))
+                    .child(
+                        note.project_name()
+                            .unwrap_or_else(|| crate::i18n::text("notes-no-project")),
+                    )
                     .child(icon("chevron-down", 11.)),
             )
             .on_click(cx.listener(|this, _, window, cx| {
@@ -707,7 +738,12 @@ impl Notes {
             .items_center()
             .gap_1p5()
             .text_size(px(11.))
-            .child(div().mr(px(2.)).text_color(content(0.45)).child("Tags"))
+            .child(
+                div()
+                    .mr(px(2.))
+                    .text_color(content(0.45))
+                    .child(crate::i18n::text("notes-tags")),
+            )
             .children(note.tags.iter().enumerate().map(|(ix, tag)| {
                 let tag = tag.clone();
                 div()
@@ -721,12 +757,18 @@ impl Notes {
                     .pl_2()
                     .pr_1()
                     .text_color(content(0.7))
-                    .child(div().truncate().child(format!("#{tag}")))
+                    .child(div().truncate().child(crate::i18n::format(
+                        "notes-tag",
+                        &[("tag", tag.to_string())],
+                    )))
                     .child(
                         div()
                             .id(("remove-note-tag", ix))
                             .role(Role::Button)
-                            .aria_label(format!("Remove #{tag}"))
+                            .aria_label(crate::i18n::format(
+                                "notes-remove",
+                                &[("tag", tag.to_string())],
+                            ))
                             .size(px(16.))
                             .flex()
                             .items_center()
@@ -754,7 +796,7 @@ impl Notes {
                 div()
                     .id("note-add-to-chat")
                     .role(Role::Button)
-                    .aria_label("Add to chat")
+                    .aria_label(crate::i18n::text("notes-add-to-chat"))
                     .h(px(28.))
                     .px_3()
                     .rounded_md()
@@ -782,13 +824,13 @@ impl Notes {
                             }
                         }
                     }))
-                    .child("Add to chat"),
+                    .child(crate::i18n::text("notes-add-to-chat")),
             )
             .child(
                 div()
                     .id("delete-note")
                     .role(Role::Button)
-                    .aria_label("Delete note")
+                    .aria_label(crate::i18n::text("notes-delete-note"))
                     .h(px(28.))
                     .px_3()
                     .rounded_md()
@@ -801,7 +843,7 @@ impl Notes {
                     .cursor_pointer()
                     .hover(|style| style.bg(content(0.08)))
                     .child(icon("trash", 14.).text_color(danger))
-                    .child("Delete")
+                    .child(crate::i18n::text("notes-delete"))
                     .on_click(cx.listener(|this, _, _, cx| this.delete(cx))),
             )
             .when_some(source, |d, source| {
@@ -809,14 +851,14 @@ impl Notes {
                     div()
                         .id("note-source-session")
                         .role(Role::Button)
-                        .aria_label("Open source conversation")
+                        .aria_label(crate::i18n::text("notes-open-source-conversation"))
                         .rounded_md()
                         .px_2()
                         .py_1()
                         .text_size(px(12.))
                         .text_color(content(0.5))
                         .hover(|style| style.bg(content(0.08)))
-                        .child("Source conversation")
+                        .child(crate::i18n::text("notes-source-conversation"))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.flush(cx);
                             if this.dirty {
@@ -828,21 +870,28 @@ impl Notes {
                             {
                                 cx.emit(Event::OpenSource(id));
                             } else {
-                                this.error = Some("Source conversation no longer exists.".into());
+                                this.error = Some(crate::i18n::text(
+                                    "notes-source-conversation-no-longer-exists",
+                                ));
                                 cx.notify();
                             }
                         })),
                 )
             })
             .child(
-                icon_button("copy-note", "Copy note", "response-copy").on_click(move |_, _, cx| {
+                icon_button(
+                    "copy-note",
+                    crate::i18n::text("notes-copy-note"),
+                    "response-copy",
+                )
+                .on_click(move |_, _, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(body.clone()))
                 }),
             );
         let tabs = div()
             .id("note-sections")
             .role(Role::TabList)
-            .aria_label("Note sections")
+            .aria_label(crate::i18n::text("notes-note-sections"))
             .h(px(36.))
             .flex()
             .items_stretch()
@@ -850,7 +899,11 @@ impl Notes {
             .border_b_1()
             .border_color(content(0.07))
             .children(
-                [(false, "Preview"), (true, "Source")].map(|(source, label)| {
+                [
+                    (false, crate::i18n::text("notes-preview")),
+                    (true, crate::i18n::text("notes-source")),
+                ]
+                .map(|(source, label)| {
                     div()
                         .id(if source {
                             "note-source"
@@ -858,7 +911,7 @@ impl Notes {
                             "note-preview"
                         })
                         .role(Role::Tab)
-                        .aria_label(label)
+                        .aria_label(label.to_owned())
                         .aria_selected(self.source == source)
                         .flex()
                         .items_center()
@@ -939,9 +992,9 @@ impl Notes {
                         .text_size(px(12.))
                         .text_color(content(0.7))
                         .child(if self.image_busy {
-                            "Adding images…"
+                            crate::i18n::text("notes-adding-images")
                         } else {
-                            "Drop images here"
+                            crate::i18n::text("notes-drop-images-here")
                         }),
                 )
             });
@@ -974,7 +1027,7 @@ impl Notes {
                                     .text_size(px(12.))
                                     .text_color(content(0.5))
                                     .child(icon("note", 14.))
-                                    .child("Note")
+                                    .child(crate::i18n::text("notes-note"))
                                     .child(div().min_w_0().truncate().child(note.slug.clone()))
                                     .child(project),
                             )
@@ -983,12 +1036,12 @@ impl Notes {
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(self.title.clone()),
                             )
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(content(0.5))
-                                    .child(format!("Updated {}", relative_time(note.updated_at))),
-                            )
+                            .child(div().text_size(px(12.)).text_color(content(0.5)).child(
+                                crate::i18n::format(
+                                    "notes-updated",
+                                    &[("value", relative_time(note.updated_at).to_string())],
+                                ),
+                            ))
                             .child(tags)
                             .child(actions),
                     )
@@ -1024,29 +1077,180 @@ impl gpui::Render for Notes {
             .filter(|note| note.matches(&query))
             .cloned()
             .collect();
-        let list = div().relative().w(px(self.list_width)).h_full().flex_shrink_0().min_h_0().flex().flex_col().border_r_1().border_color(content(0.07))
-            .child(div().h(px(36.)).flex_shrink_0().px_2().flex().items_center().gap_1().border_b_1().border_color(content(0.07)).child(icon("search", 12.))
-                .child(div().flex_1().min_w_0().child(self.query.clone()))
-                .child(icon_button("create-note", "New note", "plus").on_click(cx.listener(|this, _, window, cx| this.create(window, cx)))))
-            .child(div().id("notes-list").role(Role::ListBox).aria_label("Saved notes").flex_1().min_h_0().overflow_y_scroll().p(px(6.))
-                .when(visible.is_empty(), |d| d.child(div().px_1p5().py_2().text_size(px(12.)).text_color(content(0.5)).child(if self.loading { "Loading notes…" } else if !query.trim().is_empty() { "No matching notes" } else { "No notes yet. Save a turn from the transcript, or create one here." })))
-                .children(visible.iter().enumerate().map(|(ix, note)| {
-                    let id = note.id.clone();
-                    let active = self.selected.as_ref() == Some(&id);
-                    let preview = note.preview();
-                    div().id(("saved-note", ix)).role(Role::Button).aria_label(note.title.clone()).aria_selected(active).mb(px(2.)).px(px(10.)).py_2().rounded_md().text_color(content(0.8)).hover(|style| style.bg(content(0.05))).when(active, |d| d.bg(content(0.1)))
-                        .child(div().flex().items_center().gap_2().text_size(px(11.)).text_color(content(0.45))
-                            .child(div().flex_1().truncate().when_some(note.project_name(), |d, name| d.child(div().flex().items_center().gap_1p5().child(self.project_mark(note.source_cwd.as_deref().unwrap_or(""), 12.)).child(name))))
-                            .child(relative_time(note.updated_at)))
-                        .child(div().mt_1().truncate().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(content(1.)).child(note.title.clone()))
-                        .when(!preview.is_empty(), |d| d.child(div().mt_1().truncate().text_size(px(12.)).text_color(content(0.45)).child(preview)))
-                        .when(!note.tags.is_empty(), |d| d.child(div().mt_1p5().flex().items_center().gap_1().overflow_hidden()
-                            .children(note.tags.iter().take(3).map(|tag| div().max_w(px(96.)).truncate().rounded_sm().bg(content(0.08)).px_1p5().py(px(2.)).text_size(px(10.)).text_color(content(0.55)).child(format!("#{tag}"))))
-                            .when(note.tags.len() > 3, |d| d.child(div().text_size(px(10.)).text_color(content(0.4)).child(format!("+{}", note.tags.len() - 3))))))
-                        .on_click(cx.listener(move |this, _, _, cx| this.select(id.clone(), cx)))
-                })))
-            .child(div().id("resize-notes-list").role(Role::Splitter).aria_label("Resize notes list").absolute().top_0().bottom_0().right(px(-3.)).w(px(6.)).cursor(CursorStyle::ResizeLeftRight).hover(|style| style.bg(content(0.1)))
-                .on_mouse_down(MouseButton::Left, cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| { if event.click_count == 2 { this.list_width = 280.; } else { this.resize = Some((event.position.x.as_f32(), this.list_width)); } cx.notify(); })));
+        let list = div()
+            .relative()
+            .w(px(self.list_width))
+            .h_full()
+            .flex_shrink_0()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .border_r_1()
+            .border_color(content(0.07))
+            .child(
+                div()
+                    .h(px(36.))
+                    .flex_shrink_0()
+                    .px_2()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .border_b_1()
+                    .border_color(content(0.07))
+                    .child(icon("search", 12.))
+                    .child(div().flex_1().min_w_0().child(self.query.clone()))
+                    .child(
+                        icon_button("create-note", crate::i18n::text("notes-new-note"), "plus")
+                            .on_click(cx.listener(|this, _, window, cx| this.create(window, cx))),
+                    ),
+            )
+            .child(
+                div()
+                    .id("notes-list")
+                    .role(Role::ListBox)
+                    .aria_label(crate::i18n::text("notes-saved-notes"))
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .p(px(6.))
+                    .when(visible.is_empty(), |d| {
+                        d.child(
+                            div()
+                                .px_1p5()
+                                .py_2()
+                                .text_size(px(12.))
+                                .text_color(content(0.5))
+                                .child(if self.loading {
+                                    crate::i18n::text("notes-loading-notes")
+                                } else if !query.trim().is_empty() {
+                                    crate::i18n::text("notes-no-matching-notes")
+                                } else {
+                                    crate::i18n::text("notes-no-notes-yet-save-a-turn")
+                                }),
+                        )
+                    })
+                    .children(visible.iter().enumerate().map(|(ix, note)| {
+                        let id = note.id.clone();
+                        let active = self.selected.as_ref() == Some(&id);
+                        let preview = note.preview();
+                        div()
+                            .id(("saved-note", ix))
+                            .role(Role::Button)
+                            .aria_label(note.title.clone())
+                            .aria_selected(active)
+                            .mb(px(2.))
+                            .px(px(10.))
+                            .py_2()
+                            .rounded_md()
+                            .text_color(content(0.8))
+                            .hover(|style| style.bg(content(0.05)))
+                            .when(active, |d| d.bg(content(0.1)))
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .text_size(px(11.))
+                                    .text_color(content(0.45))
+                                    .child(div().flex_1().truncate().when_some(
+                                        note.project_name(),
+                                        |d, name| {
+                                            d.child(
+                                                div()
+                                                    .flex()
+                                                    .items_center()
+                                                    .gap_1p5()
+                                                    .child(self.project_mark(
+                                                        note.source_cwd.as_deref().unwrap_or(""),
+                                                        12.,
+                                                    ))
+                                                    .child(name),
+                                            )
+                                        },
+                                    ))
+                                    .child(relative_time(note.updated_at)),
+                            )
+                            .child(
+                                div()
+                                    .mt_1()
+                                    .truncate()
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(content(1.))
+                                    .child(note.title.clone()),
+                            )
+                            .when(!preview.is_empty(), |d| {
+                                d.child(
+                                    div()
+                                        .mt_1()
+                                        .truncate()
+                                        .text_size(px(12.))
+                                        .text_color(content(0.45))
+                                        .child(preview),
+                                )
+                            })
+                            .when(!note.tags.is_empty(), |d| {
+                                d.child(
+                                    div()
+                                        .mt_1p5()
+                                        .flex()
+                                        .items_center()
+                                        .gap_1()
+                                        .overflow_hidden()
+                                        .children(note.tags.iter().take(3).map(|tag| {
+                                            div()
+                                                .max_w(px(96.))
+                                                .truncate()
+                                                .rounded_sm()
+                                                .bg(content(0.08))
+                                                .px_1p5()
+                                                .py(px(2.))
+                                                .text_size(px(10.))
+                                                .text_color(content(0.55))
+                                                .child(crate::i18n::format(
+                                                    "notes-tag",
+                                                    &[("tag", tag.to_string())],
+                                                ))
+                                        }))
+                                        .when(note.tags.len() > 3, |d| {
+                                            d.child(
+                                                div()
+                                                    .text_size(px(10.))
+                                                    .text_color(content(0.4))
+                                                    .child(format!("+{}", note.tags.len() - 3)),
+                                            )
+                                        }),
+                                )
+                            })
+                            .on_click(
+                                cx.listener(move |this, _, _, cx| this.select(id.clone(), cx)),
+                            )
+                    })),
+            )
+            .child(
+                div()
+                    .id("resize-notes-list")
+                    .role(Role::Splitter)
+                    .aria_label(crate::i18n::text("notes-resize-notes-list"))
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .right(px(-3.))
+                    .w(px(6.))
+                    .cursor(CursorStyle::ResizeLeftRight)
+                    .hover(|style| style.bg(content(0.1)))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, event: &gpui::MouseDownEvent, _, cx| {
+                            if event.click_count == 2 {
+                                this.list_width = 280.;
+                            } else {
+                                this.resize = Some((event.position.x.as_f32(), this.list_width));
+                            }
+                            cx.notify();
+                        }),
+                    ),
+            );
         let detail = if let Some(note) = self.draft(cx) {
             self.detail(note, cx)
         } else {
@@ -1060,13 +1264,13 @@ impl gpui::Render for Notes {
                 .text_size(px(13.))
                 .text_color(content(0.45))
                 .child(icon("note", 24.))
-                .child("Select a note")
+                .child(crate::i18n::text("notes-select-a-note"))
                 .into_any_element()
         };
         div()
             .id("notes-view")
             .role(Role::Region)
-            .aria_label("Notes")
+            .aria_label(crate::i18n::text("notes-notes"))
             .size_full()
             .flex()
             .flex_col()
@@ -1149,9 +1353,9 @@ impl gpui::Render for Notes {
                             div()
                                 .id("retry-note-save")
                                 .role(Role::Button)
-                                .aria_label("Retry saving note")
+                                .aria_label(crate::i18n::text("notes-retry-saving-note"))
                                 .underline()
-                                .child("Retry")
+                                .child(crate::i18n::text("notes-retry"))
                                 .on_click(cx.listener(|this, _, _, cx| this.flush(cx))),
                         ),
                 )
@@ -1166,12 +1370,67 @@ fn project_name(path: &str) -> String {
 fn relative_time(at: i64) -> String {
     let seconds = (monocode_core::time::now_ms() as i64 - at).max(0) / 1000;
     match seconds {
-        0..60 => "now".into(),
-        60..3600 => format!("{}m", seconds / 60),
-        3600..86400 => format!("{}h", seconds / 3600),
-        86400..604800 => format!("{}d", seconds / 86400),
+        0..60 => crate::i18n::text("notes-now"),
+        60..3600 => crate::i18n::format(
+            "notes-m",
+            &[(
+                "value",
+                crate::system_format::unsigned((seconds / 60) as u64),
+            )],
+        ),
+        3600..86400 => crate::i18n::format(
+            "notes-h",
+            &[(
+                "value",
+                crate::system_format::unsigned((seconds / 3600) as u64),
+            )],
+        ),
+        86400..604800 => crate::i18n::format(
+            "notes-d",
+            &[(
+                "value",
+                crate::system_format::unsigned((seconds / 86400) as u64),
+            )],
+        ),
         _ => chrono::DateTime::from_timestamp_millis(at)
-            .map(|date| date.format("%b %-d").to_string())
+            .map(|date| crate::system_format::date(date.timestamp_millis(), "MMMd", "%b %-d"))
             .unwrap_or_default(),
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn copy_review_chinese_note_age_and_date() {
+    crate::i18n::configure_thread_for_test(crate::i18n::Language::SimplifiedChinese);
+    let now = monocode_core::time::now_ms() as i64;
+    for (offset, unit) in [(120_000, "分钟"), (7_200_000, "小时"), (172_800_000, "天")] {
+        let age = relative_time(now - offset);
+        assert_eq!(
+            age,
+            format!("{}{unit}前", crate::system_format::unsigned(2))
+        );
+        assert_eq!(
+            crate::i18n::format("notes-updated", &[("value", age.clone())]),
+            format!("更新：{age}")
+        );
+    }
+    let at = now - 8 * 86_400_000;
+    let date = crate::system_format::date(at, "MMMd", "%b %-d");
+    assert_eq!(relative_time(at), date);
+    assert_eq!(
+        crate::i18n::format("notes-updated", &[("value", date.clone())]),
+        format!("更新：{date}")
+    );
+    crate::i18n::configure_thread_for_test(crate::i18n::Language::English);
+}
+
+#[cfg(all(test, target_os = "macos"))]
+#[test]
+fn note_timestamp_date_follows_local_day() {
+    for at in [1767310200000_i64, 1767313800000] {
+        assert_eq!(
+            relative_time(at),
+            crate::system_format::local_date_reference(at, "MMMd")
+        );
     }
 }

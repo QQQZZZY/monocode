@@ -8,6 +8,8 @@ use std::collections::HashMap;
 #[serde(default)]
 pub(crate) struct Preferences {
     // General
+    #[serde(deserialize_with = "deserialize_language")]
+    pub language: String,
     pub sounds: bool,
     pub notifications: bool,
     pub project_notifications: serde_json::Value,
@@ -73,6 +75,8 @@ pub(crate) struct Preferences {
     pub composer_mascot: bool,
     /// What fills an empty session: "ink", "games" or "none".
     pub empty_session: String,
+    /// Suggest likely next prompts as ghost text after an assistant turn.
+    pub prompt_suggestions: bool,
     // Providers
     pub show_remaining_usage: bool,
     pub mask_emails: bool,
@@ -97,6 +101,8 @@ pub(crate) struct Preferences {
     /// The model for session titles, branch names, commit messages and pull
     /// requests; `None` lets each use its own harness's quick model.
     pub background_model: Option<ModelChoice>,
+    /// Optional lightweight HTTP LLM endpoint for background text tasks.
+    pub text_generator: monocode_core::text_generator::TextGeneratorConfig,
     // Monos
     pub monos: bool,
     pub rail_monos_pinned: bool,
@@ -107,6 +113,13 @@ pub(crate) struct Preferences {
     pub keybindings: HashMap<String, Option<String>>,
 }
 
+fn deserialize_language<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<String, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(value.as_str().unwrap_or("system").to_owned())
+}
+
 pub(crate) const UI_SCALE_PERCENTS: [u32; 16] = [
     50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200,
 ];
@@ -114,6 +127,7 @@ pub(crate) const UI_SCALE_PERCENTS: [u32; 16] = [
 impl Default for Preferences {
     fn default() -> Self {
         Self {
+            language: "system".into(),
             sounds: true,
             notifications: false,
             project_notifications: serde_json::json!({}),
@@ -163,6 +177,7 @@ impl Default for Preferences {
             diff_view: "editor".into(),
             composer_mascot: true,
             empty_session: "ink".into(),
+            prompt_suggestions: true,
             show_remaining_usage: false,
             mask_emails: true,
             idle_agents: 3,
@@ -181,6 +196,7 @@ impl Default for Preferences {
             default_access: None,
             provider_efforts: HashMap::new(),
             background_model: None,
+            text_generator: monocode_core::text_generator::TextGeneratorConfig::default(),
             monos: true,
             rail_monos_pinned: false,
             mono_menu_bar_icon: true,
@@ -191,6 +207,14 @@ impl Default for Preferences {
 }
 
 impl Preferences {
+    pub(crate) fn language(&self) -> &str {
+        match self.language.as_str() {
+            "en" => "en",
+            "zh-CN" => "zh-CN",
+            _ => "system",
+        }
+    }
+
     /// "bottom", "panel" or "title".
     pub(crate) fn terminal_placement(&self) -> &str {
         match self.terminal_placement.as_str() {
@@ -279,6 +303,14 @@ impl Preferences {
         let choice = self.background_model.as_ref()?;
         Some((Kind::parse(&choice.provider)?, choice.model.clone()))
     }
+    /// Ready HTTP text generator config, if enabled and filled in.
+    pub(crate) fn http_text_generator(
+        &self,
+    ) -> Option<monocode_core::text_generator::TextGeneratorConfig> {
+        self.text_generator
+            .is_ready()
+            .then(|| self.text_generator.clone())
+    }
     pub(crate) fn hidden_for(&self, project: &str) -> Vec<String> {
         let mut hidden = self.hidden_providers.clone();
         if let Some(settings) = self.project_providers.get(project) {
@@ -293,6 +325,29 @@ impl Preferences {
 #[cfg(test)]
 mod decoration_tests {
     use super::Preferences;
+
+    #[test]
+    fn language_preference_defaults_and_round_trips() {
+        let mut prefs: Preferences = serde_json::from_str("{}").unwrap();
+        assert_eq!(prefs.language(), "system");
+        prefs.language = "en".into();
+        let saved = serde_json::to_string(&prefs).unwrap();
+        let restored: Preferences = serde_json::from_str(&saved).unwrap();
+        assert_eq!(restored.language(), "en");
+        prefs.language = "zh-CN".into();
+        let saved = serde_json::to_string(&prefs).unwrap();
+        let restored: Preferences = serde_json::from_str(&saved).unwrap();
+        assert_eq!(restored.language(), "zh-CN");
+        let unknown: Preferences = serde_json::from_str(r#"{"language":"unsupported"}"#).unwrap();
+        assert_eq!(unknown.language(), "system");
+        for invalid in ["null", "42", "{}"] {
+            let restored: Preferences =
+                serde_json::from_str(&format!(r#"{{"language":{invalid},"theme":"light"}}"#))
+                    .unwrap();
+            assert_eq!(restored.language(), "system");
+            assert_eq!(restored.theme, "light");
+        }
+    }
 
     #[test]
     fn decoration_requests_are_scoped_to_the_wayland_backend() {
@@ -325,5 +380,27 @@ mod decoration_tests {
         assert!(!restored.wayland_window_decorations);
         restored.restore_appearance();
         assert!(restored.wayland_window_decorations);
+    }
+
+    #[test]
+    fn prompt_suggestions_and_text_generator_default_and_round_trip() {
+        let mut prefs: Preferences = serde_json::from_str("{}").unwrap();
+        assert!(prefs.prompt_suggestions);
+        assert!(!prefs.text_generator.enabled);
+        assert!(prefs.http_text_generator().is_none());
+
+        prefs.prompt_suggestions = false;
+        prefs.text_generator = monocode_core::text_generator::TextGeneratorConfig {
+            enabled: true,
+            kind: monocode_core::text_generator::TextGeneratorKind::Anthropic,
+            base_url: "https://api.anthropic.com".into(),
+            api_key: "sk-ant".into(),
+            model: "claude-haiku-4-5".into(),
+        };
+        let saved = serde_json::to_string(&prefs).unwrap();
+        let restored: Preferences = serde_json::from_str(&saved).unwrap();
+        assert!(!restored.prompt_suggestions);
+        assert_eq!(restored.text_generator, prefs.text_generator);
+        assert!(restored.http_text_generator().is_some());
     }
 }

@@ -179,12 +179,39 @@ impl Inbox {
             })
             .unwrap_or_else(|_| (ViewState::default(), cwd.clone()));
         state.filters.hidden_projects = other_projects(&projects, &cwd);
-        let search = cx.new(|cx| Input::field("Filter inbox", "Filter inbox", content(0.4), cx));
+        let search = cx.new(|cx| {
+            Input::field(
+                crate::i18n::text("inbox-filter-inbox"),
+                crate::i18n::text("inbox-filter-inbox"),
+                content(0.4),
+                cx,
+            )
+        });
         let comment = cx.new(Input::inbox_comment);
-        let connect_url = cx.new(|cx| Input::field("Instance URL", "https://", content(0.4), cx));
-        let connect_email = cx.new(|cx| Input::field("Email", "you@example.com", content(0.4), cx));
-        let connect_token =
-            cx.new(|cx| Input::field("API token", "Personal access token", content(0.4), cx));
+        let connect_url = cx.new(|cx| {
+            Input::field(
+                crate::i18n::text("inbox-instance-url"),
+                "https://",
+                content(0.4),
+                cx,
+            )
+        });
+        let connect_email = cx.new(|cx| {
+            Input::field(
+                crate::i18n::text("inbox-email"),
+                crate::i18n::text("inbox-you-example-com"),
+                content(0.4),
+                cx,
+            )
+        });
+        let connect_token = cx.new(|cx| {
+            Input::field(
+                crate::i18n::text("inbox-api-token"),
+                crate::i18n::text("inbox-personal-access-token"),
+                content(0.4),
+                cx,
+            )
+        });
         let diff_view = cx.new(DiffView::new);
         let subscriptions = vec![
             cx.subscribe(&search, |_, _, _: &input::Changed, cx| cx.notify()),
@@ -400,7 +427,7 @@ impl Inbox {
             .iter()
             .map(|(provider, status)| {
                 let description = if !status.connected {
-                    "Not connected".into()
+                    crate::i18n::text("inbox-not-connected")
                 } else if !status.site.is_empty() {
                     status.site.clone()
                 } else if !status.url.is_empty() {
@@ -408,7 +435,7 @@ impl Inbox {
                 } else if !status.organization.is_empty() {
                     status.organization.clone()
                 } else {
-                    "Connected".into()
+                    crate::i18n::text("inbox-connected")
                 };
                 (provider.clone(), (status.connected, description))
             })
@@ -887,7 +914,7 @@ impl Inbox {
             self.connect_token.read(cx).content.to_string()
         };
         if provider != "github" && !disconnect && token.trim().is_empty() {
-            self.connect_error = Some("Enter an API token".into());
+            self.connect_error = Some(crate::i18n::text("inbox-enter-an-api-token"));
             cx.notify();
             return;
         }
@@ -906,18 +933,26 @@ impl Inbox {
                     Ok(status) => {
                         let connected = status.connected;
                         this.snapshot.connections.insert(provider.clone(), status);
-                        this.connect_token.update(cx, |input, cx| input.set_text(String::new(), cx));
+                        this.connect_token
+                            .update(cx, |input, cx| input.set_text(String::new(), cx));
                         if connected || disconnect {
                             this.connect_provider = None;
-                            if connected { this.change_source(provider, cx); }
+                            if connected {
+                                this.change_source(provider, cx);
+                            }
                             this.refresh(cx);
-                        } else { this.connect_error = Some("GitHub is not connected. Run gh auth login in a terminal, then check again.".into()); }
+                        } else {
+                            this.connect_error = Some(crate::i18n::text(
+                                "inbox-github-is-not-connected-run-gh-auth-login",
+                            ));
+                        }
                     }
                     Err(error) => this.connect_error = Some(error),
                 }
                 cx.notify();
             });
-        }).detach();
+        })
+        .detach();
         cx.notify();
     }
     fn run_action(&mut self, cx: &mut Context<Self>) {
@@ -943,7 +978,7 @@ impl Inbox {
                     Ok(item) => {
                         this.action_notice = (merging
                             && !item.state.eq_ignore_ascii_case("merged"))
-                        .then(|| "Merge queued or auto-merge enabled.".into());
+                        .then(|| crate::i18n::text("inbox-merge-queued-or-auto-merge-enabled"));
                         if let Some(old) = this.snapshot.items.iter_mut().find(|i| i.key() == key) {
                             *old = item;
                         }

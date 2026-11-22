@@ -36,7 +36,9 @@ impl Shell {
     pub(super) fn run_action(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         let project = self.workspace.project.clone();
         if project.starts_with("remote://") {
-            self.error = Some("Actions are not available on remote projects.".into());
+            self.error = Some(crate::i18n::text(
+                "shell-actions-are-not-available-on-remote-projects",
+            ));
             cx.notify();
             return;
         }
@@ -118,7 +120,7 @@ impl Shell {
         if !actions.is_empty() {
             items.push(MenuItem::Separator);
             items.push(
-                MenuAction::new("edit", "Edit action")
+                MenuAction::new("edit", crate::i18n::text("shell-edit-action"))
                     .icon("pencil-edit-02")
                     .submenu(
                         actions
@@ -135,7 +137,11 @@ impl Shell {
                     .into(),
             );
         }
-        items.push(MenuAction::new("add", "Add action").icon("add-01").into());
+        items.push(
+            MenuAction::new("add", crate::i18n::text("shell-add-action"))
+                .icon("add-01")
+                .into(),
+        );
         items
     }
     pub(super) fn run_actions_menu(
@@ -182,7 +188,10 @@ impl Shell {
             Some(action) => {
                 let id = action.id.clone();
                 segment("footer-action-run")
-                    .aria_label(SharedString::from(format!("Run {}", action.name)))
+                    .aria_label(SharedString::from(crate::i18n::format(
+                        "shell-run-2",
+                        &[("value", (action.name).to_string())],
+                    )))
                     .aria_description(SharedString::from(action.command.clone()))
                     .px(pad)
                     .gap(px(6.))
@@ -195,17 +204,17 @@ impl Shell {
                     )
             }
             None => segment("footer-action-add")
-                .aria_label("Add action")
+                .aria_label(crate::i18n::text("shell-add-action"))
                 .px(pad)
                 .gap(px(6.))
                 .child(icon("play", 12.).text_color(content(0.55)))
-                .child("Actions")
+                .child(crate::i18n::text("shell-actions"))
                 .on_click(
                     cx.listener(|this, _, window, cx| this.open_action_dialog(None, window, cx)),
                 ),
         };
         let chevron = segment("footer-action-menu")
-            .aria_label("Actions")
+            .aria_label(crate::i18n::text("shell-actions"))
             .aria_expanded(menu_open)
             .relative()
             .px(px(3.))
@@ -225,7 +234,7 @@ impl Shell {
                 .id("footer-actions")
                 .group("footer-actions")
                 .role(Role::Group)
-                .aria_label("Actions")
+                .aria_label(crate::i18n::text("shell-actions"))
                 .h(px(20.))
                 .p(px(2.))
                 .gap(px(1.))
@@ -253,7 +262,14 @@ impl Shell {
             .as_ref()
             .and_then(|id| self.project_actions().iter().find(|a| a.id == *id))
             .cloned();
-        let name = cx.new(|cx| input::Input::field("Action name", "Test", content(0.3), cx));
+        let name = cx.new(|cx| {
+            input::Input::field(
+                crate::i18n::text("shell-action-name"),
+                crate::i18n::text("shell-test"),
+                content(0.3),
+                cx,
+            )
+        });
         let command = cx.new(input::Input::action_command);
         if let Some(action) = &existing {
             name.update(cx, |i, cx| i.set_text(action.name.clone(), cx));
@@ -310,7 +326,8 @@ impl Shell {
         let name = dialog.name.read(cx).content.trim().to_owned();
         let command = dialog.command.read(cx).content.trim().to_owned();
         if name.is_empty() || command.is_empty() {
-            dialog.error = Some("Give the action a name and a command.".into());
+            dialog.error =
+                Some(crate::i18n::text("shell-give-the-action-a-name-and-a-command").into());
             cx.notify();
             return;
         }
@@ -364,11 +381,11 @@ impl Shell {
         let width = 420f32.min(viewport.width.as_f32() - 24.);
         let anchor = Anchor::Center;
         let weak = cx.weak_entity();
-        let label = |text: &'static str| {
+        let label = |text: &str| {
             div()
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(content(0.8))
-                .child(text)
+                .child(text.to_owned())
         };
         let field = |input: Entity<input::Input>, multiline: bool| {
             div()
@@ -423,7 +440,11 @@ impl Shell {
                         }
                     }))
             }));
-        let title = if editing { "Edit action" } else { "Add action" };
+        let title = if editing {
+            crate::i18n::text("shell-edit-action")
+        } else {
+            crate::i18n::text("shell-add-action")
+        };
         Some(
             div()
                 .absolute()
@@ -443,7 +464,7 @@ impl Shell {
                             div()
                                 .id("action-dialog")
                                 .role(Role::Dialog)
-                                .aria_label(title)
+                                .aria_label(&title)
                                 .p_4()
                                 .flex()
                                 .flex_col()
@@ -466,7 +487,9 @@ impl Shell {
                                                 div()
                                                     .line_height(px(18.))
                                                     .text_color(content(0.6))
-                                                    .child("Save a project command to run with one click."),
+                                                    .child(crate::i18n::text(
+                                                        "shell-save-a-project-command-to-run",
+                                                    )),
                                             )
                                         }),
                                 )
@@ -475,7 +498,7 @@ impl Shell {
                                         .flex()
                                         .flex_col()
                                         .gap_1p5()
-                                        .child(label("Icon"))
+                                        .child(label(&crate::i18n::text("shell-icon")))
                                         .child(icons),
                                 )
                                 .child(
@@ -483,7 +506,7 @@ impl Shell {
                                         .flex()
                                         .flex_col()
                                         .gap_1p5()
-                                        .child(label("Name"))
+                                        .child(label(&crate::i18n::text("shell-name")))
                                         .child(field(dialog.name.clone(), false)),
                                 )
                                 .child(
@@ -491,7 +514,7 @@ impl Shell {
                                         .flex()
                                         .flex_col()
                                         .gap_1p5()
-                                        .child(label("Command"))
+                                        .child(label(&crate::i18n::text("shell-command")))
                                         .child(field(dialog.command.clone(), true))
                                         .child(match &dialog.error {
                                             Some(error) => div()
@@ -504,7 +527,9 @@ impl Shell {
                                                 .id("action-help")
                                                 .text_size(px(11.))
                                                 .text_color(content(0.45))
-                                                .child("Runs in a terminal at the project root."),
+                                                .child(crate::i18n::text(
+                                                    "shell-runs-in-a-terminal-at-the",
+                                                )),
                                         }),
                                 )
                                 // Full-width buttons, the confirming one first.
@@ -516,7 +541,11 @@ impl Shell {
                                         .child(
                                             crate::modal::primary_button(
                                                 "action-save",
-                                                if editing { "Save" } else { "Add action" },
+                                                if editing {
+                                                    crate::i18n::text("shell-save")
+                                                } else {
+                                                    crate::i18n::text("shell-add-action")
+                                                },
                                             )
                                             .w_full()
                                             .cursor_pointer()
@@ -530,7 +559,7 @@ impl Shell {
                                             d.child(
                                                 crate::modal::danger_ghost_button(
                                                     "action-delete",
-                                                    "Delete action",
+                                                    crate::i18n::text("shell-delete-action"),
                                                 )
                                                 .debug_selector(|| "action-delete".into())
                                                 .w_full()
@@ -542,12 +571,17 @@ impl Shell {
                                             )
                                         })
                                         .child(
-                                            crate::modal::ghost_button("action-cancel", "Cancel")
-                                                .w_full()
-                                                .cursor_pointer()
-                                                .on_click(cx.listener(|this, _, window, cx| {
+                                            crate::modal::ghost_button(
+                                                "action-cancel",
+                                                crate::i18n::text("shell-cancel"),
+                                            )
+                                            .w_full()
+                                            .cursor_pointer()
+                                            .on_click(
+                                                cx.listener(|this, _, window, cx| {
                                                     this.close_action_dialog(window, cx)
-                                                })),
+                                                }),
+                                            ),
                                         ),
                                 ),
                         ),

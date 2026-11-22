@@ -126,10 +126,13 @@ fn cartesian(
     let scale = Scale::nice(values, !matches!(kind, ChartKind::Line));
     let ticks = scale.ticks();
     let tick_labels: Vec<String> = ticks.iter().map(|t| scale.label(*t)).collect();
-    let longest = tick_labels.iter().map(|l| l.len()).max().unwrap_or(1) as f32;
+    let longest = tick_labels
+        .iter()
+        .map(|label| axis().measure(label, window))
+        .fold(0., f32::max);
     let width = bounds.size.width.as_f32();
     let height = bounds.size.height.as_f32();
-    let left = (longest * 6.1).ceil() + 10.;
+    let left = longest.ceil() + 10.;
     // Room above the plot for the highlighted bar's value.
     let top = if bars { 16. } else { 8. };
     let right = width - if bars { 0. } else { 6. };
@@ -540,7 +543,7 @@ pub(super) fn gauge(
     const START: f32 = -135.;
     let ratio = ((value - min) / (max - min)).clamp(0., 1.) as f32;
     let format = move |value: f64| match unit.as_deref() {
-        Some("%") => format!("{}%", compact(value, 1.)),
+        Some("%") => crate::system_format::percent(value),
         Some(unit) => format!("{} {unit}", compact(value, 0.1)),
         None => compact(value, 0.1),
     };
@@ -646,18 +649,8 @@ pub(super) fn donut(
     const FLOOR: f32 = 3. / 16.;
     let total: f64 = slices.iter().map(|s| s.value.max(0.)).sum();
     let total_reading = value.unwrap_or_else(|| {
-        let s = format!("{total:.0}");
         if total.abs() >= 1e4 {
-            // 106000 → 106,000: the hole has room for the full figure.
-            let digits: Vec<char> = s.chars().collect();
-            let mut out = String::new();
-            for (i, c) in digits.iter().enumerate() {
-                if i > 0 && (digits.len() - i).is_multiple_of(3) && c.is_ascii_digit() {
-                    out.push(',');
-                }
-                out.push(*c);
-            }
-            out
+            crate::system_format::decimal(total, 0, 0)
         } else {
             compact(total, 0.1)
         }
@@ -693,7 +686,11 @@ pub(super) fn donut(
                     div()
                         .font_family(crate::fonts::mono())
                         .text_color(content(0.5))
-                        .child(format!("{} · {share:.0}%", compact(s.value, 0.1))),
+                        .child(format!(
+                            "{} · {}",
+                            compact(s.value, 0.1),
+                            crate::system_format::percent(share)
+                        )),
                 )
         }));
     let ring = canvas(
@@ -780,7 +777,9 @@ pub(super) fn donut(
                 Some(s) => (
                     Some(s.label.clone()),
                     reading(s.value),
-                    Some(format!("{:.0}%", s.value / total.max(1e-9) * 100.)),
+                    Some(crate::system_format::percent(
+                        s.value / total.max(1e-9) * 100.,
+                    )),
                 ),
                 None => (label.clone(), total_reading.clone(), None),
             };
@@ -794,7 +793,9 @@ pub(super) fn donut(
                     cx,
                 );
             }
-            let fit = ((inner * 2. - 16.) / (figure.chars().count().max(1) as f32 * 0.62)).min(26.);
+            let measured =
+                Label::sans(26., content(1.), FontWeight::SEMIBOLD).measure(&figure, window);
+            let fit = (26. * (inner * 2. - 16.) / measured.max(1.)).min(26.);
             Label::sans(fit.floor(), content(1.), FontWeight::SEMIBOLD).paint(
                 &figure,
                 center + point(px(0.), px(if caption.is_some() { 4. } else { 0. })),
@@ -941,7 +942,7 @@ pub(super) fn heatmap(
                 let square = SQUARE as f32 * CELL;
                 readout(
                     &name,
-                    &[(tint, "Value".into(), reading(*v))],
+                    &[(tint, crate::i18n::text("visuals-value"), reading(*v))],
                     grid.origin
                         + point(
                             px(c as f32 * pitch + square),
@@ -1030,7 +1031,7 @@ pub(super) fn progress(
                         .font_family(crate::fonts::mono())
                         .text_size(px(12.))
                         .text_color(content(0.55))
-                        .child(format!("{:.0}%", ratio * 100.)),
+                        .child(crate::system_format::percent((ratio * 100.) as f64)),
                 ),
         )
         .child(bar)

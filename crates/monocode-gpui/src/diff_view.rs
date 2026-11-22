@@ -62,13 +62,13 @@ pub(crate) struct DiffFile {
 impl DiffFile {
     fn message(&self) -> Option<String> {
         if self.binary {
-            Some("Binary file changed".into())
+            Some(crate::i18n::text("diff-view-binary-file-changed"))
         } else if self.too_large {
-            Some("Diff is too large to display".into())
+            Some(crate::i18n::text("diff-view-diff-is-too-large-to-display"))
         } else if let Some(message) = &self.empty_message {
             Some(message.clone())
         } else if self.blocks.is_empty() {
-            Some("No textual diff".into())
+            Some(crate::i18n::text("diff-view-no-textual-diff"))
         } else {
             None
         }
@@ -804,7 +804,7 @@ impl DiffView {
         let anchor = self.action_slots.get(&row).cloned().unwrap_or_default();
         let input = cx.new(|cx| {
             let mut input = Input::commit_message(cx);
-            input.set_placeholder("Leave a comment…", cx);
+            input.set_placeholder(crate::i18n::text("diff-view-leave-a-comment"), cx);
             input
         });
         let focus = input.read(cx).focus_handle(cx);
@@ -869,7 +869,7 @@ impl DiffView {
         div()
             .id("diff-tools")
             .role(Role::Toolbar)
-            .aria_label("Diff tools")
+            .aria_label(crate::i18n::text("diff-view-diff-tools"))
             .h(px(32.))
             .flex_shrink_0()
             .min_w_0()
@@ -887,9 +887,12 @@ impl DiffView {
                     .flex_shrink_0()
                     .text_color(content(0.65))
                     .child(if count == 1 {
-                        "1 file".to_owned()
+                        crate::i18n::text("diff-view-1-file").to_owned()
                     } else {
-                        format!("{count} files")
+                        crate::i18n::format(
+                            "diff-view-files",
+                            &[("count", crate::system_format::unsigned(count as u64))],
+                        )
                     }),
             )
             .child(diff_counts(additions, deletions))
@@ -901,10 +904,15 @@ impl DiffView {
                     .items_center()
                     .gap(px(2.))
                     .child(
-                        tool_button("previous-hunk", "Previous hunk", "chevron-up", can_prev)
-                            .when(can_prev, |d| {
-                                d.on_click(cx.listener(|this, _, _, cx| this.navigate(-1, cx)))
-                            }),
+                        tool_button(
+                            "previous-hunk",
+                            crate::i18n::text("diff-view-previous-hunk"),
+                            "chevron-up",
+                            can_prev,
+                        )
+                        .when(can_prev, |d| {
+                            d.on_click(cx.listener(|this, _, _, cx| this.navigate(-1, cx)))
+                        }),
                     )
                     .child(
                         div()
@@ -917,23 +925,33 @@ impl DiffView {
                             .child(position),
                     )
                     .child(
-                        tool_button("next-hunk", "Next hunk", "chevron-down", can_next)
-                            .when(can_next, |d| {
-                                d.on_click(cx.listener(|this, _, _, cx| this.navigate(1, cx)))
-                            }),
+                        tool_button(
+                            "next-hunk",
+                            crate::i18n::text("diff-view-next-hunk"),
+                            "chevron-down",
+                            can_next,
+                        )
+                        .when(can_next, |d| {
+                            d.on_click(cx.listener(|this, _, _, cx| this.navigate(1, cx)))
+                        }),
                     )
                     .child(div().mx_1().h(px(12.)).w(px(1.)).bg(stroke()))
                     .child(
-                        tool_button("expand-all", "Expand all files", "unfold-vertical", true)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.open = this.files.iter().map(|f| f.id.clone()).collect();
-                                this.rebuild(cx);
-                            })),
+                        tool_button(
+                            "expand-all",
+                            crate::i18n::text("diff-view-expand-all-files"),
+                            "unfold-vertical",
+                            true,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.open = this.files.iter().map(|f| f.id.clone()).collect();
+                            this.rebuild(cx);
+                        })),
                     )
                     .child(
                         tool_button(
                             "collapse-all",
-                            "Collapse all files",
+                            crate::i18n::text("diff-view-collapse-all-files"),
                             "fold-vertical",
                             !self.open.is_empty(),
                         )
@@ -976,7 +994,11 @@ impl DiffView {
                     .role(Role::Button)
                     .aria_label(SharedString::from(format!(
                         "{} {}",
-                        if expanded { "Collapse" } else { "Expand" },
+                        if expanded {
+                            crate::i18n::text("diff-view-collapse")
+                        } else {
+                            crate::i18n::text("diff-view-expand")
+                        },
                         f.label
                     )))
                     .aria_expanded(expanded)
@@ -1026,26 +1048,32 @@ impl DiffView {
             .child(diff_counts(f.additions, f.deletions))
             .when(f.can_discard, |d| {
                 d.child(
-                    tool_button(("discard-file", file), "Discard file", "undo", !busy).when(
+                    tool_button(
+                        ("discard-file", file),
+                        crate::i18n::text("diff-view-discard-file"),
+                        "undo",
                         !busy,
-                        |d| {
-                            d.on_click(cx.listener(move |_, _, _, cx| {
-                                cx.emit(DiffEvent::DiscardFile(discard_id.clone()))
-                            }))
-                        },
-                    ),
+                    )
+                    .when(!busy, |d| {
+                        d.on_click(cx.listener(move |_, _, _, cx| {
+                            cx.emit(DiffEvent::DiscardFile(discard_id.clone()))
+                        }))
+                    }),
                 )
             })
             .when(f.can_stage, |d| {
                 d.child(
-                    tool_button(("stage-file", file), "Stage file", "check", !busy).when(
+                    tool_button(
+                        ("stage-file", file),
+                        crate::i18n::text("diff-view-stage-file"),
+                        "check",
                         !busy,
-                        |d| {
-                            d.on_click(cx.listener(move |_, _, _, cx| {
-                                cx.emit(DiffEvent::StageFile(stage_id.clone()))
-                            }))
-                        },
-                    ),
+                    )
+                    .when(!busy, |d| {
+                        d.on_click(cx.listener(move |_, _, _, cx| {
+                            cx.emit(DiffEvent::StageFile(stage_id.clone()))
+                        }))
+                    }),
                 )
             })
             .into_any_element()
@@ -1091,9 +1119,15 @@ impl DiffView {
                         .pl(px(3.))
                         .text_size(px(9.))
                         .text_color(content(0.35))
-                        .children(["Old", "New"].map(|label| {
-                            div().w(px(number_width)).pr_2().text_right().child(label)
-                        })),
+                        .children(
+                            [
+                                crate::i18n::text("diff-view-old"),
+                                crate::i18n::text("diff-view-new"),
+                            ]
+                            .map(|label| {
+                                div().w(px(number_width)).pr_2().text_right().child(label)
+                            }),
+                        ),
                 )
                 .child(
                     div()
@@ -1211,9 +1245,13 @@ impl DiffView {
                                     div()
                                         .id(("diff-comment", ix))
                                         .role(Role::Button)
-                                        .aria_label(SharedString::from(format!(
-                                            "Comment on line {}",
-                                            number.map(|n| n.to_string()).unwrap_or_default()
+                                        .aria_label(SharedString::from(crate::i18n::format(
+                                            "diff-view-comment-on-line",
+                                            &[(
+                                                "value",
+                                                (number.map(|n| n.to_string()).unwrap_or_default())
+                                                    .to_string(),
+                                            )],
                                         )))
                                         .absolute()
                                         .top_0()
@@ -1242,7 +1280,7 @@ impl DiffView {
                                         div()
                                             .id(("diff-stage-hunk", ix))
                                             .role(Role::Button)
-                                            .aria_label("Stage hunk")
+                                            .aria_label(crate::i18n::text("diff-view-stage-hunk"))
                                             .absolute()
                                             .top_0()
                                             .bottom_0()
@@ -1345,7 +1383,7 @@ impl DiffView {
         div()
             .id("diff-horizontal-scroll")
             .role(Role::ScrollBar)
-            .aria_label("Scroll diff horizontally")
+            .aria_label(crate::i18n::text("diff-view-scroll-diff-horizontally"))
             .h(px(14.))
             .flex_shrink_0()
             .relative()
@@ -1425,16 +1463,17 @@ pub(crate) fn diff_counts(additions: u32, deletions: u32) -> AnyElement {
 /// UnifiedDiffView's IconButton: 24px, 45% ink, 30% when disabled.
 fn tool_button(
     id: impl Into<gpui::ElementId>,
-    label: &'static str,
+    label: impl Into<gpui::SharedString>,
     path: &'static str,
     enabled: bool,
 ) -> gpui::Stateful<gpui::Div> {
     let id = id.into();
     let group: SharedString = format!("diff-tool-{id:?}").into();
+    let label = label.into();
     div()
         .id(id)
         .role(Role::Button)
-        .aria_label(label)
+        .aria_label(&label)
         .group(group.clone())
         .size(px(24.))
         .flex_shrink_0()
@@ -1464,7 +1503,7 @@ impl Render for DiffView {
                 .py_6()
                 .text_size(px(13.))
                 .text_color(content(0.45))
-                .child("No file changes")
+                .child(crate::i18n::text("diff-view-no-file-changes"))
                 .into_any_element();
         }
         self.char_width(window);
@@ -1526,11 +1565,16 @@ impl Render for DiffView {
                                     .child(location),
                             )
                             .child(
-                                tool_button("cancel-comment", "Cancel comment", "x", true)
-                                    .size(px(20.))
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.dismiss_comment(window, cx)
-                                    })),
+                                tool_button(
+                                    "cancel-comment",
+                                    crate::i18n::text("diff-view-cancel-comment"),
+                                    "x",
+                                    true,
+                                )
+                                .size(px(20.))
+                                .on_click(cx.listener(
+                                    |this, _, window, cx| this.dismiss_comment(window, cx),
+                                )),
                             ),
                     )
                     .child(
@@ -1555,16 +1599,16 @@ impl Render for DiffView {
                             .gap_3()
                             .child(div().text_size(px(10.)).text_color(content(0.35)).child(
                                 if cfg!(target_os = "macos") {
-                                    "⌘↩ to add"
+                                    crate::i18n::text("diff-view-to-add")
                                 } else {
-                                    "Ctrl+↩ to add"
+                                    crate::i18n::text("diff-view-ctrl-to-add")
                                 },
                             ))
                             .child(
                                 div()
                                     .id("add-comment")
                                     .role(Role::Button)
-                                    .aria_label("Add to chat")
+                                    .aria_label(crate::i18n::text("diff-view-add-to-chat"))
                                     .h(px(28.))
                                     .flex()
                                     .items_center()
@@ -1581,7 +1625,7 @@ impl Render for DiffView {
                                         icon("comment-add", 14.)
                                             .text_color(crate::theme::background_base()),
                                     )
-                                    .child("Add to chat")
+                                    .child(crate::i18n::text("diff-view-add-to-chat"))
                                     .when(can_add, |d| {
                                         d.on_click(cx.listener(|this, _, window, cx| {
                                             this.add_comment(window, cx)
@@ -1660,7 +1704,7 @@ impl Render for DiffView {
                 div()
                     .id("unified-diff")
                     .role(Role::Region)
-                    .aria_label("Unified diff")
+                    .aria_label(crate::i18n::text("diff-view-unified-diff"))
                     .relative()
                     .flex_1()
                     .min_h_0()

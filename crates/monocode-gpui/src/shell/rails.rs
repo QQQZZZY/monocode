@@ -348,7 +348,7 @@ impl Shell {
             .and_then(|name| name.to_str())
             .unwrap_or(&session.summary.cwd);
         let git_label = if saved.is_some_and(|details| details.worktree_removed) {
-            "No branch".to_string()
+            crate::i18n::text("shell-no-branch")
         } else {
             match branch.filter(|branch| !branch.is_empty()) {
                 Some(branch) if !repo.is_empty() => format!("{repo}/{branch}"),
@@ -374,7 +374,9 @@ impl Shell {
             .line_height(px(17.875))
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(content(1.))
-            .child(crate::particle_text::particle_text(session.display_title()));
+            .child(crate::particle_text::particle_text(
+                session.localized_title(),
+            ));
         let body = div()
             .w_full()
             .min_w_0()
@@ -500,11 +502,14 @@ impl Shell {
             .debug_selector(move || format!("sidebar-session-{id}"))
             .group("session-row")
             .role(Role::Button)
-            .aria_label(session.display_title())
+            .aria_label(session.localized_title())
             .aria_selected(selected || active)
-            .aria_description(format!(
-                "{} conversation",
-                Kind::from_id(&session.summary.provider).label()
+            .aria_description(crate::i18n::format(
+                "shell-conversation",
+                &[(
+                    "name",
+                    (Kind::from_id(&session.summary.provider).label()).to_string(),
+                )],
             ))
             .cursor_pointer()
             .relative()
@@ -647,7 +652,7 @@ impl Shell {
             None => repo.to_owned(),
         };
         [
-            session.display_title(),
+            session.localized_title(),
             session.summary.title.clone(),
             saved
                 .and_then(|details| details.model.clone())
@@ -679,32 +684,32 @@ impl Shell {
                 .text_color(rgb(0xfbbf24))
                 .child(icon("circle-alert", 12.))
                 .child(if self.orchestration_summaries.contains_key(&id) {
-                    "Needs input"
+                    crate::i18n::text("shell-needs-input")
                 } else {
-                    "Need approval"
+                    crate::i18n::text("shell-need-approval")
                 })
                 .into_any_element()
         } else if session.responding() {
             status
                 .text_color(crate::theme::accent_color())
                 .children(self.session_marks.get(&id).cloned())
-                .child("Working...")
+                .child(crate::i18n::text("shell-working-2"))
                 .into_any_element()
         } else if self.unseen_finished.contains(&id) {
             status
                 .text_color(rgb(0x34d399))
                 .child(icon("check", 12.))
-                .child("Done")
+                .child(crate::i18n::text("shell-done"))
                 .into_any_element()
         } else if session.has_saved_draft() {
             status
                 .text_color(content(0.55))
                 .child(icon("circle-dashed-hi", 12.))
-                .child("Draft")
+                .child(crate::i18n::text("shell-draft"))
                 .into_any_element()
         } else {
             status
-                .child(monocode_core::time::relative(
+                .child(crate::i18n::relative(
                     session.summary.updated_at,
                     monocode_core::time::now_ms(),
                 ))
@@ -732,23 +737,36 @@ impl Shell {
                         .text_size(px(11.))
                         .line_height(px(16.5))
                         .text_color(content(0.45))
-                        .child(format!(
-                            "{} {}",
-                            summary.tasks.len(),
+                        .child(crate::i18n::format(
                             if summary.tasks.len() == 1 {
-                                "agent"
+                                "shell-agent-count-one"
                             } else {
-                                "agents"
-                            }
+                                "shell-agent-count-many"
+                            },
+                            &[(
+                                "count",
+                                crate::system_format::unsigned(summary.tasks.len() as u64),
+                            )],
                         ))
-                        .child(format!(
-                            "{}/{} done",
-                            summary
-                                .tasks
-                                .iter()
-                                .filter(|task| task.status == "completed")
-                                .count(),
-                            summary.tasks.len()
+                        .child(crate::i18n::format(
+                            "shell-agents-done",
+                            &[
+                                (
+                                    "value1",
+                                    crate::system_format::unsigned(
+                                        (summary
+                                            .tasks
+                                            .iter()
+                                            .filter(|task| task.status == "completed")
+                                            .count())
+                                            as u64,
+                                    ),
+                                ),
+                                (
+                                    "value2",
+                                    crate::system_format::unsigned((summary.tasks.len()) as u64),
+                                ),
+                            ],
                         )),
                 )
             })
@@ -766,7 +784,15 @@ impl Shell {
                                 .is_some_and(|v| v.read(cx).needs_approval())
                         });
                         let open = self.rails.open_tasks.contains(&(lead, ix)) || needs_input;
-                        let label = task.label(summary, needs_input);
+                        let label = crate::i18n::text(match task.label(summary, needs_input) {
+                            "Needs input" => "shell-agent-needs-input",
+                            "Saved" => "shell-agent-saved",
+                            "Working" => "shell-agent-working",
+                            "Done" => "shell-agent-done",
+                            "Failed" => "shell-agent-failed",
+                            "Needs review" => "shell-agent-needs-review",
+                            _ => "shell-agent-queued",
+                        });
                         let working = summary.live && task.status == "running" && !needs_input;
                         let alert =
                             needs_input || matches!(task.status.as_str(), "failed" | "blocked");
@@ -790,7 +816,10 @@ impl Shell {
                             .id(("rail-agent", (lead as usize) << 8 | ix))
                             .debug_selector(move || format!("rail-agent-{lead}-{ix}"))
                             .role(Role::Button)
-                            .aria_label(format!("Agent details: {}", task.title))
+                            .aria_label(crate::i18n::format(
+                                "shell-agent-details",
+                                &[("value", task.title.to_string())],
+                            ))
                             .aria_expanded(open)
                             .group(group.clone())
                             .h(px(if classic { 28.5 } else { 28. }))
@@ -888,7 +917,7 @@ impl Shell {
                                         d.child(icon("check", 12.).text_color(tone))
                                     })
                                     // On the rail the spinner says it on its own.
-                                    .when(classic || !working, |d| d.child(label)),
+                                    .when(classic || !working, |d| d.child(label.to_owned())),
                             )
                             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                             .on_click(cx.listener(move |this, _, _, cx| {
@@ -905,11 +934,11 @@ impl Shell {
                                     .get(&s)
                                     .is_some_and(|v| v.read(cx).responding())
                         });
-                        let solid = |id: &'static str, label: &'static str| {
+                        let solid = |id: &'static str, label: &str| {
                             div()
                                 .id((id, (lead as usize) << 8 | ix))
                                 .role(Role::Button)
-                                .aria_label(label)
+                                .aria_label(label.to_owned())
                                 .rounded(px(4.))
                                 .bg(content(0.15))
                                 .px(px(6.))
@@ -918,7 +947,7 @@ impl Shell {
                                 .text_color(content(0.75))
                                 .cursor_pointer()
                                 .hover(|s| s.bg(content(0.25)).text_color(content(1.)))
-                                .child(label)
+                                .child(label.to_owned())
                         };
                         let details = div()
                             .pl(px(if classic { 26. } else { 6. }))
@@ -948,26 +977,28 @@ impl Shell {
                                         .gap_1()
                                         .when_some(worker, |d, worker| {
                                             d.child(
-                                                solid("rail-agent-open", "See details").on_click(
-                                                    cx.listener(move |this, _, window, cx| {
+                                                solid(
+                                                    "rail-agent-open",
+                                                    &crate::i18n::text("shell-see-details"),
+                                                )
+                                                .on_click(cx.listener(
+                                                    move |this, _, window, cx| {
                                                         this.open(worker, window, cx)
-                                                    }),
-                                                ),
+                                                    },
+                                                )),
                                             )
                                         })
                                         .when_some(worker.filter(|_| running), |d, worker| {
                                             d.child(
-                                                solid("rail-agent-cancel", "Cancel task").on_click(
-                                                    cx.listener(move |this, _, _, cx| {
-                                                        if let Some(view) =
-                                                            this.sessions.get(&worker)
-                                                        {
-                                                            view.update(cx, |v, cx| {
-                                                                v.stop_if_busy(cx)
-                                                            });
-                                                        }
-                                                    }),
-                                                ),
+                                                solid(
+                                                    "rail-agent-cancel",
+                                                    &crate::i18n::text("shell-cancel-task"),
+                                                )
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    if let Some(view) = this.sessions.get(&worker) {
+                                                        view.update(cx, |v, cx| v.stop_if_busy(cx));
+                                                    }
+                                                })),
                                             )
                                         }),
                                 )

@@ -64,11 +64,11 @@ impl TranscriptView {
                             .child(
                                 crate::settings::widgets::secondary_button(
                                     SharedString::from(format!("open-plan-{}", plan.id)),
-                                    "Open plan",
+                                    crate::i18n::text("transcript-open-plan"),
                                     false,
                                     false,
                                 )
-                                .child("Open")
+                                .child(crate::i18n::text("transcript-open"))
                                 .on_click(cx.listener(
                                     move |_, _, _, cx| {
                                         cx.emit(ResponseRequest::RemotePlan {
@@ -82,7 +82,7 @@ impl TranscriptView {
                             .child(
                                 crate::settings::widgets::secondary_button(
                                     SharedString::from(format!("build-plan-{}", plan.id)),
-                                    "Build approved plan",
+                                    crate::i18n::text("transcript-build-approved-plan"),
                                     false,
                                     !enabled,
                                 )

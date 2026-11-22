@@ -197,7 +197,7 @@ impl TranscriptView {
             .id("prompt-outline")
             .debug_selector(|| "prompt-outline".into())
             .role(Role::Toolbar)
-            .aria_label("Prompts")
+            .aria_label(crate::i18n::text("transcript-prompts"))
             .w(px(BAR_WIDTH_LIFTED))
             .flex()
             .flex_col()
@@ -380,7 +380,7 @@ fn prompt_label(text: &str) -> String {
         .map(str::trim)
         .find(|line| !line.is_empty())
         .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
-        .unwrap_or_else(|| "Empty message".into())
+        .unwrap_or_else(|| crate::i18n::text("transcript-empty-message"))
 }
 
 /// Selects at most `max` prompts. The window slides to keep the active

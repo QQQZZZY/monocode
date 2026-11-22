@@ -37,6 +37,7 @@ mod gpu_trim;
 #[cfg(target_os = "macos")]
 mod hang_watchdog;
 mod history;
+mod i18n;
 mod image_lightbox;
 mod image_memory;
 mod inbox;
@@ -75,6 +76,7 @@ mod reveal;
 mod review;
 mod right_panel;
 mod runtime;
+mod runtime_text;
 mod search;
 mod send_morph;
 mod session_mark;
@@ -83,6 +85,7 @@ mod settings;
 mod shell;
 mod sound;
 mod syntax;
+mod system_format;
 mod tab_label;
 mod tab_motion;
 mod tab_tile;
@@ -407,18 +410,20 @@ fn main() {
         .map(|s| (s.id, s.cwd.clone()))
         .collect::<Vec<_>>();
     let workspace = workspace::Workspace::restore(saved.as_deref(), &metadata, &cwd);
+    app_log::init();
+    i18n::configure(workspace.preferences.language());
     let mut projects = workspace.projects;
     if !projects.contains(&workspace.project) {
         projects.push(workspace.project);
     }
     let sidebar_metadata = db.session_sidebar_metadata(&projects);
     let db = Arc::new(Mutex::new(db));
-    app_log::init();
     let platform = gpui_platform::current_platform(false);
     let title_raster = particle_text::GlyphRaster(platform.text_system());
     gpui::Application::with_platform(platform)
         .with_assets(assets::Assets)
         .run(move |cx: &mut App| {
+            i18n::init();
             #[cfg(debug_assertions)]
             dev_reload::install(cx);
             cx.set_global(title_raster);
@@ -471,7 +476,7 @@ fn main() {
                     // its controls as native titlebar double-click/drag gestures.
                     app_owns_titlebar_drag: cfg!(target_os = "macos"),
                     titlebar: Some(TitlebarOptions {
-                        title: Some("Monocode Native".into()),
+                        title: Some(crate::i18n::text("main-monocode-native").into()),
                         // Windows also drops its caption: the app's drag areas
                         // hit-test as the caption and the frame still resizes.
                         appears_transparent: cfg!(any(target_os = "macos", target_os = "windows")),

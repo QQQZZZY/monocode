@@ -49,7 +49,11 @@ fn offline_pending_and_busy_guards_preserve_typed_message(cx: &mut TestAppContex
                 view.remote_state.pending = pending;
                 view.busy = busy;
                 view.send(cx);
-                assert!(view.status.contains(expected), "{}", view.status);
+                assert!(
+                    view.status.stable().contains(expected),
+                    "{}",
+                    view.status.stable()
+                );
                 assert_eq!(view.input.read(cx).content, "Keep this next message");
                 assert!(view.follow_ups.state.messages.is_empty());
                 assert!(view.transcript.read(cx).source_rows().is_empty());
@@ -67,16 +71,16 @@ fn remote_capability_and_command_guards_keep_composer_and_attachments(cx: &mut T
             view.remote_state.capabilities.clear();
             view.attachments = vec![PathBuf::from("/home/me/design.png")];
             assert!(view.remote_send_guard(cx));
-            assert!(view.status.contains("attachments"));
+            assert!(view.status.stable().contains("attachments"));
             assert_eq!(view.attachments.len(), 1);
             view.attachments.clear();
             view.settings.plan = true;
             assert!(view.remote_send_guard(cx));
-            assert!(view.status.contains("Plan mode"));
+            assert!(view.status.stable().contains("Plan mode"));
             view.settings.plan = false;
             view.follow_ups.draft_selected = true;
             assert!(view.remote_send_guard(cx));
-            assert!(view.status.contains("save drafts"));
+            assert!(view.status.stable().contains("save drafts"));
             view.follow_ups.draft_selected = false;
             for command in [
                 "/operator delegate this",
@@ -277,7 +281,7 @@ impl HostFixture {
         cx.update(|cx| {
             panic!(
                 "remote conversation did not settle: {}",
-                view.read(cx).status
+                view.read(cx).status.stable()
             )
         });
     }
@@ -462,7 +466,7 @@ fn rejected_message_restore_preserves_new_draft_then_restores_original_text_and_
         view.restore_remote_message(cx);
         assert_eq!(view.input.read(cx).content, "Keep this next message");
         assert_eq!(view.attachments, [PathBuf::from("/new/unsent.png")]);
-        assert!(view.status.contains("Clear the composer"));
+        assert!(view.status.stable().contains("Clear the composer"));
 
         view.input.update(cx, |input, cx| input.set_text(String::new(), cx));
         view.attachments.clear();
@@ -490,7 +494,7 @@ fn ambiguous_legacy_requests_block_send_retry_and_restore_without_consuming_draf
             view.retry_remote(cx);
             view.restore_remote_message(cx);
             assert_eq!(
-                view.status,
+                view.status.stable(),
                 "Open the original desktop to recover older pending requests."
             );
             assert_eq!(view.input.read(cx).content, "Keep this next message");

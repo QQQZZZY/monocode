@@ -94,9 +94,9 @@ impl Shell {
                             .debug_selector(|| "classic-mono-overview".into())
                             .role(Role::Button)
                             .aria_label(if open {
-                                "Hide overview"
+                                crate::i18n::text("shell-hide-overview")
                             } else {
-                                "Show overview"
+                                crate::i18n::text("shell-show-overview")
                             })
                             .h(px(24.))
                             .px_2()
@@ -109,19 +109,22 @@ impl Shell {
                             .bg(content(if open { 0.1 } else { 0.05 }))
                             .hover(|s| s.bg(content(0.1)))
                             .child(icon("dashboard", 14.))
-                            .child("Overview")
+                            .child(crate::i18n::text("shell-overview"))
                             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.toggle_right_panel(window, cx)
                             })),
                     )
                     .child(
-                        icon_button("classic-mono-settings", "Mono settings", "settings")
-                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                            .on_click(cx.listener(move |_, _, window, cx| {
-                                monos
-                                    .update(cx, |monos, cx| monos.open_current_settings(window, cx))
-                            })),
+                        icon_button(
+                            "classic-mono-settings",
+                            crate::i18n::text("shell-mono-settings"),
+                            "settings",
+                        )
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_click(cx.listener(move |_, _, window, cx| {
+                            monos.update(cx, |monos, cx| monos.open_current_settings(window, cx))
+                        })),
                     ),
             )
             .into_any_element()

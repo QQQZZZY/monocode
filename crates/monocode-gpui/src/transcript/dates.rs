@@ -7,7 +7,7 @@ pub(super) fn full_stamp(at: u64) -> String {
     i64::try_from(at)
         .ok()
         .and_then(DateTime::from_timestamp_millis)
-        .map(|date| date.with_timezone(&Local).format("%c").to_string())
+        .map(|date| crate::system_format::date(date.timestamp_millis(), "", "%c"))
         .unwrap_or_default()
 }
 
@@ -25,13 +25,13 @@ pub(crate) fn opens_stretch(at: Option<u64>, previous: Option<u64>) -> bool {
 
 fn day_label(date: NaiveDate, today: NaiveDate) -> String {
     if date == today {
-        "Today".into()
+        crate::i18n::text("transcript-today")
     } else if Some(date) == today.pred_opt() {
-        "Yesterday".into()
+        crate::i18n::text("transcript-yesterday")
     } else if date.year() == today.year() {
-        date.format("%a, %b %-d").to_string()
+        crate::system_format::day(date, "MMMEd", "%a, %b %-d")
     } else {
-        date.format("%a, %b %-d, %Y").to_string()
+        crate::system_format::day(date, "yMMMEd", "%a, %b %-d, %Y")
     }
 }
 
@@ -235,11 +235,19 @@ mod tests {
         assert_eq!(day_label(today.pred_opt().unwrap(), today), "Yesterday");
         assert_eq!(
             day_label(NaiveDate::from_ymd_opt(2025, 12, 30).unwrap(), today),
-            "Tue, Dec 30, 2025"
+            crate::system_format::day(
+                NaiveDate::from_ymd_opt(2025, 12, 30).unwrap(),
+                "yMMMEd",
+                "%a, %b %-d, %Y"
+            )
         );
         assert_eq!(
             day_label(NaiveDate::from_ymd_opt(2026, 2, 3).unwrap(), today),
-            "Tue, Feb 3"
+            crate::system_format::day(
+                NaiveDate::from_ymd_opt(2026, 2, 3).unwrap(),
+                "MMMEd",
+                "%a, %b %-d"
+            )
         );
     }
 

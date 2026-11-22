@@ -20,6 +20,7 @@ use monocode_core::{
     agent::{AccessMode, Settings},
     provider::{self, Event, Kind, Request},
     scm::{self, ChangedFile, DiffIndex, Pr},
+    text_generator::{self, TextGeneratorConfig},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -187,16 +188,31 @@ pub(crate) fn status_color(status: &str) -> Hsla {
 fn sync_status_label(index: &DiffIndex) -> String {
     let plural = |n: i64| if n == 1 { "" } else { "s" };
     if index.ahead > 0 && index.behind > 0 {
-        format!(
-            "Diverged from {}",
-            index.upstream.as_deref().unwrap_or("upstream")
+        crate::i18n::format(
+            "changes-diverged-from",
+            &[(
+                "value",
+                (index.upstream.as_deref().unwrap_or("upstream")).to_string(),
+            )],
         )
     } else if index.ahead > 0 {
-        format!("{} unpushed commit{}", index.ahead, plural(index.ahead))
+        crate::i18n::format(
+            "changes-unpushed-commit",
+            &[
+                ("value", (index.ahead).to_string()),
+                ("value2", (plural(index.ahead)).to_string()),
+            ],
+        )
     } else if index.behind > 0 {
-        format!("{} incoming commit{}", index.behind, plural(index.behind))
+        crate::i18n::format(
+            "changes-incoming-commit",
+            &[
+                ("value", (index.behind).to_string()),
+                ("value2", (plural(index.behind)).to_string()),
+            ],
+        )
     } else {
-        "No files".into()
+        crate::i18n::text("changes-no-files")
     }
 }
 
@@ -440,22 +456,23 @@ impl Changes {
     }
     /// `window.alert`.
     fn fail(error: String, window: &mut Window, cx: &mut App) {
-        drop(window.prompt(PromptLevel::Critical, &error, None, &["OK"], cx));
+        drop(window.prompt(
+            PromptLevel::Critical,
+            &error,
+            None,
+            &[crate::i18n::text("changes-prompt-ok").as_str()],
+            cx,
+        ));
     }
     /// confirmNative: Tauri's `ask` with the OK label it was given.
-    fn confirm(
-        message: String,
-        ok: &'static str,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> gpui::Task<bool> {
+    fn confirm(message: String, ok: &str, window: &mut Window, cx: &mut App) -> gpui::Task<bool> {
         let answer = window.prompt(
             PromptLevel::Warning,
             &message,
             None,
             &[
                 gpui::PromptButton::ok(ok),
-                gpui::PromptButton::cancel("Cancel"),
+                gpui::PromptButton::cancel(crate::i18n::text("changes-prompt-cancel").as_str()),
             ],
             cx,
         );
@@ -525,11 +542,21 @@ impl Changes {
         let untracked = file.status == "untracked";
         let ask = Self::confirm(
             if untracked {
-                format!("Delete untracked file {name}?")
+                crate::i18n::format(
+                    "changes-delete-untracked-file",
+                    &[("name", (name).to_string())],
+                )
             } else {
-                format!("Discard changes in {name}? This cannot be undone.")
+                crate::i18n::format(
+                    "changes-discard-changes-in-this-cannot-be-undone",
+                    &[("name", (name).to_string())],
+                )
             },
-            if untracked { "Delete" } else { "Discard" },
+            &if untracked {
+                crate::i18n::text("changes-delete")
+            } else {
+                crate::i18n::text("changes-discard")
+            },
             window,
             cx,
         );
@@ -575,18 +602,28 @@ impl Changes {
         let n = unstaged.len();
         let untracked_only = n == 1 && only.status == "untracked";
         let message = if untracked_only {
-            format!("Delete untracked file {}?", basename(&only.relative))
+            crate::i18n::format(
+                "changes-delete-untracked-file-2",
+                &[("value", (basename(&only.relative)).to_string())],
+            )
         } else if n == 1 {
-            format!(
-                "Discard changes in {}? This cannot be undone.",
-                basename(&only.relative)
+            crate::i18n::format(
+                "changes-discard-changes-in-this-cannot-be-undone-2",
+                &[("value", (basename(&only.relative)).to_string())],
             )
         } else {
-            format!("Discard all unstaged changes in {n} files? This cannot be undone.")
+            crate::i18n::format(
+                "changes-discard-all-unstaged-changes-in-files-this",
+                &[("n", (n).to_string())],
+            )
         };
         let ask = Self::confirm(
             message,
-            if untracked_only { "Delete" } else { "Discard" },
+            &if untracked_only {
+                crate::i18n::text("changes-delete")
+            } else {
+                crate::i18n::text("changes-discard")
+            },
             window,
             cx,
         );
@@ -629,7 +666,7 @@ impl Changes {
         self.run_git(
             "pull".into(),
             |path| scm::pull(&path),
-            |this, _, cx| this.set_status("Pull complete", cx),
+            |this, _, cx| this.set_status(&crate::i18n::text("changes-pull-complete"), cx),
             window,
             cx,
         );
@@ -650,14 +687,21 @@ impl Changes {
             .and_then(|p| p.background_text_model());
         pick_text_harness(self.text_provider, chosen)
     }
+    fn text_backend(&self, cx: &App) -> Option<TextBackend> {
+        let http = cx
+            .try_global::<crate::settings::Preferences>()
+            .and_then(|p| p.http_text_generator());
+        let cli = self.text_harness(cx);
+        (http.is_some() || cli.is_some()).then_some(TextBackend { http, cli })
+    }
     fn generate(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let has_files = self.index(cx).is_some_and(|i| !i.files.is_empty());
         if !has_files || self.busy.is_some() || self.generate_cancel.is_some() {
             return;
         }
-        let Some(harness) = self.text_harness(cx) else {
+        let Some(backend) = self.text_backend(cx) else {
             Self::fail(
-                "No provider CLI is installed to write a commit message.".into(),
+                crate::i18n::text("changes-no-provider-cli-is-installed-to-write-a"),
                 window,
                 cx,
             );
@@ -671,7 +715,7 @@ impl Changes {
         let flag = cancel.clone();
         let work = cx
             .background_executor()
-            .spawn(async move { generate_commit_message(harness, cwd, flag) });
+            .spawn(async move { generate_commit_message(backend, cwd, flag) });
         cx.spawn_in(window, async move |this, cx| {
             let result = work.await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -740,24 +784,30 @@ impl Changes {
         {
             questions.push((
                 if create_pr {
-                    format!("Create a pull request from default branch \"{branch}\"?")
+                    crate::i18n::format(
+                        "changes-create-a-pull-request-from-default-branch",
+                        &[("branch", (branch).to_string())],
+                    )
                 } else {
-                    format!("Push to default branch \"{branch}\"?")
+                    crate::i18n::format(
+                        "changes-push-to-default-branch",
+                        &[("branch", (branch).to_string())],
+                    )
                 },
-                "OK",
+                crate::i18n::text("changes-ok"),
             ));
         }
         if self.amend.is_some() && index.as_ref().is_some_and(|i| i.head_pushed) {
             questions.push((
-                "Amend a commit that is already pushed? MonoCode cannot push the result. You will need a force push from the terminal.".into(),
-                "Amend",
+                crate::i18n::text("changes-amend-a-commit-that-is-already-pushed-monocode"),
+                crate::i18n::text("changes-amend"),
             ));
         }
         self.menu = None;
         cx.spawn_in(window, async move |this, cx| {
             for (question, ok) in questions {
                 let Ok(ask) =
-                    this.update_in(cx, |_, window, cx| Self::confirm(question, ok, window, cx))
+                    this.update_in(cx, |_, window, cx| Self::confirm(question, &ok, window, cx))
                 else {
                     return;
                 };
@@ -780,7 +830,7 @@ impl Changes {
     ) {
         let message = self.message.read(cx).content.to_string();
         let amend = self.amend.is_some();
-        let pr = create_pr.then(|| self.text_harness(cx));
+        let pr = create_pr.then(|| self.text_backend(cx));
         self.run_git(
             if create_pr { "pr" } else { "commit" }.into(),
             move |path| {
@@ -794,8 +844,8 @@ impl Changes {
                 this.amend = None;
                 this.message
                     .update(cx, |m, cx| m.set_text(String::new(), cx));
-                if let Some(harness) = pr {
-                    this.open_created_pr(harness, window, cx);
+                if let Some(backend) = pr {
+                    this.open_created_pr(backend, window, cx);
                 }
             },
             window,
@@ -805,7 +855,7 @@ impl Changes {
     /// generatePrContent, `gh pr create`, then the browser.
     fn open_created_pr(
         &mut self,
-        harness: Option<TextHarness>,
+        backend: Option<TextBackend>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -814,7 +864,7 @@ impl Changes {
         let cwd = PathBuf::from(&self.cwd);
         let work = cx
             .background_executor()
-            .spawn(async move { create_pr_blocking(harness, &cwd) });
+            .spawn(async move { create_pr_blocking(backend, &cwd) });
         cx.spawn_in(window, async move |this, cx| {
             let result = work.await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -843,19 +893,23 @@ impl Changes {
         let index = self.index(cx);
         let ahead = index.as_ref().is_some_and(|i| i.ahead > 0);
         let question = Self::on_default(index.as_ref()).then(|| {
-            format!(
-                "Create a pull request from default branch \"{}\"?",
-                index
-                    .as_ref()
-                    .and_then(|i| i.branch.clone())
-                    .unwrap_or_default()
+            crate::i18n::format(
+                "changes-create-a-pull-request-from-default-branch-2",
+                &[(
+                    "value",
+                    (index
+                        .as_ref()
+                        .and_then(|i| i.branch.clone())
+                        .unwrap_or_default())
+                    .to_string(),
+                )],
             )
         });
-        let harness = self.text_harness(cx);
+        let backend = self.text_backend(cx);
         cx.spawn_in(window, async move |this, cx| {
             if let Some(question) = question {
                 let Ok(ask) = this.update_in(cx, |_, window, cx| {
-                    Self::confirm(question, "OK", window, cx)
+                    Self::confirm(question, &crate::i18n::text("changes-ok"), window, cx)
                 }) else {
                     return;
                 };
@@ -868,12 +922,12 @@ impl Changes {
                     this.run_git(
                         "pr".into(),
                         |path| scm::push(&path),
-                        move |this, window, cx| this.open_created_pr(harness, window, cx),
+                        move |this, window, cx| this.open_created_pr(backend, window, cx),
                         window,
                         cx,
                     );
                 } else {
-                    this.open_created_pr(harness, window, cx);
+                    this.open_created_pr(backend, window, cx);
                 }
             });
         })
@@ -895,31 +949,41 @@ impl Changes {
                     .is_some_and(|i| i.remote.is_some() && i.upstream.is_some());
                 let pulling = self.busy.as_deref() == Some("pull");
                 vec![
-                    MenuAction::new("pull", if pulling { "Pulling…" } else { "Pull" })
-                        .icon(if pulling { "loader" } else { "refresh-cw" })
-                        .disabled(self.busy.is_some() || !can_pull)
-                        .into(),
+                    MenuAction::new(
+                        "pull",
+                        if pulling {
+                            crate::i18n::text("changes-pulling")
+                        } else {
+                            crate::i18n::text("changes-pull")
+                        },
+                    )
+                    .icon(if pulling { "loader" } else { "refresh-cw" })
+                    .disabled(self.busy.is_some() || !can_pull)
+                    .into(),
                 ]
             }
             MenuKind::Commit => {
                 let (can_push, can_push_pr) = self.push_options(cx);
                 vec![
-                    MenuAction::new("push", "Commit & Push")
+                    MenuAction::new("push", crate::i18n::text("changes-commit-push"))
                         .disabled(!can_push)
                         .into(),
-                    MenuAction::new("push-pr", "Commit, Push & Create PR")
-                        .disabled(!can_push_pr)
-                        .into(),
+                    MenuAction::new(
+                        "push-pr",
+                        crate::i18n::text("changes-commit-push-create-pr"),
+                    )
+                    .disabled(!can_push_pr)
+                    .into(),
                     MenuItem::Separator,
-                    MenuAction::new("amend", "Amend Last Commit")
+                    MenuAction::new("amend", crate::i18n::text("changes-amend-last-commit"))
                         .checked(self.amend.is_some())
                         .into(),
                 ]
             }
         };
         let (label, width) = match kind {
-            MenuKind::Branch => ("Branch actions", 144.),
-            MenuKind::Commit => ("Commit options", 192.),
+            MenuKind::Branch => (crate::i18n::text("changes-branch-actions"), 144.),
+            MenuKind::Commit => (crate::i18n::text("changes-commit-options"), 192.),
         };
         let menu = cx.new(|cx| {
             Menu::new(label, items, window, cx)
@@ -972,7 +1036,7 @@ impl Changes {
             .is_some_and(|m| m.kind == MenuKind::Branch);
         let branch = index.as_ref().and_then(|i| i.branch.clone());
         let index = index.unwrap_or_default();
-        pane_header("changes-header", "Changes")
+        pane_header("changes-header", &crate::i18n::text("changes-changes"))
             .when_some(branch.clone(), |d, branch| {
                 d.child(
                     div()
@@ -1005,7 +1069,11 @@ impl Changes {
                 )
             })
             .when(branch.is_none(), |d| {
-                d.child(div().flex_shrink_0().child("Changes"))
+                d.child(
+                    div()
+                        .flex_shrink_0()
+                        .child(crate::i18n::text("changes-changes")),
+                )
             })
             .when_some(self.status.clone(), |d, status| {
                 d.child(
@@ -1025,7 +1093,7 @@ impl Changes {
                     div()
                         .id("branch-actions")
                         .role(Role::Button)
-                        .aria_label("Branch actions")
+                        .aria_label(crate::i18n::text("changes-branch-actions"))
                         .aria_expanded(menu_open)
                         .group("branch-actions")
                         .relative()
@@ -1070,9 +1138,12 @@ impl Changes {
             .as_ref()
             .is_some_and(|m| m.kind == MenuKind::Commit);
         let placeholder = if amend {
-            format!("Amend message ({MOD}↩ to amend)")
+            crate::i18n::format(
+                "changes-amend-message-to-amend",
+                &[("MOD", (MOD).to_string())],
+            )
         } else {
-            format!("Message ({MOD}↩ to commit)")
+            crate::i18n::format("changes-message-to-commit", &[("MOD", (MOD).to_string())])
         };
         self.message
             .update(cx, |m, cx| m.set_placeholder(placeholder, cx));
@@ -1081,9 +1152,9 @@ impl Changes {
         let face = if can_commit { solid } else { content(0.4) };
         let ink = crate::theme::background_base();
         let generate_label = if generating {
-            "Cancel commit message generation"
+            crate::i18n::text("changes-cancel-commit-message-generation")
         } else {
-            "Generate commit message"
+            crate::i18n::text("changes-generate-commit-message")
         };
         div()
             .flex_shrink_0()
@@ -1169,7 +1240,11 @@ impl Changes {
                         div()
                             .id("commit")
                             .role(Role::Button)
-                            .aria_label(if amend { "Amend Commit" } else { "Commit" })
+                            .aria_label(if amend {
+                                crate::i18n::text("changes-amend-commit")
+                            } else {
+                                crate::i18n::text("changes-commit")
+                            })
                             .h(px(28.))
                             .min_w_0()
                             .flex_1()
@@ -1183,7 +1258,11 @@ impl Changes {
                             .bg(face)
                             .text_color(ink)
                             .child(icon("check-2", 14.).text_color(ink))
-                            .child(if amend { "Amend Commit" } else { "Commit" })
+                            .child(if amend {
+                                crate::i18n::text("changes-amend-commit")
+                            } else {
+                                crate::i18n::text("changes-commit")
+                            })
                             .when(can_commit, |d| {
                                 d.on_click(cx.listener(|this, _, window, cx| {
                                     this.commit(false, false, window, cx)
@@ -1194,7 +1273,7 @@ impl Changes {
                         div()
                             .id("commit-options")
                             .role(Role::Button)
-                            .aria_label("Commit options")
+                            .aria_label(crate::i18n::text("changes-commit-options"))
                             .aria_expanded(menu_open)
                             .size(px(28.))
                             .flex_shrink_0()
@@ -1256,17 +1335,41 @@ impl Changes {
         let syncing = self.busy.as_deref() == Some("sync");
         let plural = |n: i64| if n == 1 { "" } else { "s" };
         let sync_title = if syncing {
-            "Synchronizing Changes...".to_owned()
+            crate::i18n::text("changes-synchronizing-changes")
         } else if can_publish {
-            index.branch.as_ref().map_or("Publish Branch".into(), |b| {
-                format!("Publish Branch \"{b}\"")
-            })
+            index
+                .branch
+                .as_ref()
+                .map_or(crate::i18n::text("changes-publish-branch"), |b| {
+                    crate::i18n::format("changes-publish-branch-2", &[("b", (b).to_string())])
+                })
         } else if behind > 0 && ahead > 0 {
-            format!("Pull {behind} and push {ahead} commits between {dest}")
+            crate::i18n::format(
+                "changes-pull-and-push-commits-between",
+                &[
+                    ("behind", (behind).to_string()),
+                    ("ahead", (ahead).to_string()),
+                    ("dest", (dest).to_string()),
+                ],
+            )
         } else if behind > 0 {
-            format!("Pull {behind} commit{} from {dest}", plural(behind))
+            crate::i18n::format(
+                "changes-pull-commit-from",
+                &[
+                    ("behind", (behind).to_string()),
+                    ("value", (plural(behind)).to_string()),
+                    ("dest", (dest).to_string()),
+                ],
+            )
         } else {
-            format!("Push {ahead} commit{} to {dest}", plural(ahead))
+            crate::i18n::format(
+                "changes-push-commit-to",
+                &[
+                    ("ahead", (ahead).to_string()),
+                    ("value", (plural(ahead)).to_string()),
+                    ("dest", (dest).to_string()),
+                ],
+            )
         };
         let button = |id: &'static str, title: String, enabled: bool| {
             div()
@@ -1303,7 +1406,12 @@ impl Changes {
                         } else {
                             glyph("cloud-upload")
                         })
-                        .child(div().min_w_0().truncate().child("Publish Branch"))
+                        .child(
+                            div()
+                                .min_w_0()
+                                .truncate()
+                                .child(crate::i18n::text("changes-publish-branch")),
+                        )
                         .when(!busy, |d| {
                             d.on_click(cx.listener(|this, _, window, cx| this.sync(window, cx)))
                         }),
@@ -1317,14 +1425,22 @@ impl Changes {
                         } else {
                             glyph("refresh-cw")
                         })
-                        .child(div().min_w_0().truncate().child("Sync Changes"))
+                        .child(
+                            div()
+                                .min_w_0()
+                                .truncate()
+                                .child(crate::i18n::text("changes-sync-changes")),
+                        )
                         .when(behind > 0, |d| {
                             d.child(
                                 div()
                                     .flex_shrink_0()
                                     .font_features(tabular())
                                     .text_color(content(0.55))
-                                    .child(format!("↓{behind}")),
+                                    .child(crate::i18n::format(
+                                        "changes-behind-count",
+                                        &[("behind", behind.to_string())],
+                                    )),
                             )
                         })
                         .when(ahead > 0, |d| {
@@ -1333,7 +1449,10 @@ impl Changes {
                                     .flex_shrink_0()
                                     .font_features(tabular())
                                     .text_color(content(0.55))
-                                    .child(format!("↑{ahead}")),
+                                    .child(crate::i18n::format(
+                                        "changes-ahead-count",
+                                        &[("ahead", ahead.to_string())],
+                                    )),
                             )
                         })
                         .when(!busy, |d| {
@@ -1342,12 +1461,15 @@ impl Changes {
                 )
             })
             .when(show_create, |d| {
-                let title = index
-                    .default_branch
-                    .as_ref()
-                    .map_or("Create pull request".to_owned(), |b| {
-                        format!("Create a pull request into {b}")
-                    });
+                let title = index.default_branch.as_ref().map_or(
+                    crate::i18n::text("changes-create-pull-request"),
+                    |b| {
+                        crate::i18n::format(
+                            "changes-create-a-pull-request-into",
+                            &[("b", (b).to_string())],
+                        )
+                    },
+                );
                 let enabled = can_create_pr && !busy;
                 d.child(
                     button("create-pr", title, enabled)
@@ -1356,7 +1478,7 @@ impl Changes {
                         } else {
                             glyph("git-pull-request")
                         })
-                        .child("Create PR")
+                        .child(crate::i18n::text("changes-create-pr"))
                         .when(enabled, |d| {
                             d.on_click(
                                 cx.listener(|this, _, window, cx| this.create_pr(window, cx)),
@@ -1372,9 +1494,15 @@ impl Changes {
                     state: String::new(),
                 });
                 let title = if pr.title.is_empty() {
-                    "View pull request".to_owned()
+                    crate::i18n::text("changes-view-pull-request")
                 } else {
-                    format!("View PR #{}: {}", pr.number, pr.title)
+                    crate::i18n::format(
+                        "changes-view-pr-2",
+                        &[
+                            ("value", (pr.number).to_string()),
+                            ("value2", (pr.title).to_string()),
+                        ],
+                    )
                 };
                 let enabled = can_view_pr && !busy;
                 let url = pr.url.clone();
@@ -1382,9 +1510,12 @@ impl Changes {
                     button("view-pr", title, enabled)
                         .child(glyph("external-link"))
                         .child(div().min_w_0().truncate().child(if pr.number > 0 {
-                            format!("View PR #{}", pr.number)
+                            crate::i18n::format(
+                                "changes-view-pr-3",
+                                &[("value", (pr.number).to_string())],
+                            )
                         } else {
-                            "View PR".into()
+                            crate::i18n::text("changes-view-pr")
                         }))
                         .when(enabled, |d| d.on_click(move |_, _, cx| cx.open_url(&url))),
                 )
@@ -1412,8 +1543,11 @@ impl Changes {
         match self.lines[ix].clone() {
             Line::Section(kind) => {
                 let (title, open) = match kind {
-                    Kind2::Staged => ("Staged Changes", self.staged_open),
-                    Kind2::Unstaged => ("Changes", self.changes_open),
+                    Kind2::Staged => (
+                        crate::i18n::text("changes-staged-changes"),
+                        self.staged_open,
+                    ),
+                    Kind2::Unstaged => (crate::i18n::text("changes-changes"), self.changes_open),
                 };
                 let count = files
                     .iter()
@@ -1423,15 +1557,35 @@ impl Changes {
                     })
                     .count();
                 let tree = self.view == ChangesView::Tree;
-                let actions: Vec<(&'static str, &'static str, &'static str)> = match kind {
+                let actions: Vec<(&'static str, String, &'static str)> = match kind {
                     Kind2::Staged => vec![
-                        ("open-all-staged", "Open All Changes", "file-diff"),
-                        ("unstage-all", "Unstage All Changes", "minus-sign"),
+                        (
+                            "open-all-staged",
+                            crate::i18n::text("changes-open-all-changes"),
+                            "file-diff",
+                        ),
+                        (
+                            "unstage-all",
+                            crate::i18n::text("changes-unstage-all-changes"),
+                            "minus-sign",
+                        ),
                     ],
                     Kind2::Unstaged => vec![
-                        ("open-all-unstaged", "Open All Changes", "file-diff"),
-                        ("discard-all", "Discard All Changes", "undo"),
-                        ("stage-all", "Stage All Changes", "plus"),
+                        (
+                            "open-all-unstaged",
+                            crate::i18n::text("changes-open-all-changes"),
+                            "file-diff",
+                        ),
+                        (
+                            "discard-all",
+                            crate::i18n::text("changes-discard-all-changes"),
+                            "undo",
+                        ),
+                        (
+                            "stage-all",
+                            crate::i18n::text("changes-stage-all-changes"),
+                            "plus",
+                        ),
                     ],
                 };
                 div()
@@ -1445,7 +1599,7 @@ impl Changes {
                         div()
                             .id(("section", ix))
                             .role(Role::Button)
-                            .aria_label(title)
+                            .aria_label(&title)
                             .aria_expanded(open)
                             .min_w_0()
                             .flex_1()
@@ -1486,7 +1640,7 @@ impl Changes {
                                     .px_1()
                                     .text_size(px(8.))
                                     .text_color(white(1.))
-                                    .child(count.to_string()),
+                                    .child(crate::system_format::unsigned(count as u64)),
                             )
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 match kind {
@@ -1499,7 +1653,11 @@ impl Changes {
                     .child(
                         icon_action(
                             ("view", ix),
-                            if tree { "View as List" } else { "View as Tree" },
+                            if tree {
+                                crate::i18n::text("changes-view-as-list")
+                            } else {
+                                crate::i18n::text("changes-view-as-tree")
+                            },
                             if tree { "list-bullet" } else { "folder-tree" },
                             true,
                         )
@@ -1614,9 +1772,20 @@ impl Changes {
                             .child(
                                 icon_action(
                                     ("dir-action", ix),
-                                    format!(
-                                        "{} Changes in {path}",
-                                        if stage { "Stage" } else { "Unstage" }
+                                    crate::i18n::format(
+                                        "changes-changes-in",
+                                        &[
+                                            (
+                                                "value",
+                                                (if stage {
+                                                    crate::i18n::text("changes-stage")
+                                                } else {
+                                                    crate::i18n::text("changes-unstage")
+                                                })
+                                                .to_string(),
+                                            ),
+                                            ("path", (path).to_string()),
+                                        ],
                                     ),
                                     if stage { "plus" } else { "minus-sign" },
                                     !busy,
@@ -1746,26 +1915,31 @@ impl Changes {
                             })
                             .when(kind == Kind2::Unstaged, |d| {
                                 d.child(
-                                    icon_action(("discard", ix), "Discard Changes", "undo", !busy)
-                                        .when(!busy, |d| {
-                                            d.on_click(cx.listener(move |this, _, window, cx| {
-                                                this.run_file(
-                                                    row_file.clone(),
-                                                    FileAction::Discard,
-                                                    window,
-                                                    cx,
-                                                )
-                                            }))
-                                        }),
+                                    icon_action(
+                                        ("discard", ix),
+                                        crate::i18n::text("changes-discard-changes"),
+                                        "undo",
+                                        !busy,
+                                    )
+                                    .when(!busy, |d| {
+                                        d.on_click(cx.listener(move |this, _, window, cx| {
+                                            this.run_file(
+                                                row_file.clone(),
+                                                FileAction::Discard,
+                                                window,
+                                                cx,
+                                            )
+                                        }))
+                                    }),
                                 )
                             })
                             .child(
                                 icon_action(
                                     ("stage", ix),
                                     if kind == Kind2::Staged {
-                                        "Unstage Changes"
+                                        crate::i18n::text("changes-unstage-changes")
                                     } else {
-                                        "Stage Changes"
+                                        crate::i18n::text("changes-stage-changes")
                                     },
                                     if kind == Kind2::Staged {
                                         "minus-sign"
@@ -1807,6 +1981,14 @@ impl Changes {
 /// A provider CLI and model for one-off text, `None` for its default model.
 pub(crate) type TextHarness = (Kind, PathBuf, Option<String>);
 
+/// Text backend for commit messages and PR text: configured HTTP endpoint
+/// first, with provider CLI fallback.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct TextBackend {
+    pub http: Option<TextGeneratorConfig>,
+    pub cli: Option<TextHarness>,
+}
+
 /// pickTextHarness: `chosen` (the background model picked in Settings) when
 /// installed, else `preferred`, then Claude Code, then Codex on their default
 /// models.
@@ -1823,18 +2005,17 @@ pub(crate) fn pick_text_harness(
         })
 }
 
-/// generateCommitMessage: a message for the staged changes, written by a
-/// read-only turn of `kind`. Blocking.
+/// generateCommitMessage: a message for the staged changes, written via HTTP
+/// text generator or a read-only turn of `kind`. Blocking.
 pub(crate) fn generate_commit_message(
-    harness: TextHarness,
+    backend: TextBackend,
     cwd: PathBuf,
     cancel: Arc<AtomicBool>,
 ) -> Result<String, String> {
-    let kind = harness.0;
     let context = scm::staged_context(&cwd)?;
     let prompt =
         scm::commit_message_prompt(context.branch.as_deref(), &context.summary, &context.patch);
-    let output = text_prompt(harness, cwd, prompt, cancel)?;
+    let (kind, output) = text_prompt_with(backend, cwd, prompt, 256, cancel)?;
     scm::parse_commit_message(&output).ok_or_else(|| {
         let snippet: String = output
             .split_whitespace()
@@ -1843,13 +2024,19 @@ pub(crate) fn generate_commit_message(
             .chars()
             .take(240)
             .collect();
+        let name = kind
+            .map(|k| k.label().to_string())
+            .unwrap_or_else(|| "HTTP".to_string());
         if snippet.is_empty() {
-            format!(
-                "Could not generate a commit message. {} returned no text.",
-                kind.label()
+            crate::i18n::format(
+                "changes-could-not-generate-a-commit-message-returned",
+                &[("name", name)],
             )
         } else {
-            format!("Could not generate a commit message. Model replied: {snippet}")
+            crate::i18n::format(
+                "changes-could-not-generate-a-commit-message-model",
+                &[("snippet", (snippet).to_string())],
+            )
         }
     })
 }
@@ -1857,15 +2044,16 @@ pub(crate) fn generate_commit_message(
 /// generatePrContent, falling back to the commits, then `gh pr create`; the
 /// new pull request's URL. Blocking.
 pub(crate) fn create_pr_blocking(
-    harness: Option<TextHarness>,
+    backend: Option<TextBackend>,
     cwd: &std::path::Path,
 ) -> Result<String, String> {
     let range = scm::range_context(cwd)?;
-    let parsed = harness.and_then(|harness| {
-        let output = text_prompt(
-            harness,
+    let parsed = backend.and_then(|backend| {
+        let (_, output) = text_prompt_with(
+            backend,
             cwd.to_path_buf(),
             scm::pr_content_prompt(&range),
+            512,
             Arc::new(AtomicBool::new(false)),
         )
         .ok()?;
@@ -1883,6 +2071,35 @@ pub(crate) fn create_pr_blocking(
         .filter(|b| !b.is_empty())
         .unwrap_or_else(|| range.commit_summary.trim().to_owned());
     scm::pr_create(cwd, &title, &body, &range.base, &range.head)
+}
+
+fn text_prompt_with(
+    backend: TextBackend,
+    cwd: PathBuf,
+    prompt: String,
+    max_tokens: u32,
+    cancel: Arc<AtomicBool>,
+) -> Result<(Option<Kind>, String), String> {
+    let http_err = if let Some(http) = backend.http.as_ref().filter(|c| c.is_ready()) {
+        match text_generator::generate(http, None, &prompt, max_tokens, cancel.clone()) {
+            Ok(text) => return Ok((None, text)),
+            Err(err) => Some(err),
+        }
+    } else {
+        None
+    };
+    if cancel.load(Ordering::SeqCst) {
+        return Err("Cancelled".into());
+    }
+    match backend.cli {
+        Some(harness) => {
+            let kind = harness.0;
+            text_prompt(harness, cwd, prompt, cancel).map(|text| (Some(kind), text))
+        }
+        None => Err(http_err.unwrap_or_else(|| {
+            crate::i18n::text("changes-no-provider-cli-is-installed-to-write-a")
+        })),
+    }
 }
 
 /// A read-only one-shot turn, as the React text harness runs: the final
@@ -1931,16 +2148,16 @@ impl Render for Changes {
                 .py_2()
                 .text_size(px(12.))
                 .text_color(content(0.5))
-                .child("No project folder")
+                .child(crate::i18n::text("changes-no-project-folder"))
                 .into_any_element();
         }
         let index = self.git.read(cx).index.clone();
         let empty = match &index {
-            None => Some("Loading changes…".to_owned()),
+            None => Some(crate::i18n::text("changes-loading-changes")),
             Some(i) if i.files.is_empty() => Some(if i.ahead > 0 || i.behind > 0 {
                 sync_status_label(i)
             } else {
-                "No uncommitted changes".into()
+                crate::i18n::text("changes-no-uncommitted-changes")
             }),
             _ => None,
         };
@@ -1956,7 +2173,7 @@ impl Render for Changes {
         div()
             .id("changes")
             .role(Role::TabPanel)
-            .aria_label("Changes")
+            .aria_label(crate::i18n::text("changes-changes"))
             .size_full()
             .min_h_0()
             .flex()

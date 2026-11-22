@@ -5,6 +5,11 @@ use std::path::PathBuf;
 #[derive(Default)]
 pub(super) struct ChatState {
     pub(super) pending: Vec<Message>,
+    queue_scroll: gpui::ScrollHandle,
+    queue_ids: Vec<String>,
+    queue_list_focus: Option<gpui::FocusHandle>,
+    queue_window: Option<gpui::AnyWindowHandle>,
+    queue_focus: std::collections::HashMap<String, ([gpui::FocusHandle; 2], [Subscription; 2])>,
     pub(super) emoji: bool,
     pub(super) delivered: std::collections::HashSet<String>,
     pub(super) sending: Option<String>,
@@ -26,6 +31,16 @@ pub(crate) struct QueueChanged {
 impl EventEmitter<QueueChanged> for Conversation {}
 impl EventEmitter<Submitted> for Conversation {}
 impl Conversation {
+    #[cfg(test)]
+    pub(crate) fn queue_test_focus(&self, id: &str, index: usize) -> gpui::FocusHandle {
+        self.mono_ui.queue_focus[id].0[index].clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn queue_test_list_focus(&self) -> gpui::FocusHandle {
+        self.mono_ui.queue_list_focus.as_ref().unwrap().clone()
+    }
+
     /// App launches are saved before installing a view. Reuse the normal durable
     /// draft/queue path instead of submitting an unrecorded seed prompt.
     pub(crate) fn install_app_launch(
@@ -75,6 +90,15 @@ impl Conversation {
             );
         });
         window.focus(&self.input.focus_handle(cx), cx);
+    }
+    /// A stop was requested and the runtime hasn't settled the turn yet: its
+    /// rows and receipt aren't final, so completion reports must wait.
+    pub(crate) fn mono_stopping(&self) -> bool {
+        self.stopping
+    }
+    #[cfg(test)]
+    pub(crate) fn mono_set_stopping(&mut self, stopping: bool) {
+        self.stopping = stopping;
     }
     pub(crate) fn mono_external_pending(&self) -> bool {
         self.mono_ui.external.is_some()
@@ -157,7 +181,7 @@ impl Conversation {
             .map(|m| crate::transcript::PendingMessage {
                 id: m.id.clone(),
                 text: m.text.clone().into(),
-                error: m.error.clone(),
+                error: m.error.as_deref().map(crate::runtime_text::status),
                 sent_at: m.sent_at,
                 attachments: m.attachments.iter().map(PathBuf::from).collect(),
             })
@@ -330,30 +354,54 @@ impl Conversation {
     pub(crate) fn mono_access_options(&self) -> Vec<MenuItem> {
         let provider = Kind::from_id(&self.summary.provider);
         let mut items = vec![
-            MenuAction::new("access:read-only", "Read-only")
-                .icon("square-lock")
-                .description("Inspect without changing files.")
-                .checked(self.settings.access == AccessMode::ReadOnly)
-                .into(),
+            MenuAction::new(
+                "access:read-only",
+                crate::i18n::text("conversation-read-only"),
+            )
+            .icon("square-lock")
+            .description(crate::i18n::text(
+                "conversation-inspect-without-changing-files",
+            ))
+            .checked(self.settings.access == AccessMode::ReadOnly)
+            .into(),
         ];
-        items.extend(ACCESS_MODES.iter().map(|(id, label, hint, glyph)| {
-                    let hint = match (provider,*id) {
-                        (Kind::Cursor,"supervised") => "Confirm commands using Cursor's permission policy; Cursor may accept edits automatically.",
-                        (Kind::Pi | Kind::Omp,_) => "Tool confirmations follow this provider's configured extensions.",
-                        _ => *hint,
-                    };
-                    let action = MenuAction::new(format!("access:{id}"), *label)
-                        .icon(glyph)
-                        .description(hint)
-                        .checked(self.settings.access.id() == *id);
-                    MenuItem::from(if *id == "full-access" {
-                        action.icon_color(tint(AMBER_400, 0.9))
-                    } else {
-                        action
-                    })
-                }));
+        items.extend(ACCESS_MODES.iter().map(|(id, _label, _hint, glyph)| {
+            let hint = match (provider, *id) {
+                (Kind::Cursor, "supervised") => crate::i18n::text(
+                    "conversation-confirm-commands-using-cursor-s-permission-policy-cursor-may",
+                ),
+                (Kind::Pi | Kind::Omp, _) => crate::i18n::text(
+                    "conversation-tool-confirmations-follow-this-provider-s-configured-extensions",
+                ),
+                _ => crate::i18n::text(match *id {
+                    "supervised" => "conversation-ask-before-commands-and-file-changes",
+                    "auto-accept-edits" => {
+                        "conversation-auto-approve-edits-ask-before-other-actions"
+                    }
+                    "auto" => "conversation-an-ai-reviewer-can-approve-or-deny-actions",
+                    "full-access" => {
+                        "conversation-allow-commands-edits-and-supported-mcp-confirmations-in-non"
+                    }
+                    _ => unreachable!(),
+                }),
+            };
+            let action = MenuAction::new(
+                format!("access:{id}"),
+                crate::i18n::text(&format!("access-{id}")),
+            )
+            .icon(glyph)
+            .description(hint)
+            .checked(self.settings.access.id() == *id);
+            MenuItem::from(if *id == "full-access" {
+                action.icon_color(tint(AMBER_400, 0.9))
+            } else {
+                action
+            })
+        }));
         if self.busy {
-            items.push(MenuItem::Note("Changes apply to the next turn.".into()));
+            items.push(MenuItem::Note(
+                crate::i18n::text("conversation-changes-apply-to-the-next-turn").into(),
+            ));
         }
         items
     }
@@ -396,30 +444,38 @@ impl Conversation {
             );
         }
         if self.model_info().is_some_and(|m| m.fast) {
-            items.push(MenuAction::new("fast", "Fast").toggle(self.settings.fast));
+            items.push(
+                MenuAction::new("fast", crate::i18n::text("conversation-fast"))
+                    .toggle(self.settings.fast),
+            );
         }
         if let Some(model) = self.model_info().filter(|m| !m.tiers.is_empty()) {
-            let mut tiers =
-                vec![MenuAction::new("tier:", "Standard").checked(self.selected_tier().is_none())];
+            let mut tiers = vec![
+                MenuAction::new("tier:", crate::i18n::text("conversation-standard"))
+                    .checked(self.selected_tier().is_none()),
+            ];
             tiers.extend(model.tiers.iter().map(|(id, name)| {
                 MenuAction::new(format!("tier:{id}"), name.clone())
                     .checked(self.selected_tier() == Some(id.as_str()))
             }));
             items.push(
-                MenuAction::new("service-tier", "Service Tier")
-                    .value(
-                        self.selected_tier()
-                            .and_then(|id| model.tiers.iter().find(|(key, _)| key == id))
-                            .map(|(_, label)| label.as_str())
-                            .unwrap_or_else(|| self.selected_tier().unwrap_or("Standard"))
-                            .to_owned(),
-                    )
-                    .submenu(tiers),
+                MenuAction::new(
+                    "service-tier",
+                    crate::i18n::text("conversation-service-tier"),
+                )
+                .value(
+                    self.selected_tier()
+                        .and_then(|id| model.tiers.iter().find(|(key, _)| key == id))
+                        .map(|(_, label)| label.clone())
+                        .or_else(|| self.selected_tier().map(str::to_owned))
+                        .unwrap_or_else(|| crate::i18n::text("conversation-standard")),
+                )
+                .submenu(tiers),
             );
         }
         if self.model_info().is_some_and(|m| m.thinking) {
             items.push(
-                MenuAction::new("thinking", "Thinking")
+                MenuAction::new("thinking", crate::i18n::text("conversation-thinking"))
                     .toggle(self.settings.thinking.unwrap_or(false)),
             );
         }
@@ -435,8 +491,8 @@ impl Conversation {
                     .get(&control.id)
                     .unwrap_or(&control.current);
                 let label = match control.id.as_str() {
-                    "effort" | "reasoning" => "Effort",
-                    _ => &control.name,
+                    "effort" | "reasoning" => crate::i18n::text("conversation-effort"),
+                    _ => control.name.clone(),
                 };
                 if model_control_toggle(control) {
                     items.push(
@@ -542,15 +598,139 @@ impl Conversation {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let failed_ids: Vec<_> = self
+            .mono_ui
+            .pending
+            .iter()
+            .filter(|m| m.internal && m.error.is_some())
+            .map(|m| m.id.clone())
+            .collect();
+        let list_focus = self
+            .mono_ui
+            .queue_list_focus
+            .get_or_insert_with(|| cx.focus_handle().tab_stop(true))
+            .clone();
+        if self.mono_ui.queue_ids != failed_ids {
+            let queue_focused = list_focus.is_focused(window)
+                || self
+                    .mono_ui
+                    .queue_focus
+                    .values()
+                    .any(|(handles, _)| handles.iter().any(|handle| handle.is_focused(window)));
+            if queue_focused {
+                let focus = if failed_ids.is_empty() {
+                    self.input.focus_handle(cx)
+                } else {
+                    list_focus.clone()
+                };
+                window.focus(&focus, cx);
+            }
+            self.mono_ui.queue_scroll = gpui::ScrollHandle::new();
+            self.mono_ui.queue_ids.clone_from(&failed_ids);
+        }
+        if self.mono_ui.queue_window != Some(window.window_handle()) {
+            self.mono_ui.queue_focus.clear();
+            self.mono_ui.queue_window = Some(window.window_handle());
+        }
+        self.mono_ui
+            .queue_focus
+            .retain(|id, _| failed_ids.contains(id));
+        for id in &failed_ids {
+            if !self.mono_ui.queue_focus.contains_key(id) {
+                let handles = [
+                    cx.focus_handle().tab_stop(true),
+                    cx.focus_handle().tab_stop(true),
+                ];
+                let subscribe =
+                    |handle: &gpui::FocusHandle, cx: &mut Context<Self>, window: &mut Window| {
+                        let id = id.clone();
+                        cx.on_focus(handle, window, move |this, _, cx| {
+                            if let Some(index) = this
+                                .mono_ui
+                                .pending
+                                .iter()
+                                .filter(|m| m.internal && m.error.is_some())
+                                .position(|m| m.id == id)
+                            {
+                                this.mono_ui.queue_scroll.scroll_to_top_of_item(index);
+                                cx.notify();
+                            }
+                        })
+                    };
+                let subscriptions = [
+                    subscribe(&handles[0], cx, window),
+                    subscribe(&handles[1], cx, window),
+                ];
+                self.mono_ui
+                    .queue_focus
+                    .insert(id.clone(), (handles, subscriptions));
+            }
+        }
         let mono = self.settings.mono.as_ref().unwrap().mono.clone();
         let status = self.mono_status();
         let name = mono.label();
         // MonoHeader's greeting: it shows only before the first message.
         let body = if !self.summary.has_messages {
-            let greeting = div().flex().flex_col().items_center().justify_center().px_6().py_12()
-                .child(crate::monos::avatar::avatar(&mono.mascot, mono.color, status, 56., false))
-                .child(div().mt(px(-8.)).h(px(32.)).px(px(14.)).flex().items_center().rounded_full().border_1().border_color(content(0.14)).bg(content(0.06)).text_size(px(13.)).font_weight(gpui::FontWeight::SEMIBOLD).child(name))
-                .child(div().mt_3().max_w(px(384.)).text_center().text_size(px(13.)).line_height(px(21.)).text_color(content(0.5)).child(if mono.projects.is_empty(){"Add the projects I should work on in my settings, or just ask me something.".into()}else{format!("I can see every session, note and folder in {}. Ask what’s going on, or hand me work.",mono.projects.iter().map(|p|std::path::Path::new(p).file_name().unwrap_or_default().to_string_lossy()).collect::<Vec<_>>().join(", "))}));
+            let greeting = div()
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .px_6()
+                .py_12()
+                .child(crate::monos::avatar::avatar(
+                    &mono.mascot,
+                    mono.color,
+                    status,
+                    56.,
+                    false,
+                ))
+                .child(
+                    div()
+                        .mt(px(-8.))
+                        .h(px(32.))
+                        .px(px(14.))
+                        .flex()
+                        .items_center()
+                        .rounded_full()
+                        .border_1()
+                        .border_color(content(0.14))
+                        .bg(content(0.06))
+                        .text_size(px(13.))
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .child(name),
+                )
+                .child(
+                    div()
+                        .mt_3()
+                        .max_w(px(384.))
+                        .text_center()
+                        .text_size(px(13.))
+                        .line_height(px(21.))
+                        .text_color(content(0.5))
+                        .child(if mono.projects.is_empty() {
+                            crate::i18n::text("conversation-add-the-projects-i-should-work")
+                        } else {
+                            crate::i18n::format(
+                                "conversation-i-can-see-every-session-note-and",
+                                &[(
+                                    "value",
+                                    (mono
+                                        .projects
+                                        .iter()
+                                        .map(|p| {
+                                            std::path::Path::new(p)
+                                                .file_name()
+                                                .unwrap_or_default()
+                                                .to_string_lossy()
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join(", "))
+                                    .to_string(),
+                                )],
+                            )
+                        }),
+                );
             div()
                 .flex_1()
                 .flex()
@@ -600,87 +780,127 @@ impl Conversation {
                     .pb_1p5()
                     .flex()
                     .flex_col()
-                    .children(
-                        self.mono_ui
-                            .pending
-                            .iter()
-                            .filter(|m| m.internal && m.error.is_some())
-                            .map(|message| {
-                                let retry = message.id.clone();
-                                let remove = retry.clone();
-                                div()
-                                    .id(SharedString::from(format!("mono-queued-{}", message.id)))
-                                    .debug_selector(|| "mono-internal-queue".into())
-                                    .mb_1()
-                                    .flex()
-                                    .justify_end()
-                                    .child(
+                    .when(!failed_ids.is_empty(), |d| d.child(
+                        div()
+                            .id("mono-internal-queue-list")
+                            .debug_selector(|| "mono-internal-queue-list".into())
+                            .focus_visible(|s| s.border_2().border_color(content(0.8)))
+                            .track_focus(&list_focus)
+                            .tab_index(0)
+                            .track_scroll(&self.mono_ui.queue_scroll)
+                            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
+                                let scroll = &this.mono_ui.queue_scroll;
+                                let delta = match event.keystroke.key.as_str() {
+                                    "up" => px(40.),
+                                    "down" => px(-40.),
+                                    "pageup" => px(160.),
+                                    "pagedown" => px(-160.),
+                                    _ => return,
+                                };
+                                let y = (scroll.offset().y + delta).max(-scroll.max_offset().y).min(px(0.));
+                                scroll.set_offset(gpui::point(scroll.offset().x, y));
+                                cx.stop_propagation();
+                                cx.notify();
+                            }))
+                            .max_h(px(180.))
+                            .overflow_y_scroll()
+                            .children(
+                                self.mono_ui
+                                    .pending
+                                    .iter()
+                                    .filter(|m| m.internal && m.error.is_some())
+                                    .map(|message| {
+                                        let retry = message.id.clone();
+                                        let remove = retry.clone();
+                                        let focus = &self.mono_ui.queue_focus[&message.id].0;
                                         div()
-                                            .max_w(px(440.))
-                                            .px_3()
-                                            .py_2()
-                                            .rounded_xl()
-                                            .border_1()
-                                            .border_color(content(0.15))
-                                            .bg(content(0.04))
-                                            .text_size(px(13.))
-                                            .text_color(content(0.6))
-                                            .child(if message.internal {
-                                                "Completion update".into()
-                                            } else {
-                                                message.text.clone()
-                                            })
+                                            .id(SharedString::from(format!(
+                                                "mono-queued-{}",
+                                                message.id
+                                            )))
+                                            .debug_selector(|| "mono-internal-queue".into())
+                                            .mb_1()
+                                            .flex()
+                                            .justify_end()
                                             .child(
                                                 div()
-                                                    .text_size(px(11.))
-                                                    .text_color(content(0.4))
+                                                    .max_w(px(440.))
+                                                    .px_3()
+                                                    .py_2()
+                                                    .rounded_xl()
+                                                    .border_1()
+                                                    .border_color(content(0.15))
+                                                    .bg(content(0.04))
+                                                    .text_size(px(13.))
+                                                    .text_color(content(0.6))
+                                                    .child(if message.internal {
+                                                        crate::i18n::text("conversation-completion-update")
+                                                    } else {
+                                                        message.text.clone()
+                                                    })
+                                                    .when(message.error.is_some(), |d| {
+                                                        d.child(
+                                                            div()
+                                                                .flex()
+                                                                .gap_2()
+                                                                .child(
+                                                                    icon_button(
+                                                                        "mono-queue-retry",
+                                                                        crate::i18n::text("conversation-retry-queued-message"),
+                                                                        "refresh-cw",
+                                                                    )
+                                                                    .track_focus(&focus[0]).tab_index(0)
+                                                                    .focus_visible(|s| s.border_2().border_color(content(0.8)))
+                                                                    .debug_selector({ let id = message.id.clone(); move || format!("mono-queue-retry-{id}") })
+                                                                    .on_click(cx.listener(
+                                                                        move |_, _, _, cx| {
+                                                                            cx.emit(QueueChanged {
+                                                                                id: retry.clone(),
+                                                                                remove: false,
+                                                                            })
+                                                                        },
+                                                                    )),
+                                                                )
+                                                                .child(
+                                                                    icon_button(
+                                                                        "mono-queue-discard",
+                                                                        crate::i18n::text("conversation-discard-queued-message"),
+                                                                        "close",
+                                                                    )
+                                                                    .track_focus(&focus[1]).tab_index(0)
+                                                                    .focus_visible(|s| s.border_2().border_color(content(0.8)))
+                                                                    .debug_selector({ let id = message.id.clone(); move || format!("mono-queue-discard-{id}") })
+                                                                    .on_click(cx.listener(
+                                                                        move |_, _, _, cx| {
+                                                                            cx.emit(QueueChanged {
+                                                                                id: remove.clone(),
+                                                                                remove: true,
+                                                                            })
+                                                                        },
+                                                                    )),
+                                                                ),
+                                                        )
+                                                    })
                                                     .child(
-                                                        message
-                                                            .error
-                                                            .clone()
-                                                            .unwrap_or_else(|| "Pending".into()),
+                                                        div()
+                                                            .text_size(px(11.))
+                                                            .text_color(content(0.4))
+                                                            .child(
+                                                                message
+                                                                    .error
+                                                                    .clone()
+                                                                    .unwrap_or_else(|| {
+                                                                        crate::i18n::text("conversation-pending")
+                                                                    }),
+                                                            ),
                                                     ),
                                             )
-                                            .when(message.error.is_some(), |d| {
-                                                d.child(
-                                                    div()
-                                                        .flex()
-                                                        .gap_2()
-                                                        .child(
-                                                            icon_button(
-                                                                "mono-queue-retry",
-                                                                "Retry queued message",
-                                                                "refresh-cw",
-                                                            )
-                                                            .on_click(cx.listener(
-                                                                move |_, _, _, cx| {
-                                                                    cx.emit(QueueChanged {
-                                                                        id: retry.clone(),
-                                                                        remove: false,
-                                                                    })
-                                                                },
-                                                            )),
-                                                        )
-                                                        .child(
-                                                            icon_button(
-                                                                "mono-queue-discard",
-                                                                "Discard queued message",
-                                                                "close",
-                                                            )
-                                                            .on_click(cx.listener(
-                                                                move |_, _, _, cx| {
-                                                                    cx.emit(QueueChanged {
-                                                                        id: remove.clone(),
-                                                                        remove: true,
-                                                                    })
-                                                                },
-                                                            )),
-                                                        ),
-                                                )
-                                            }),
-                                    )
-                            }),
-                    )
+                                    }),
+                            ),
+                    ))
+                    .when(!failed_ids.is_empty(), |d| {
+                        d.child(div().text_size(px(11.)).text_color(content(0.5)).child(crate::i18n::text("conversation-scroll-for-completion-updates")))
+                    })
                     .children(self.usage_notice(true, cx))
                     .children(self.auth_notice(cx))
                     .child(self.approval_shelf(window, cx))
@@ -766,16 +986,18 @@ impl Conversation {
     }
     /// ModelControlPills' select menus: effort (with fast and service tier
     /// grouped under it), then each provider control.
-    pub(super) fn mono_setting_menu(
-        &self,
-        ix: usize,
-    ) -> (&'static str, Vec<MenuItem>, f32, MenuStyle) {
+    pub(super) fn mono_setting_menu(&self, ix: usize) -> (String, Vec<MenuItem>, f32, MenuStyle) {
         let Some(model) = self.model_info() else {
-            return ("Model setting", Vec::new(), 210., MenuStyle::Explorer);
+            return (
+                crate::i18n::text("conversation-model-setting"),
+                Vec::new(),
+                210.,
+                MenuStyle::Explorer,
+            );
         };
         let mut items = Vec::new();
         if ix == 0 {
-            let group = |items: &mut Vec<MenuItem>, label: &str, rows: Vec<MenuAction>| {
+            let group = |items: &mut Vec<MenuItem>, label: String, rows: Vec<MenuAction>| {
                 if !items.is_empty() {
                     items.push(MenuItem::Separator);
                 }
@@ -788,22 +1010,29 @@ impl Conversation {
             if model.fast {
                 group(
                     &mut items,
-                    "Fast",
+                    crate::i18n::text("conversation-fast"),
                     vec![
-                        MenuAction::new("fast:on", "On").checked(self.settings.fast),
-                        MenuAction::new("fast:off", "Off").checked(!self.settings.fast),
+                        MenuAction::new("fast:on", crate::i18n::text("conversation-on"))
+                            .checked(self.settings.fast),
+                        MenuAction::new("fast:off", crate::i18n::text("conversation-off"))
+                            .checked(!self.settings.fast),
                     ],
                 );
             }
             if !model.tiers.is_empty() {
                 let mut tiers = vec![
-                    MenuAction::new("tier:", "Standard").checked(self.selected_tier().is_none()),
+                    MenuAction::new("tier:", crate::i18n::text("conversation-standard"))
+                        .checked(self.selected_tier().is_none()),
                 ];
                 tiers.extend(model.tiers.iter().map(|(id, name)| {
                     MenuAction::new(format!("tier:{id}"), name.clone())
                         .checked(self.selected_tier() == Some(id.as_str()))
                 }));
-                group(&mut items, "Service Tier", tiers);
+                group(
+                    &mut items,
+                    crate::i18n::text("conversation-service-tier"),
+                    tiers,
+                );
             }
             if items
                 .iter()
@@ -813,7 +1042,12 @@ impl Conversation {
             {
                 items.retain(|i| !matches!(i, MenuItem::Header(_)));
             }
-            return ("Effort", items, 210., MenuStyle::Explorer);
+            return (
+                crate::i18n::text("conversation-effort"),
+                items,
+                210.,
+                MenuStyle::Explorer,
+            );
         }
         if let Some(control) = model.controls.get(ix - 1) {
             let selected = self
@@ -829,7 +1063,12 @@ impl Conversation {
                 )
             }));
         }
-        ("Model setting", items, 210., MenuStyle::Explorer)
+        (
+            crate::i18n::text("conversation-model-setting"),
+            items,
+            210.,
+            MenuStyle::Explorer,
+        )
     }
     /// The session composer's box: the field, then a toolbar with the model
     /// picker, its settings, access and send.
@@ -902,7 +1141,7 @@ impl Conversation {
                             .items_center()
                             .gap_1()
                             .child(
-                                tool_pill("mono-model", "Model")
+                                tool_pill("mono-model", crate::i18n::text("conversation-model"))
                                     .debug_selector(|| "mono-model".into())
                                     .min_w_0()
                                     .max_w(px(220.))
@@ -913,7 +1152,10 @@ impl Conversation {
                                         self.model_label(),
                                         trigger_effort
                                             .as_ref()
-                                            .map(|effort| format!(", effort {effort}"))
+                                            .map(|effort| crate::i18n::format(
+                                                "conversation-effort-2",
+                                                &[("effort", (effort).to_string())]
+                                            ))
                                             .unwrap_or_default()
                                     ))
                                     .aria_expanded(models_open)
@@ -945,33 +1187,45 @@ impl Conversation {
                             )
                             .children(controls)
                             .child(
-                                tool_pill("mono-access", "Access")
-                                    .aria_label(format!("Access, {}", self.settings.access.label()))
-                                    .aria_expanded(self.menu_is(ComposerMenu::Access))
-                                    .child(self.access_anchor.probe())
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.toggle_menu(ComposerMenu::Access, window, cx)
-                                    }))
-                                    .child(
-                                        icon(
-                                            match self.settings.access {
-                                                AccessMode::FullAccess => "shield-alert",
-                                                AccessMode::AutoAcceptEdits => "pencil-edit",
-                                                AccessMode::Auto => "sparkles",
-                                                _ => "square-lock",
-                                            },
-                                            14.,
-                                        )
-                                        .text_color(
-                                            if self.settings.access == AccessMode::FullAccess {
-                                                tint(AMBER_400, 0.9)
-                                            } else {
-                                                content(1.)
-                                            },
-                                        ),
+                                tool_pill(
+                                    "mono-access",
+                                    crate::i18n::text("conversation-access-2"),
+                                )
+                                .aria_label(crate::i18n::format(
+                                    "conversation-access",
+                                    &[(
+                                        "value",
+                                        crate::conversation::access_label(self.settings.access)
+                                            .to_string(),
+                                    )],
+                                ))
+                                .aria_expanded(self.menu_is(ComposerMenu::Access))
+                                .child(self.access_anchor.probe())
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.toggle_menu(ComposerMenu::Access, window, cx)
+                                }))
+                                .child(
+                                    icon(
+                                        match self.settings.access {
+                                            AccessMode::FullAccess => "shield-alert",
+                                            AccessMode::AutoAcceptEdits => "pencil-edit",
+                                            AccessMode::Auto => "sparkles",
+                                            _ => "square-lock",
+                                        },
+                                        14.,
                                     )
-                                    .child(pill_label(self.settings.access.label()))
-                                    .child(icon("chevron-down", 12.)),
+                                    .text_color(
+                                        if self.settings.access == AccessMode::FullAccess {
+                                            tint(AMBER_400, 0.9)
+                                        } else {
+                                            content(1.)
+                                        },
+                                    ),
+                                )
+                                .child(pill_label(crate::conversation::access_label(
+                                    self.settings.access,
+                                )))
+                                .child(icon("chevron-down", 12.)),
                             ),
                     )
                     .child(
@@ -1018,10 +1272,12 @@ impl Conversation {
                 let (glyph, label, value) = if model.efforts.is_empty() {
                     (
                         "zap",
-                        "Service Tier",
+                        crate::i18n::text("conversation-service-tier"),
                         self.selected_tier()
                             .and_then(|id| model.tiers.iter().find(|(t, _)| t == id))
-                            .map_or("Standard".into(), |(_, name)| name.clone()),
+                            .map_or(crate::i18n::text("conversation-standard"), |(_, name)| {
+                                name.clone()
+                            }),
                     )
                 } else {
                     (
@@ -1033,7 +1289,10 @@ impl Conversation {
                 pills.push(
                     text_control("mono-effort".into(), open)
                         .max_w(px(112.))
-                        .aria_label(format!("{label}: {value}"))
+                        .aria_label(crate::i18n::format(
+                            "conversation-option-value",
+                            &[("label", label.to_string()), ("value", value.to_string())],
+                        ))
                         .aria_expanded(open)
                         .child(self.mono_ui.setting_anchors[0].probe())
                         .child(icon(glyph, 14.).text_color(content(if open { 1. } else { 0.55 })))
@@ -1048,8 +1307,23 @@ impl Conversation {
                 let on = self.settings.fast;
                 pills.push(
                     text_control("mono-fast".into(), false)
-                        .aria_label(format!("Fast mode: {}", if on { "On" } else { "Off" }))
-                        .child(div().when(!on, |d| d.opacity(0.5)).child("Fast"))
+                        .aria_label(crate::i18n::format(
+                            "conversation-fast-mode",
+                            &[(
+                                "value",
+                                (if on {
+                                    crate::i18n::text("conversation-on")
+                                } else {
+                                    crate::i18n::text("conversation-off")
+                                })
+                                .to_string(),
+                            )],
+                        ))
+                        .child(
+                            div()
+                                .when(!on, |d| d.opacity(0.5))
+                                .child(crate::i18n::text("conversation-fast")),
+                        )
                         .on_click(cx.listener(|this, _, _, cx| this.menu_choice("fast", cx)))
                         .into_any_element(),
                 );
@@ -1058,8 +1332,23 @@ impl Conversation {
                 let on = self.settings.thinking.unwrap_or(false);
                 pills.push(
                     text_control("mono-thinking".into(), false)
-                        .aria_label(format!("Thinking: {}", if on { "On" } else { "Off" }))
-                        .child(div().when(!on, |d| d.opacity(0.5)).child("Thinking"))
+                        .aria_label(crate::i18n::format(
+                            "conversation-thinking-2",
+                            &[(
+                                "value",
+                                (if on {
+                                    crate::i18n::text("conversation-on")
+                                } else {
+                                    crate::i18n::text("conversation-off")
+                                })
+                                .to_string(),
+                            )],
+                        ))
+                        .child(
+                            div()
+                                .when(!on, |d| d.opacity(0.5))
+                                .child(crate::i18n::text("conversation-thinking")),
+                        )
                         .on_click(cx.listener(|this, _, _, cx| this.menu_choice("thinking", cx)))
                         .into_any_element(),
                 );
@@ -1092,7 +1381,7 @@ impl Conversation {
                 pills.push(
                     text_control(format!("mono-control-{ix}").into(), open)
                         .max_w(px(112.))
-                        .aria_label(title)
+                        .aria_label(&title)
                         .when(!toggle, |d| {
                             d.aria_expanded(open)
                                 .child(self.mono_ui.setting_anchors[ix + 1].probe())
@@ -1120,11 +1409,11 @@ impl Conversation {
     /// Under the box: attach and emoji on the left, the context meter on the
     /// right.
     fn mono_composer_tools(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let tool = |id: &'static str, label: &'static str| {
+        let tool = |id: &'static str, label: String| {
             div()
                 .id(id)
                 .role(Role::Button)
-                .aria_label(label)
+                .aria_label(label.to_owned())
                 .group(id)
                 .flex_shrink_0()
                 .size(px(26.))
@@ -1136,13 +1425,23 @@ impl Conversation {
         };
         let ratio = self.context.and_then(|usage| usage.ratio());
         let headline = ratio
-            .map(|r| format!("{:.0}% context used", r * 100.))
-            .unwrap_or_else(|| "No context used yet".into());
+            .map(|r| {
+                crate::i18n::format(
+                    "context-used",
+                    &[("percent", crate::system_format::percent((r * 100.) as f64))],
+                )
+            })
+            .unwrap_or_else(|| crate::i18n::text("conversation-no-context-used-yet"));
         let detail = self.context.map(|usage| {
-            format!(
-                "{} / {} tokens",
-                monocode_core::context::format_tokens(usage.used),
-                monocode_core::context::format_tokens(usage.window.unwrap_or(0))
+            crate::i18n::format(
+                "conversation-tokens",
+                &[
+                    ("value", (crate::i18n::tokens(usage.used)).to_string()),
+                    (
+                        "value2",
+                        (crate::i18n::tokens(usage.window.unwrap_or(0))).to_string(),
+                    ),
+                ],
             )
         });
         div()
@@ -1156,17 +1455,20 @@ impl Conversation {
             // straight under send.
             .pr(px(9.))
             .child(
-                tool("mono-attach", "Attach files")
-                    .debug_selector(|| "mono-attach".into())
-                    .child(
-                        icon("mono-attach", 17.)
-                            .text_color(content(0.55))
-                            .group_hover("mono-attach", |s| s.text_color(content(1.))),
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| this.choose_attachments(cx))),
+                tool(
+                    "mono-attach",
+                    crate::i18n::text("conversation-attach-files"),
+                )
+                .debug_selector(|| "mono-attach".into())
+                .child(
+                    icon("mono-attach", 17.)
+                        .text_color(content(0.55))
+                        .group_hover("mono-attach", |s| s.text_color(content(1.))),
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.choose_attachments(cx))),
             )
             .child(
-                tool("mono-emoji", "Add emoji")
+                tool("mono-emoji", crate::i18n::text("conversation-add-emoji"))
                     .when(self.mono_ui.emoji, |d| d.bg(content(0.08)))
                     .child(
                         icon("smile", 13.)

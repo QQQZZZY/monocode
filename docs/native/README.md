@@ -6,6 +6,7 @@ uses React/Tauri. Native builds have their own Cargo workspace and lockfile.
 ## Requirements
 
 - Node.js 22+ and a current stable Rust toolchain.
+- Python 3 for the native English message contract check (standard library only).
 - On macOS, Xcode with macOS components.
 - Linux core checks need D-Bus headers and pkg-config (`libdbus-1-dev` and
   `pkg-config` on Debian/Ubuntu).
@@ -150,7 +151,9 @@ continues to use each provider's existing sign-in.
 npm run native:check
 ```
 
-This runs the script tests, Rust formatting, strict Clippy and native tests.
+This runs the English message contract check, script tests, Rust formatting,
+strict Clippy and native tests. See [internationalization](internationalization.md)
+for the language catalog and system-format boundaries.
 See [verification](verification.md) for individual commands, optional provider
 checks and the latest recorded results.
 

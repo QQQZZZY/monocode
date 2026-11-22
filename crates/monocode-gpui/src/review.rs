@@ -75,9 +75,9 @@ impl ReviewTab {
                 .map_or_else(|| path.clone(), |p| p.to_string_lossy().into_owned()),
             Self::Changes { staged, .. } => {
                 if *staged == Some(true) {
-                    "Staged Changes".into()
+                    crate::i18n::text("review-staged-changes")
                 } else {
-                    "Changes".into()
+                    crate::i18n::text("review-changes")
                 }
             }
             Self::Commit {
@@ -90,7 +90,7 @@ impl ReviewTab {
                     subject.into()
                 }
             }
-            Self::Session { .. } => "Session Changes".into(),
+            Self::Session { .. } => crate::i18n::text("review-session-changes"),
         }
     }
     /// `editorTabKey`: one Changes tab per checkout and side, one per commit.
@@ -688,9 +688,13 @@ impl ReviewPane {
             .join(", ");
         let answer = window.prompt(
             gpui::PromptLevel::Warning,
-            &format!("Save changes to {names}?"),
-            Some("Your unsaved edits will be lost if you discard them."),
-            &["Save", "Discard", "Cancel"],
+            &crate::i18n::format("review-save-changes-to", &[("names", (names).to_string())]),
+            Some(crate::i18n::text("review-prompt-your-unsaved-edits-will-be-lost").as_str()),
+            &[
+                crate::i18n::text("review-prompt-save").as_str(),
+                crate::i18n::text("review-prompt-discard").as_str(),
+                crate::i18n::text("review-prompt-cancel").as_str(),
+            ],
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
@@ -1242,19 +1246,16 @@ impl ReviewPane {
                         binary: loaded.is_some_and(|l| l.diff.binary),
                         too_large: loaded.is_some_and(|l| l.diff.too_large),
                         empty_message: match loaded {
-                            None => Some("Loading…".into()),
-                            Some(l) if l.error.is_some() => Some(format!(
-                                "Couldn’t load diff: {}",
-                                l.error.clone().unwrap_or_default()
+                            None => Some(crate::i18n::text("review-loading")),
+                            Some(l) if l.error.is_some() => Some(crate::i18n::format(
+                                "review-couldn-t-load-diff",
+                                &[("value", (l.error.clone().unwrap_or_default()).to_string())],
                             )),
-                            _ if unchanged => Some(
-                                if kind {
-                                    "No staged changes"
-                                } else {
-                                    "No unstaged changes"
-                                }
-                                .into(),
-                            ),
+                            _ if unchanged => Some(if kind {
+                                crate::i18n::text("review-no-staged-changes")
+                            } else {
+                                crate::i18n::text("review-no-unstaged-changes")
+                            }),
                             _ => None,
                         },
                         additions: loaded
@@ -1299,10 +1300,10 @@ impl ReviewPane {
                         binary: loaded.is_some_and(|l| l.diff.binary),
                         too_large: loaded.is_some_and(|l| l.diff.too_large),
                         empty_message: match loaded {
-                            None => Some("Loading…".into()),
-                            Some(l) if l.error.is_some() => Some(format!(
-                                "Couldn’t load diff: {}",
-                                l.error.clone().unwrap_or_default()
+                            None => Some(crate::i18n::text("review-loading")),
+                            Some(l) if l.error.is_some() => Some(crate::i18n::format(
+                                "review-couldn-t-load-diff",
+                                &[("value", (l.error.clone().unwrap_or_default()).to_string())],
                             )),
                             Some(l)
                                 if l.unified.is_some()
@@ -1310,7 +1311,7 @@ impl ReviewPane {
                                     && l.deletions == 0
                                     && !l.diff.binary =>
                             {
-                                Some("No textual diff".into())
+                                Some(crate::i18n::text("review-no-textual-diff"))
                             }
                             _ => None,
                         },
@@ -1451,12 +1452,19 @@ impl ReviewPane {
         cx: &mut Context<Self>,
     ) {
         let items = vec![
-            MenuAction::new("close", "Close").into(),
-            MenuAction::new("close-others", "Close Others")
+            MenuAction::new("close", crate::i18n::text("review-close")).into(),
+            MenuAction::new("close-others", crate::i18n::text("review-close-others"))
                 .disabled(self.sources.len() < 2)
                 .into(),
         ];
-        let menu = cx.new(|cx| Menu::new("File tab actions", items, window, cx));
+        let menu = cx.new(|cx| {
+            Menu::new(
+                crate::i18n::text("review-file-tab-actions"),
+                items,
+                window,
+                cx,
+            )
+        });
         let events = cx.subscribe(&menu, move |this, _, event: &MenuEvent, cx| {
             this.menu = None;
             if let MenuEvent::Picked(id, _) = event {
@@ -1570,7 +1578,7 @@ impl ReviewPane {
                         .id("drag-file-pane")
                         .debug_selector(|| "drag-file-pane".into())
                         .role(Role::Button)
-                        .aria_label("Drag to reorder pane")
+                        .aria_label(crate::i18n::text("review-drag-to-reorder-pane"))
                         .w(px(20.))
                         .h(px(TAB_PLATE_HEIGHT))
                         .ml(px(6.))
@@ -1596,7 +1604,7 @@ impl ReviewPane {
                 div()
                     .id("review-tabs")
                     .role(Role::TabList)
-                    .aria_label("Files")
+                    .aria_label(crate::i18n::text("review-files"))
                     .flex_1()
                     .min_w_0()
                     .h_full()
@@ -1720,7 +1728,7 @@ impl ReviewPane {
                         div()
                             .id(("review-tab-close", ix))
                             .role(Role::Button)
-                            .aria_label(SharedString::from(format!("Close {label}")))
+                            .aria_label(SharedString::from(crate::i18n::format("review-close-2", &[("label", (label).to_string())])))
                             .absolute()
                             .right_1()
                             .top(gpui::relative(0.5))
@@ -1809,7 +1817,7 @@ impl Render for ReviewPane {
                     centered()
                         .text_size(px(13.))
                         .text_color(content(0.45))
-                        .child("No project folder")
+                        .child(crate::i18n::text("review-no-project-folder"))
                         .into_any_element()
                 } else if let Some(error) = &source.error {
                     centered()
@@ -1819,11 +1827,15 @@ impl Render for ReviewPane {
                         .child(icon("circle-alert", 20.).mb_3().text_color(rgb(RED_400)))
                         .child(div().text_size(px(13.)).text_color(content(1.)).child(
                             match source.tab {
-                                ReviewTab::File { .. } => "Couldn’t open file",
-                                ReviewTab::Changes { .. } | ReviewTab::Session { .. } => {
-                                    "Couldn’t load changes"
+                                ReviewTab::File { .. } => {
+                                    crate::i18n::text("review-couldn-t-open-file")
                                 }
-                                ReviewTab::Commit { .. } => "Couldn’t load commit",
+                                ReviewTab::Changes { .. } | ReviewTab::Session { .. } => {
+                                    crate::i18n::text("review-couldn-t-load-changes")
+                                }
+                                ReviewTab::Commit { .. } => {
+                                    crate::i18n::text("review-couldn-t-load-commit")
+                                }
                             },
                         ))
                         .child(

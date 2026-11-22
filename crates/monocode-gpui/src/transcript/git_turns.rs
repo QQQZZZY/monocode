@@ -71,20 +71,23 @@ pub(crate) fn latest_commit(rows: &[Row]) -> Option<String> {
         })
 }
 
-fn live_label(action: GitAction, step: Step) -> &'static str {
+fn live_label(action: GitAction, step: Step) -> String {
     match step {
-        Step::Push => "Pushing…",
-        Step::Commit => "Committing…",
-        Step::Stage => "Staging…",
+        Step::Push => crate::i18n::text("transcript-pushing"),
+        Step::Commit => crate::i18n::text("transcript-committing"),
+        Step::Stage => crate::i18n::text("transcript-staging"),
         Step::Review => match action {
-            GitAction::Push => "Getting ready to push…",
-            _ => "Checking your changes…",
+            GitAction::Push => crate::i18n::text("transcript-getting-ready-to-push"),
+            _ => crate::i18n::text("transcript-checking-your-changes"),
         },
     }
 }
 
 fn plural(count: usize, one: &str, many: &str) -> String {
-    format!("{count} {}", if count == 1 { one } else { many })
+    crate::i18n::format(
+        if count == 1 { one } else { many },
+        &[("count", crate::system_format::unsigned(count as u64))],
+    )
 }
 
 fn counts(additions: u64, deletions: u64) -> Div {
@@ -190,22 +193,38 @@ impl TranscriptView {
         let has_counts = additions + deletions > 0;
         let title: SharedString = match (commit, push) {
             (Some(commit), _) => commit.subject.clone().into(),
-            (None, Some(push)) if push.up_to_date => "Already up to date".into(),
-            (None, Some(push)) if !push.ok => "Push didn’t go through".into(),
+            (None, Some(push)) if push.up_to_date => {
+                crate::i18n::text("transcript-already-up-to-date").into()
+            }
+            (None, Some(push)) if !push.ok => {
+                crate::i18n::text("transcript-push-didn-t-go-through").into()
+            }
             (None, Some(push)) => push
                 .branch
                 .as_ref()
-                .map_or_else(|| "Pushed".into(), |branch| format!("Pushed {branch}"))
-                .into(),
-            (None, None) => format!(
-                "Staged {}",
-                plural(
-                    report
-                        .staged_totals
-                        .map_or(report.staged.len(), |(files, _, _)| files as usize),
-                    "file",
-                    "files"
+                .map_or_else(
+                    || crate::i18n::text("transcript-pushed-2"),
+                    |branch| {
+                        crate::i18n::format(
+                            "transcript-pushed",
+                            &[("branch", (branch).to_string())],
+                        )
+                    },
                 )
+                .into(),
+            (None, None) => crate::i18n::format(
+                "transcript-staged",
+                &[(
+                    "value",
+                    (plural(
+                        report
+                            .staged_totals
+                            .map_or(report.staged.len(), |(files, _, _)| files as usize),
+                        "transcript-count-file",
+                        "transcript-count-files",
+                    ))
+                    .to_string(),
+                )],
             )
             .into(),
         };
@@ -232,9 +251,12 @@ impl TranscriptView {
                     .id(("git-card-hash", message_start))
                     .role(Role::Button)
                     .aria_label(if copied {
-                        "Copied the commit hash".to_string()
+                        crate::i18n::text("transcript-copied-the-commit-hash").to_string()
                     } else {
-                        format!("Copy commit {}", commit.hash)
+                        crate::i18n::format(
+                            "transcript-copy-commit",
+                            &[("value", (commit.hash).to_string())],
+                        )
                     })
                     .flex_shrink_0()
                     .flex()
@@ -256,7 +278,7 @@ impl TranscriptView {
                     } else {
                         div().child(commit.hash.clone()).into_any_element()
                     })
-                    .when(copied, |d| d.child("Copied"))
+                    .when(copied, |d| d.child(crate::i18n::text("transcript-copied")))
                     .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.write_to_clipboard(ClipboardItem::new_string(hash.clone()));
@@ -294,8 +316,8 @@ impl TranscriptView {
                     .child(dot())
                     .child(div().flex_shrink_0().child(plural(
                         report.commits.len(),
-                        "commit",
-                        "commits",
+                        "transcript-count-commit",
+                        "transcript-count-commits",
                     )));
             }
         }
@@ -321,19 +343,27 @@ impl TranscriptView {
                         ),
                     )
                     .child(div().truncate().child(if push_failed {
-                        "Push rejected".to_string()
+                        crate::i18n::text("transcript-push-rejected").to_string()
                     } else if commit.is_none() {
-                        push.repo.clone().unwrap_or_else(|| "Remote updated".into())
-                    } else {
                         push.repo
-                            .as_ref()
-                            .map_or_else(|| "Pushed".into(), |repo| format!("Pushed to {repo}"))
+                            .clone()
+                            .unwrap_or_else(|| crate::i18n::text("transcript-remote-updated"))
+                    } else {
+                        push.repo.as_ref().map_or_else(
+                            || crate::i18n::text("transcript-pushed-2"),
+                            |repo| {
+                                crate::i18n::format(
+                                    "transcript-pushed-to",
+                                    &[("repo", (repo).to_string())],
+                                )
+                            },
+                        )
                     })),
             );
         }
         if commit.is_none() && push.is_none() {
             parts += 1;
-            subtitle = subtitle.child(div().child("Ready to commit"));
+            subtitle = subtitle.child(div().child(crate::i18n::text("transcript-ready-to-commit")));
         }
         if has_counts {
             if parts > 0 {
@@ -346,13 +376,19 @@ impl TranscriptView {
         let link = push.filter(|push| push.ok).and_then(|push| {
             push.pull_request
                 .clone()
-                .map(|url| ("Open pull request", "git-pull-request", url))
+                .map(|url| {
+                    (
+                        crate::i18n::text("transcript-open-pull-request"),
+                        "git-pull-request",
+                        url,
+                    )
+                })
                 .or_else(|| {
                     let web = push.web.as_ref()?;
                     let commit = commit?;
                     web.starts_with("https://github.com/").then(|| {
                         (
-                            "View commit",
+                            crate::i18n::text("transcript-view-commit"),
                             "external-link",
                             format!("{web}/commit/{}", commit.hash),
                         )
@@ -426,7 +462,7 @@ impl TranscriptView {
                     div()
                         .id(("git-card-link", message_start))
                         .role(Role::Link)
-                        .aria_label(label)
+                        .aria_label(&label)
                         .flex_shrink_0()
                         .h(px(28.))
                         .px(px(10.))
@@ -465,7 +501,10 @@ impl TranscriptView {
             div()
                 .id(("git-card-file", message_start * 64 + ix))
                 .role(Role::Link)
-                .aria_label(SharedString::from(format!("Open {}", file.path)))
+                .aria_label(SharedString::from(crate::i18n::format(
+                    "transcript-open-3",
+                    &[("value", (file.path).to_string())],
+                )))
                 .h(px(30.))
                 .w_full()
                 .min_w_0()
@@ -494,7 +533,11 @@ impl TranscriptView {
                             .text_size(px(11.))
                             .font_features(tabular())
                             .text_color(content(0.45))
-                            .child(plural(lines as usize, "line", "lines")),
+                            .child(plural(
+                                lines as usize,
+                                "transcript-count-line",
+                                "transcript-count-lines",
+                            )),
                     ),
                     (None, None) => d,
                 })
@@ -541,9 +584,17 @@ impl TranscriptView {
                                             .items_center()
                                             .text_size(px(11.))
                                             .text_color(content(0.4))
-                                            .child(format!(
-                                                "+{} more",
-                                                plural(hidden, "file", "files")
+                                            .child(crate::i18n::format(
+                                                "transcript-more",
+                                                &[(
+                                                    "value",
+                                                    plural(
+                                                        hidden,
+                                                        "transcript-count-file",
+                                                        "transcript-count-files",
+                                                    )
+                                                    .to_string(),
+                                                )],
                                             )),
                                     )
                                 }),
@@ -674,7 +725,13 @@ fn title_text(card: &GitCard) -> String {
         .last()
         .map(|commit| commit.subject.clone())
         .or_else(|| card.report.push.as_ref().and_then(|p| p.branch.clone()))
-        .unwrap_or_else(|| plural(card.report.staged.len(), "file", "files"))
+        .unwrap_or_else(|| {
+            plural(
+                card.report.staged.len(),
+                "transcript-count-file",
+                "transcript-count-files",
+            )
+        })
 }
 
 #[cfg(test)]
